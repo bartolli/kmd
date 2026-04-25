@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Pool } from 'pg';
 import type { Logger } from './lib/logger.js';
+import { registerTemplateResources } from './resources/templates.js';
 import { handlePrime, PrimeInputSchema } from './tools/prime.js';
 import { handleSearch, SearchInputSchema } from './tools/search.js';
 
@@ -15,7 +16,7 @@ export interface BuildServerArgs {
 export function buildServer(args: BuildServerArgs): McpServer {
   const { name, version, vaultRoot, pool, logger } = args;
 
-  const mcp = new McpServer({ name, version }, { capabilities: { tools: {} } });
+  const mcp = new McpServer({ name, version }, { capabilities: { tools: {}, resources: {} } });
 
   mcp.tool(
     'prime',
@@ -36,6 +37,8 @@ export function buildServer(args: BuildServerArgs): McpServer {
       return handleSearch({ pool }, input);
     }
   );
+
+  registerTemplateResources(mcp, vaultRoot);
 
   return mcp;
 }
