@@ -98,7 +98,11 @@ function extractWikilinks(body: string): WikiLink[] {
   for (const match of body.matchAll(WIKILINK_RE)) {
     const rawTarget = match[1]?.trim() ?? '';
     if (!rawTarget) continue;
-    const target = rawTarget.endsWith('.md') ? rawTarget : `${rawTarget}.md`;
+    // Treat any existing extension as authoritative (handles embeds of
+    // `.base`, `.png`, `.pdf`, etc.); only append `.md` when the target
+    // is bare.
+    const hasExt = /\.[a-zA-Z0-9]+$/.test(rawTarget);
+    const target = hasExt ? rawTarget : `${rawTarget}.md`;
     const text = match[2]?.trim() ?? null;
     const key = `${target}|${text ?? ''}`;
     if (seen.has(key)) continue;
