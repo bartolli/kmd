@@ -1,0 +1,309 @@
+import { createHash } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
+import { join, relative, sep } from 'node:path';
+import matter from 'gray-matter';
+import { Client } from 'pg';
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  WIKI_VAULT: z.string().min(1),
+  WIKI_DB: z.string().min(1)
+});
+
+type Env = z.infer<typeof EnvSchema>;
+
+// Scan only the three content domains. raw/, templates/, .obsidian/, .git/
+// are intentionally excluded by the design.
+const SCAN_DOMAINS = ['projects', 'research', 'notes'] as const;
+
+// [[target]], [[target|display]], [[target#heading]], [[target^block]]
+const WIKILINK_RE = /\[\[([^\]|#^]+)(?:[#^][^\]|]*)?(?:\|([^\]]+))?\]\]/g;
+
+interface Frontmatter {
+  title?: string;
+  kind?: string;
+  status?: string;
+  summary?: string;
+  tags?: string[];
+  updated?: string | Date;
+}
+
+interface WikiLink {
+  target: string;
+  text: string | null;
+}
+
+interface PageFields {
+  path: string;
+  title: string;
+  kind: string;
+  scope: string | null;
+  topic: string | null;
+  status: string;
+  summary: string | null;
+  tags: string[] | null;
+  updated: string | null;
+  body: string;
+  hash: string;
+}
+
+type SyncResult = 'changed' | 'unchanged' | 'skipped';
+
+function loadEnv(): Env {
+  const parsed = EnvSchema.safeParse({
+    WIKI_VAULT: process.env.WIKI_VAULT,
+    WIKI_DB: process.env.WIKI_DB
+  });
+  if (!parsed.success) {
+    console.error('invalid env:');
+    console.error(parsed.error.format());
+    process.exit(1);
+  }
+  return parsed.data;
+}
+
+async function walkMarkdown(root: string, domain: string): Promise<string[]> {
+  const out: string[] = [];
+  async function recurse(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // domain dir may not exist yet — fine
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        await recurse(join(dir, entry.name));
+      } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        out.push(join(dir, entry.name));
+      }
+    }
+  }
+  await recurse(join(root, domain));
+  return out;
+}
+
+function toRelativePath(root: string, absolute: string): string {
+  return relative(root, absolute).split(sep).join('/');
+}
+
+function sha256(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+function extractWikilinks(body: string): WikiLink[] {
+  const links: WikiLink[] = [];
+  const seen = new Set<string>();
+  for (const match of body.matchAll(WIKILINK_RE)) {
+    const rawTarget = match[1]?.trim() ?? '';
+    if (!rawTarget) continue;
+    const target = rawTarget.endsWith('.md') ? rawTarget : `${rawTarget}.md`;
+    const text = match[2]?.trim() ?? null;
+    const key = `${target}|${text ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    links.push({ target, text });
+  }
+  return links;
+}
+
+/**
+ * Path is authoritative for scope/topic. Frontmatter may also carry these
+ * (for human readability) but sync trusts the filesystem.
+ *
+ *   projects/{scope}/...   → scope = first segment
+ *   research/{topic}/...   → topic = first segment
+ *   notes/...              → both null
+ */
+function deriveLocation(relPath: string): { scope: string | null; topic: string | null } {
+  const segments = relPath.split('/');
+  const domain = segments[0];
+  if (domain === 'projects' && segments.length >= 2 && segments[1]) {
+    return { scope: segments[1], topic: null };
+  }
+  if (domain === 'research' && segments.length >= 2 && segments[1]) {
+    return { scope: null, topic: segments[1] };
+  }
+  return { scope: null, topic: null };
+}
+
+/**
+ * Build the page row from frontmatter + path. Returns `null` to signal
+ * "skip this file" (intentionally not indexed).
+ *
+ * Skip rules:
+ *  - No `title` in frontmatter → narrative-only page (e.g., primer.md).
+ *  - No `kind` AND not under notes/ → authoring incomplete; warn.
+ *
+ * Notes are the one place where `kind` is implied by location.
+ */
+function buildPageFields(
+  relPath: string,
+  raw: string,
+  parsed: matter.GrayMatterFile<string>
+): PageFields | null {
+  const fm = parsed.data as Frontmatter;
+  if (!fm.title) {
+    return null;
+  }
+
+  let kind = fm.kind;
+  if (!kind) {
+    if (relPath.startsWith('notes/')) {
+      kind = 'note';
+    } else {
+      console.warn(`  skip: ${relPath} — has title but missing kind`);
+      return null;
+    }
+  }
+
+  const { scope, topic } = deriveLocation(relPath);
+  const updated =
+    fm.updated instanceof Date
+      ? fm.updated.toISOString().slice(0, 10)
+      : typeof fm.updated === 'string'
+        ? fm.updated.slice(0, 10)
+        : null;
+
+  return {
+    path: relPath,
+    title: fm.title,
+    kind,
+    scope,
+    topic,
+    status: fm.status ?? (kind === 'note' ? 'active' : 'draft'),
+    summary: fm.summary ?? null,
+    tags: Array.isArray(fm.tags) ? fm.tags : null,
+    updated,
+    body: parsed.content,
+    hash: sha256(raw)
+  };
+}
+
+async function syncPage(client: Client, fields: PageFields): Promise<SyncResult> {
+  const existing = await client.query<{ content_hash: string | null }>(
+    'SELECT content_hash FROM pages WHERE path = $1',
+    [fields.path]
+  );
+  if (existing.rows[0]?.content_hash === fields.hash) {
+    return 'unchanged';
+  }
+
+  await client.query('BEGIN');
+  try {
+    await client.query(
+      `INSERT INTO pages (path, title, kind, scope, topic, status, summary, tags, updated, body, content_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (path) DO UPDATE SET
+         title        = EXCLUDED.title,
+         kind         = EXCLUDED.kind,
+         scope        = EXCLUDED.scope,
+         topic        = EXCLUDED.topic,
+         status       = EXCLUDED.status,
+         summary      = EXCLUDED.summary,
+         tags         = EXCLUDED.tags,
+         updated      = EXCLUDED.updated,
+         body         = EXCLUDED.body,
+         content_hash = EXCLUDED.content_hash`,
+      [
+        fields.path,
+        fields.title,
+        fields.kind,
+        fields.scope,
+        fields.topic,
+        fields.status,
+        fields.summary,
+        fields.tags,
+        fields.updated,
+        fields.body,
+        fields.hash
+      ]
+    );
+
+    await client.query('DELETE FROM links WHERE source_path = $1', [fields.path]);
+    for (const link of extractWikilinks(fields.body)) {
+      await client.query(
+        `INSERT INTO links (source_path, target_path, link_text)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (source_path, target_path) DO NOTHING`,
+        [fields.path, link.target, link.text]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  }
+
+  return 'changed';
+}
+
+async function main(): Promise<void> {
+  const env = loadEnv();
+  console.log(`sync: ${env.WIKI_VAULT} → ${env.WIKI_DB.replace(/:[^:@]+@/, ':***@')}`);
+
+  const client = new Client({ connectionString: env.WIKI_DB });
+  await client.connect();
+
+  try {
+    const files: string[] = [];
+    for (const domain of SCAN_DOMAINS) {
+      files.push(...(await walkMarkdown(env.WIKI_VAULT, domain)));
+    }
+
+    const indexedPaths: string[] = [];
+    let changed = 0;
+    let unchanged = 0;
+    let skipped = 0;
+
+    for (const file of files) {
+      const path = toRelativePath(env.WIKI_VAULT, file);
+      const raw = await readFile(file, 'utf8');
+      const parsed = matter(raw);
+      const fields = buildPageFields(path, raw, parsed);
+      if (!fields) {
+        skipped++;
+        continue;
+      }
+
+      const result = await syncPage(client, fields);
+      if (result === 'changed') {
+        changed++;
+      } else {
+        unchanged++;
+      }
+      indexedPaths.push(path);
+    }
+
+    let pagesDeleted = 0;
+    let linksDeleted = 0;
+    if (indexedPaths.length > 0) {
+      const placeholders = indexedPaths.map((_, i) => `$${i + 1}`).join(', ');
+      const pageResult = await client.query(
+        `DELETE FROM pages WHERE path NOT IN (${placeholders})`,
+        indexedPaths
+      );
+      pagesDeleted = pageResult.rowCount ?? 0;
+      // No FK on links — clean up orphans whose source_path no longer exists.
+      const linkResult = await client.query(
+        `DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)`
+      );
+      linksDeleted = linkResult.rowCount ?? 0;
+    } else {
+      console.warn('no indexable pages found; skipping orphan deletion (safety)');
+    }
+
+    console.log(
+      `done: ${changed} changed, ${unchanged} unchanged, ${skipped} skipped, ${pagesDeleted} pages deleted, ${linksDeleted} link orphans cleared`
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+main().catch((err) => {
+  console.error('sync failed:', err instanceof Error ? (err.stack ?? err.message) : err);
+  process.exit(1);
+});

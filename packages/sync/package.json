@@ -1,0 +1,20 @@
+{
+  "name": "@llm-wiki/sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One-way sync: vault markdown → Postgres. Walks $WIKI_VAULT, upserts pages + links.",
+  "scripts": {
+    "start": "tsx src/sync.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "pg": "^8.11.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
+  }
+}

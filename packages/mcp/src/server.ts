@@ -1,0 +1,41 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Pool } from 'pg';
+import type { Logger } from './lib/logger.js';
+import { handlePrime, PrimeInputSchema } from './tools/prime.js';
+import { handleSearch, SearchInputSchema } from './tools/search.js';
+
+export interface BuildServerArgs {
+  readonly name: string;
+  readonly version: string;
+  readonly vaultRoot: string;
+  readonly pool: Pool;
+  readonly logger: Logger;
+}
+
+export function buildServer(args: BuildServerArgs): McpServer {
+  const { name, version, vaultRoot, pool, logger } = args;
+
+  const mcp = new McpServer({ name, version }, { capabilities: { tools: {} } });
+
+  mcp.tool(
+    'prime',
+    "Orient on a project. Returns a markdown briefing with: identity (scope, phase, methodology, summary), the human-authored primer.md inlined, active ADRs, current plan, page counts, top tags, hub pages (most-linked-to), recent events, cross-scope references, and — when `task` is provided — the top 3 tsvector-ranked relevant pages. Call once at session start. Empty sections are omitted to keep the surface lean.",
+    PrimeInputSchema.shape,
+    async (input) => {
+      logger.debug({ tool: 'prime', input }, 'tool call');
+      return handlePrime({ pool, vaultRoot }, input);
+    }
+  );
+
+  mcp.tool(
+    'search',
+    'Full-text search across wiki pages via Postgres tsvector. Returns ranked candidates {path, title, kind, summary, score} — never page bodies. The agent reads the returned paths directly from the filesystem.',
+    SearchInputSchema.shape,
+    async (input) => {
+      logger.debug({ tool: 'search', input }, 'tool call');
+      return handleSearch({ pool }, input);
+    }
+  );
+
+  return mcp;
+}

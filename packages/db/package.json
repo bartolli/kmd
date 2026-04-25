@@ -1,0 +1,9 @@
+{
+  "name": "@llm-wiki/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Postgres schema for llm-wiki. Apply with `psql $WIKI_DB < schema.sql`.",
+  "scripts": {
+    "apply": "psql \"$WIKI_DB\" < schema.sql"
+  }
+}

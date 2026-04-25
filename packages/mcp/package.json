@@ -1,0 +1,27 @@
+{
+  "name": "@llm-wiki/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "wiki-mcp stdio server: two read-only tools — load_project_context and search_wiki. Blueprint §6.",
+  "bin": {
+    "wiki-mcp": "./bin/stdio.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch bin/stdio.ts",
+    "start": "tsx bin/stdio.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "gray-matter": "^4.0.3",
+    "pg": "^8.11.0",
+    "pino": "^10.3.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
+  }
+}
