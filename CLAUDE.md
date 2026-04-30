@@ -23,7 +23,6 @@ Tooling monorepo for the llm-wiki: Postgres schema, vault → PG sync, and the `
 
 ## Commit discipline
 
-- **GPG signing requires the user's TTY.** Never run `git commit` directly — stage with `git add` and stop. The user signs.
 - Commit prefix pattern: `{type}(phase-{N}): {summary}` — e.g. `feat(phase-3): markdown primer output`.
 - Before any commit: `pnpm typecheck` green **and** the relevant package's test suite green.
 - **Never hand-edit version pins** in `package.json`. Always `pnpm add [-D] [--filter <pkg>] <dep>` — the lockfile is the source of truth.
@@ -75,7 +74,6 @@ Blueprint §10 freezes the contract:
 
 ## Don'ts
 
-- Don't run `git commit` directly — stage only.
 - Don't write SQL in tool handlers — the domain layer mediates.
 - Don't add tools beyond the two specified — see MCP tool rules.
 - Don't use `console.log()` anywhere in the MCP server — stderr only (Pino).
