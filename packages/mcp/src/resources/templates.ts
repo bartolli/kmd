@@ -14,7 +14,8 @@ interface TemplateSpec {
 }
 
 /**
- * The vault has 10 fixed templates, mirroring the v2 frontmatter schemas.
+ * The vault has 11 fixed templates, mirroring the v2 frontmatter schemas
+ * (extended with `story` per adr-story-vocabulary-and-triage-fields).
  * URI scheme: `wiki://template/{domain}/{kind}` — the agent thinks
  * "I'm authoring a {kind} in the {domain} domain" and the URI matches
  * that mental model. `note` collapses to a single segment because the
@@ -62,6 +63,13 @@ const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     file: 'project-ops.md',
     description:
       'Operational runbook — how to run or operate a system. Procedural.'
+  },
+  {
+    uri: 'wiki://template/project/story',
+    name: 'Project story',
+    file: 'project-story.md',
+    description:
+      'User story with Gherkin scenarios and inline implementation slices. Lives at plan/{plan-name}/story-N-{slug}.md. Frontmatter carries triage_state, category, blocked_by, parent.'
   },
   {
     uri: 'wiki://template/research/index',

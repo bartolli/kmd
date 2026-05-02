@@ -28,6 +28,21 @@ interface Frontmatter {
   updated?: string | Date;
 }
 
+// Frontmatter keys that already map to first-class indexed columns. Anything
+// outside this set flows into the `meta` JSONB column verbatim, so future
+// vocabulary extensions (e.g. story.triage_state, story.category) become
+// queryable without further schema changes.
+const INDEXED_FRONTMATTER_KEYS = new Set<string>([
+  'title',
+  'kind',
+  'status',
+  'summary',
+  'tags',
+  'updated',
+  'scope',
+  'topic'
+]);
+
 interface WikiLink {
   target: string;
   text: string | null;
@@ -45,6 +60,7 @@ interface PageFields {
   updated: string | null;
   body: string;
   hash: string;
+  meta: Record<string, unknown> | null;
 }
 
 type SyncResult = 'changed' | 'unchanged' | 'skipped';
@@ -170,6 +186,11 @@ function buildPageFields(
         ? fm.updated.slice(0, 10)
         : null;
 
+  const metaEntries = Object.entries(parsed.data as Record<string, unknown>).filter(
+    ([k]) => !INDEXED_FRONTMATTER_KEYS.has(k)
+  );
+  const meta = metaEntries.length > 0 ? Object.fromEntries(metaEntries) : null;
+
   return {
     path: relPath,
     title: fm.title,
@@ -181,7 +202,8 @@ function buildPageFields(
     tags: Array.isArray(fm.tags) ? fm.tags : null,
     updated,
     body: parsed.content,
-    hash: sha256(raw)
+    hash: sha256(raw),
+    meta
   };
 }
 
@@ -197,8 +219,8 @@ async function syncPage(client: Client, fields: PageFields): Promise<SyncResult>
   await client.query('BEGIN');
   try {
     await client.query(
-      `INSERT INTO pages (path, title, kind, scope, topic, status, summary, tags, updated, body, content_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO pages (path, title, kind, scope, topic, status, summary, tags, updated, body, content_hash, meta)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (path) DO UPDATE SET
          title        = EXCLUDED.title,
          kind         = EXCLUDED.kind,
@@ -209,7 +231,8 @@ async function syncPage(client: Client, fields: PageFields): Promise<SyncResult>
          tags         = EXCLUDED.tags,
          updated      = EXCLUDED.updated,
          body         = EXCLUDED.body,
-         content_hash = EXCLUDED.content_hash`,
+         content_hash = EXCLUDED.content_hash,
+         meta         = EXCLUDED.meta`,
       [
         fields.path,
         fields.title,
@@ -221,7 +244,8 @@ async function syncPage(client: Client, fields: PageFields): Promise<SyncResult>
         fields.tags,
         fields.updated,
         fields.body,
-        fields.hash
+        fields.hash,
+        fields.meta
       ]
     );
 

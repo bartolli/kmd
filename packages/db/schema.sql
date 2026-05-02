@@ -13,7 +13,7 @@ CREATE TABLE pages (
     id           SERIAL PRIMARY KEY,
     path         TEXT UNIQUE NOT NULL,           -- projects/ontology/spec/spec-x.md
     title        TEXT NOT NULL,
-    kind         TEXT NOT NULL,                  -- project|spec|adr|plan|ops|topic|article|src|note
+    kind         TEXT NOT NULL,                  -- project|spec|adr|plan|story|ops|topic|article|src|note
     scope        TEXT,                           -- project scope, NULL for research/notes
     topic        TEXT,                           -- research topic, NULL for projects/notes
     status       TEXT NOT NULL DEFAULT 'draft',
@@ -22,6 +22,7 @@ CREATE TABLE pages (
     updated      DATE,
     body         TEXT,
     content_hash TEXT,
+    meta         JSONB,                          -- non-indexed frontmatter (e.g., triage_state, category, blocked_by, parent for kind=story)
     search_vec   TSVECTOR GENERATED ALWAYS AS (
                    to_tsvector('english',
                      coalesce(title, '') || ' ' ||
