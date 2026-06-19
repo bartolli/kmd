@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import matter from 'gray-matter';
 import { Client } from 'pg';
 import { z } from 'zod';
+import { loadVaultConfig } from './config.js';
 
 const EnvSchema = z.object({
   WIKI_VAULT: z.string().min(1),
@@ -158,10 +160,11 @@ function deriveLocation(relPath: string): { scope: string | null; topic: string 
  *
  * Notes are the one place where `kind` is implied by location.
  */
-function buildPageFields(
+export function buildPageFields(
   relPath: string,
   raw: string,
-  parsed: matter.GrayMatterFile<string>
+  parsed: matter.GrayMatterFile<string>,
+  knownScopes: ReadonlySet<string>
 ): PageFields | null {
   const fm = parsed.data as Frontmatter;
   if (!fm.title) {
@@ -179,6 +182,11 @@ function buildPageFields(
   }
 
   const { scope, topic } = deriveLocation(relPath);
+  if (scope !== null && !knownScopes.has(scope)) {
+    throw new Error(
+      `unknown scope "${scope}" for ${relPath} — add it to vault.yaml or remove the page`
+    );
+  }
   const updated =
     fm.updated instanceof Date
       ? fm.updated.toISOString().slice(0, 10)
@@ -272,6 +280,9 @@ async function main(): Promise<void> {
   const env = loadEnv();
   console.log(`sync: ${env.WIKI_VAULT} → ${env.WIKI_DB.replace(/:[^:@]+@/, ':***@')}`);
 
+  const vaultConfig = await loadVaultConfig(env.WIKI_VAULT);
+  const scopes = new Set(Object.keys(vaultConfig.scopes));
+
   const client = new Client({ connectionString: env.WIKI_DB });
   await client.connect();
 
@@ -290,7 +301,7 @@ async function main(): Promise<void> {
       const path = toRelativePath(env.WIKI_VAULT, file);
       const raw = await readFile(file, 'utf8');
       const parsed = matter(raw);
-      const fields = buildPageFields(path, raw, parsed);
+      const fields = buildPageFields(path, raw, parsed, scopes);
       if (!fields) {
         skipped++;
         continue;
@@ -331,7 +342,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('sync failed:', err instanceof Error ? (err.stack ?? err.message) : err);
-  process.exit(1);
-});
+const isEntrypoint =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error('sync failed:', err instanceof Error ? (err.stack ?? err.message) : err);
+    process.exit(1);
+  });
+}

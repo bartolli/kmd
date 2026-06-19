@@ -12,6 +12,7 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "pg": "^8.11.0",
+    "yaml": "^2.9.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
