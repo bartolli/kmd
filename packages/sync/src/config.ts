@@ -10,7 +10,14 @@ const ScopeSchema = z.object({
 });
 
 const VaultConfigSchema = z.object({
-  scopes: z.record(z.string(), ScopeSchema)
+  scopes: z.record(z.string(), ScopeSchema),
+  kinds: z.array(z.string()),
+  statuses: z.array(z.string()),
+  methodologies: z.array(z.string()),
+  tags: z.object({
+    canonical: z.array(z.string()),
+    aliases: z.record(z.string(), z.string())
+  })
 });
 
 export type VaultConfig = z.infer<typeof VaultConfigSchema>;
