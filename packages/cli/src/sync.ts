@@ -106,7 +106,7 @@ function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function extractWikilinks(body: string): WikiLink[] {
+export function extractWikilinks(body: string): WikiLink[] {
   const links: WikiLink[] = [];
   const seen = new Set<string>();
   for (const match of body.matchAll(WIKILINK_RE)) {
@@ -134,7 +134,7 @@ function extractWikilinks(body: string): WikiLink[] {
  *   research/{topic}/...   → topic = first segment
  *   notes/...              → both null
  */
-function deriveLocation(relPath: string): { scope: string | null; topic: string | null } {
+export function deriveLocation(relPath: string): { scope: string | null; topic: string | null } {
   const segments = relPath.split('/');
   const domain = segments[0];
   if (domain === 'projects' && segments.length >= 2 && segments[1]) {
