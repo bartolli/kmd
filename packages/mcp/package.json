@@ -16,9 +16,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "gray-matter": "^4.0.3",
     "pg": "^8.11.0",
     "pino": "^10.3.0",
+    "yaml": "^2.9.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {

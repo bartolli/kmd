@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import matter from 'gray-matter';
 import type { Pool } from 'pg';
 import { z } from 'zod';
+import { parseFrontmatter } from '../frontmatter.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
 
 export const PrimeInputSchema = z.object({
@@ -54,7 +54,7 @@ function pathSlug(p: string): string {
 async function readIndexFm(vaultRoot: string, scope: string): Promise<ProjectIndexFm> {
   try {
     const raw = await readFile(join(vaultRoot, 'projects', scope, 'index.md'), 'utf8');
-    return matter(raw).data as ProjectIndexFm;
+    return parseFrontmatter(raw).data as ProjectIndexFm;
   } catch {
     return {};
   }
@@ -66,7 +66,7 @@ async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
     // Strip the file's own H1 (e.g., "# Primer" / "# Session Primer") — the
     // primer is inlined under a `## Primer` section header in the response,
     // so the file's own H1 is redundant when nested.
-    return matter(raw)
+    return parseFrontmatter(raw)
       .content.trim()
       .replace(/^#\s+[^\n]+\n+/, '');
   } catch {

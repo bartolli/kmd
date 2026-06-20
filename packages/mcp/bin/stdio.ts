@@ -16,6 +16,7 @@ import { loadConfig } from '../src/config.js';
 import { createPool } from '../src/db.js';
 import { createLogger } from '../src/lib/logger.js';
 import { buildServer } from '../src/server.js';
+import { loadVaultConfig } from '../src/vault-config.js';
 
 diag('imports complete');
 
@@ -24,6 +25,15 @@ async function main(): Promise<void> {
 
   const config = loadConfig();
   diag('config loaded', { vault: config.wikiVault, level: config.logLevel });
+
+  // Fail-loud before any DB access: a missing/invalid vault.yaml crashes startup
+  // rather than serving without the controlled vocabulary. (story-3 slice 1.)
+  const vaultConfig = await loadVaultConfig(config.wikiVault);
+  diag('vault config loaded', {
+    scopes: Object.keys(vaultConfig.scopes).length,
+    kinds: vaultConfig.kinds.length,
+    statuses: vaultConfig.statuses.length
+  });
 
   const logger = createLogger(config.logLevel, config.serverName);
   logger.info(
