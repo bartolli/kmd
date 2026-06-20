@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { runSync } from './sync.js';
-import { hasErrors, validateVault } from './validate.js';
+import { type Finding, hasErrors, validateVault } from './validate.js';
 
 export type Command = 'sync' | 'validate';
 
@@ -36,13 +36,34 @@ function vaultRoot(): string {
   return root;
 }
 
-async function runValidate(): Promise<void> {
-  const findings = await validateVault(vaultRoot());
+function reportFindings(findings: Finding[]): void {
   for (const f of findings) {
     console.error(`${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
   }
+}
+
+async function runValidate(): Promise<void> {
+  const findings = await validateVault(vaultRoot());
+  reportFindings(findings);
   console.log(`validate: ${findings.length} finding(s)`);
   process.exit(hasErrors(findings) ? 1 : 0);
+}
+
+/**
+ * Pre-sync gate: validate the vault on the filesystem and abort before sync
+ * touches Postgres. Runs before runSync's WIKI_DB requirement, so a malformed
+ * vault aborts on the validation finding (not the env check) and never reaches
+ * the database. Warnings print but do not block.
+ */
+async function runSyncCommand(): Promise<void> {
+  const findings = await validateVault(vaultRoot());
+  reportFindings(findings);
+  if (hasErrors(findings)) {
+    const errors = findings.filter((f) => f.severity === 'error').length;
+    console.error(`sync aborted: ${errors} validation error(s); no database writes`);
+    process.exit(1);
+  }
+  await runSync();
 }
 
 async function main(): Promise<void> {
@@ -52,7 +73,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (resolution.command === 'sync') {
-    await runSync();
+    await runSyncCommand();
   } else {
     await runValidate();
   }
