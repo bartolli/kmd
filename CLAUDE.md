@@ -16,10 +16,10 @@ Tooling monorepo for the llm-wiki: Postgres schema, vault → PG sync, and the `
 | Package | Name | Role |
 |---|---|---|
 | `packages/db` | `@llm-wiki/db` | Postgres schema (`schema.sql`). `pnpm --filter @llm-wiki/db apply` runs `psql $WIKI_DB < schema.sql`. |
-| `packages/sync` | `@llm-wiki/sync` | Vault → PG one-way sync. Walks `projects/`, `research/`, `notes/`. Skips `raw/`, `templates/`. |
+| `packages/cli` | `@llm-wiki/cli` | `wiki` CLI. `wiki sync` is the vault → PG one-way sync (walks `projects/`, `research/`, `notes/`; skips `raw/`, `templates/`); `validate`/`export` land in later slices. See [[adr-infra-cli]]. |
 | `packages/mcp` | `@llm-wiki/mcp` | `wiki-mcp` stdio server. Two tools: `prime` and `search`. |
 
-`@llm-wiki/shared` is **not** extracted yet — sync's frontmatter parser and PG client are inline. Lift to `shared/` only when a third consumer materializes (YAGNI).
+`@llm-wiki/shared` is **not** extracted yet — the frontmatter parser and PG client are inline in `@llm-wiki/cli`. Lift to `shared/` only when a third *separate* consumer materializes (YAGNI); `validate`/`export` share them in-package.
 
 ## Commit discipline
 
@@ -41,7 +41,7 @@ psql "$WIKI_DB" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 pnpm --filter @llm-wiki/db apply
 
 # Run the sync (vault → PG):
-pnpm --filter @llm-wiki/sync start
+pnpm --filter @llm-wiki/cli start          # = wiki sync
 
 # Inspect:
 psql "$WIKI_DB" -c "SELECT path, title, kind, scope, topic FROM pages;"

@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import matter from 'gray-matter';
 import { Client } from 'pg';
 import { z } from 'zod';
 import { loadVaultConfig } from './config.js';
+import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
 
 const EnvSchema = z.object({
   WIKI_VAULT: z.string().min(1),
@@ -16,7 +15,7 @@ type Env = z.infer<typeof EnvSchema>;
 
 // Scan only the three content domains. raw/, templates/, .obsidian/, .git/
 // are intentionally excluded by the design.
-const SCAN_DOMAINS = ['projects', 'research', 'notes'] as const;
+export const SCAN_DOMAINS = ['projects', 'research', 'notes'] as const;
 
 // [[target]], [[target|display]], [[target#heading]], [[target^block]]
 const WIKILINK_RE = /\[\[([^\]|#^]+)(?:[#^][^\]|]*)?(?:\|([^\]]+))?\]\]/g;
@@ -80,15 +79,12 @@ function loadEnv(): Env {
   return parsed.data;
 }
 
-async function walkMarkdown(root: string, domain: string): Promise<string[]> {
+export async function walkMarkdown(root: string, domain: string): Promise<string[]> {
   const out: string[] = [];
   async function recurse(dir: string): Promise<void> {
-    let entries;
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return; // domain dir may not exist yet — fine
-    }
+    // null when the domain dir doesn't exist yet — fine, nothing to walk.
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (!entries) return;
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
       if (entry.isDirectory()) {
@@ -102,7 +98,7 @@ async function walkMarkdown(root: string, domain: string): Promise<string[]> {
   return out;
 }
 
-function toRelativePath(root: string, absolute: string): string {
+export function toRelativePath(root: string, absolute: string): string {
   return relative(root, absolute).split(sep).join('/');
 }
 
@@ -163,7 +159,7 @@ function deriveLocation(relPath: string): { scope: string | null; topic: string 
 export function buildPageFields(
   relPath: string,
   raw: string,
-  parsed: matter.GrayMatterFile<string>,
+  parsed: ParsedFrontmatter,
   knownScopes: ReadonlySet<string>
 ): PageFields | null {
   const fm = parsed.data as Frontmatter;
@@ -276,7 +272,7 @@ async function syncPage(client: Client, fields: PageFields): Promise<SyncResult>
   return 'changed';
 }
 
-async function main(): Promise<void> {
+export async function runSync(): Promise<void> {
   const env = loadEnv();
   console.log(`sync: ${env.WIKI_VAULT} → ${env.WIKI_DB.replace(/:[^:@]+@/, ':***@')}`);
 
@@ -300,7 +296,7 @@ async function main(): Promise<void> {
     for (const file of files) {
       const path = toRelativePath(env.WIKI_VAULT, file);
       const raw = await readFile(file, 'utf8');
-      const parsed = matter(raw);
+      const parsed = parseFrontmatter(raw);
       const fields = buildPageFields(path, raw, parsed, scopes);
       if (!fields) {
         skipped++;
@@ -340,14 +336,4 @@ async function main(): Promise<void> {
   } finally {
     await client.end();
   }
-}
-
-const isEntrypoint =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isEntrypoint) {
-  main().catch((err) => {
-    console.error('sync failed:', err instanceof Error ? (err.stack ?? err.message) : err);
-    process.exit(1);
-  });
 }

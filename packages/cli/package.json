@@ -1,16 +1,18 @@
 {
-  "name": "@llm-wiki/sync",
+  "name": "@llm-wiki/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "One-way sync: vault markdown → Postgres. Walks $WIKI_VAULT, upserts pages + links.",
+  "description": "wiki CLI: vault infra commands. `wiki sync` (vault → Postgres); validate/export land in later slices.",
+  "bin": {
+    "wiki": "./src/cli.ts"
+  },
   "scripts": {
-    "start": "tsx src/sync.ts",
+    "start": "tsx src/cli.ts sync",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "gray-matter": "^4.0.3",
     "pg": "^8.11.0",
     "yaml": "^2.9.0",
     "zod": "^4.0.0"
