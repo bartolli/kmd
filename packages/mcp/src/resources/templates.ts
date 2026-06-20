@@ -61,8 +61,7 @@ const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     uri: 'wiki://template/project/ops',
     name: 'Project ops',
     file: 'project-ops.md',
-    description:
-      'Operational runbook — how to run or operate a system. Procedural.'
+    description: 'Operational runbook — how to run or operate a system. Procedural.'
   },
   {
     uri: 'wiki://template/project/story',

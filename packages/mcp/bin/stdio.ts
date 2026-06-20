@@ -49,7 +49,8 @@ async function main(): Promise<void> {
     version: config.serverVersion,
     vaultRoot: config.wikiVault,
     pool,
-    logger
+    logger,
+    vaultConfig
   });
   diag('server built');
 

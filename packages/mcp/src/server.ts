@@ -4,6 +4,7 @@ import type { Logger } from './lib/logger.js';
 import { registerTemplateResources } from './resources/templates.js';
 import { handlePrime, PrimeInputSchema } from './tools/prime.js';
 import { handleSearch, SearchInputSchema } from './tools/search.js';
+import type { VaultConfig } from './vault-config.js';
 
 export interface BuildServerArgs {
   readonly name: string;
@@ -11,20 +12,21 @@ export interface BuildServerArgs {
   readonly vaultRoot: string;
   readonly pool: Pool;
   readonly logger: Logger;
+  readonly vaultConfig: VaultConfig;
 }
 
 export function buildServer(args: BuildServerArgs): McpServer {
-  const { name, version, vaultRoot, pool, logger } = args;
+  const { name, version, vaultRoot, pool, logger, vaultConfig } = args;
 
   const mcp = new McpServer({ name, version }, { capabilities: { tools: {}, resources: {} } });
 
   mcp.tool(
     'prime',
-    "Orient on a project. Returns a markdown briefing with: identity (scope, phase, methodology, summary), the human-authored primer.md inlined, active ADRs, current plan, page counts, top tags, hub pages (most-linked-to), recent events, cross-scope references, and — when `task` is provided — the top 3 tsvector-ranked relevant pages. Call once at session start. Empty sections are omitted to keep the surface lean.",
+    'Orient on a project. Returns a markdown briefing with: identity (scope, phase, methodology, summary), the human-authored primer.md inlined, active ADRs, current plan, page counts, top tags, hub pages (most-linked-to), recent events, cross-scope references, and — when `task` is provided — the top 3 tsvector-ranked relevant pages. Call once at session start. Empty sections are omitted to keep the surface lean.',
     PrimeInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'prime', input }, 'tool call');
-      return handlePrime({ pool, vaultRoot }, input);
+      return handlePrime({ pool, vaultRoot, vaultConfig }, input);
     }
   );
 

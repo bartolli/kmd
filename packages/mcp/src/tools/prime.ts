@@ -4,6 +4,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
+import type { VaultConfig } from '../vault-config.js';
 
 export const PrimeInputSchema = z.object({
   scope: z
@@ -25,7 +26,7 @@ interface ProjectIndexFm {
   summary?: string;
 }
 
-interface PrimeData {
+export interface PrimeData {
   scope: string;
   title: string | null;
   methodology: string | null;
@@ -45,6 +46,7 @@ interface PrimeData {
 export interface PrimeDeps {
   readonly pool: Pool;
   readonly vaultRoot: string;
+  readonly vaultConfig: VaultConfig;
 }
 
 function pathSlug(p: string): string {
@@ -78,7 +80,7 @@ export async function prime(
   deps: PrimeDeps,
   input: PrimeInput
 ): Promise<{ markdown: string; data: PrimeData }> {
-  const { pool, vaultRoot } = deps;
+  const { pool, vaultRoot, vaultConfig } = deps;
   const { scope, task } = input;
 
   const [fm, primer] = await Promise.all([
@@ -88,7 +90,7 @@ export async function prime(
 
   const [counts, adrs, planRow, tags, hubs, events, crossScope] = await Promise.all([
     pool.query<{ kind: string; count: string }>(
-      "SELECT kind, count(*)::text AS count FROM pages WHERE scope = $1 GROUP BY kind",
+      'SELECT kind, count(*)::text AS count FROM pages WHERE scope = $1 GROUP BY kind',
       [scope]
     ),
     pool.query<{ path: string; title: string; summary: string | null }>(
@@ -100,7 +102,7 @@ export async function prime(
       [scope]
     ),
     pool.query<{ tag: string }>(
-      "SELECT tag FROM pages, unnest(tags) AS tag WHERE scope = $1 GROUP BY tag ORDER BY count(*) DESC LIMIT 10",
+      'SELECT tag FROM pages, unnest(tags) AS tag WHERE scope = $1 GROUP BY tag ORDER BY count(*) DESC LIMIT 10',
       [scope]
     ),
     pool.query<{ path: string; title: string; inbound: string }>(
@@ -112,7 +114,7 @@ export async function prime(
       [scope]
     ),
     pool.query<{ path: string; operation: string; ts: Date }>(
-      "SELECT path, operation, ts FROM events WHERE scope = $1 ORDER BY ts DESC LIMIT 5",
+      'SELECT path, operation, ts FROM events WHERE scope = $1 ORDER BY ts DESC LIMIT 5',
       [scope]
     ),
     pool.query<{ from_scope: string; from_path: string; to_path: string }>(
@@ -186,10 +188,14 @@ export async function prime(
     }))
   };
 
-  return { markdown: renderMarkdown(data, task), data };
+  return { markdown: renderMarkdown(data, vaultConfig, task), data };
 }
 
-function renderMarkdown(d: PrimeData, task: string | undefined): string {
+export function renderMarkdown(
+  d: PrimeData,
+  config: VaultConfig,
+  task: string | undefined
+): string {
   const lines: string[] = [];
 
   const phaseLabel =
@@ -223,6 +229,14 @@ function renderMarkdown(d: PrimeData, task: string | undefined): string {
     lines.push('', '## Pages');
     lines.push(countEntries.map(([k, n]) => `${k}: ${n}`).join(' | '));
   }
+
+  // The authoring contract from vault.yaml — kept full (not capped) so the
+  // briefing teaches a fresh agent every allowed value. Distinct from `## Tags`
+  // below, which is the observed top-N usage.
+  lines.push('', '## Vocabulary');
+  lines.push(`kinds: ${config.kinds.join(', ')}`);
+  lines.push(`statuses: ${config.statuses.join(', ')}`);
+  lines.push(`tags: ${config.tags.canonical.join(', ')}`);
 
   if (d.top_tags.length > 0) {
     lines.push('', '## Tags');
@@ -261,6 +275,13 @@ function renderMarkdown(d: PrimeData, task: string | undefined): string {
 }
 
 export async function handlePrime(deps: PrimeDeps, input: PrimeInput) {
+  if (!Object.hasOwn(deps.vaultConfig.scopes, input.scope)) {
+    const valid = Object.keys(deps.vaultConfig.scopes).sort().join(', ');
+    return textError({
+      code: 'UNKNOWN_SCOPE',
+      message: `unknown scope "${input.scope}"; valid scopes: ${valid}`
+    });
+  }
   try {
     const { markdown, data } = await prime(deps, input);
     return textWithStruct(markdown, data as unknown as Record<string, unknown>);
