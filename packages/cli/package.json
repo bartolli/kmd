@@ -3,9 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "wiki CLI: vault infra commands. `wiki sync` (vault → Postgres); validate/export land in later slices.",
+  "description": "wiki CLI: vault infra commands (sync, validate).",
   "bin": {
     "wiki": "./src/cli.ts"
+  },
+  "exports": {
+    "./cli": "./src/cli.ts"
   },
   "scripts": {
     "start": "tsx src/cli.ts sync",

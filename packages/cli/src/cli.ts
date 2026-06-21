@@ -27,7 +27,7 @@ export function resolveCli(argv: string[]): CliResolution {
   return { kind: 'error', message: `unknown command: ${command}` };
 }
 
-function vaultRoot(): string {
+export function vaultRoot(): string {
   const root = process.env.WIKI_VAULT;
   if (!root) {
     console.error('WIKI_VAULT is not set');
@@ -42,20 +42,14 @@ function reportFindings(findings: Finding[]): void {
   }
 }
 
-async function runValidate(): Promise<void> {
+export async function runValidate(): Promise<void> {
   const findings = await validateVault(vaultRoot());
   reportFindings(findings);
   console.log(`validate: ${findings.length} finding(s)`);
   process.exit(hasErrors(findings) ? 1 : 0);
 }
 
-/**
- * Pre-sync gate: validate the vault on the filesystem and abort before sync
- * touches Postgres. Runs before runSync's WIKI_DB requirement, so a malformed
- * vault aborts on the validation finding (not the env check) and never reaches
- * the database. Warnings print but do not block.
- */
-async function runSyncCommand(): Promise<void> {
+export async function runSyncCommand(): Promise<void> {
   const findings = await validateVault(vaultRoot());
   reportFindings(findings);
   if (hasErrors(findings)) {

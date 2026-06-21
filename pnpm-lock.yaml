@@ -41,6 +41,18 @@ importers:
 
   packages/db: {}
 
+  packages/kmd:
+    dependencies:
+      '@llm-wiki/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@llm-wiki/db':
+        specifier: workspace:*
+        version: link:../db
+      '@llm-wiki/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+
   packages/mcp:
     dependencies:
       '@llm-wiki/db':

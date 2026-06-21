@@ -3,9 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "wiki-mcp stdio server: two read-only tools — load_project_context and search_wiki. Blueprint §6.",
+  "description": "wiki-mcp stdio server: two read-only tools — prime and search.",
   "bin": {
     "wiki-mcp": "./bin/stdio.ts"
+  },
+  "exports": {
+    "./start": "./src/start.ts"
   },
   "scripts": {
     "dev": "tsx watch bin/stdio.ts",
