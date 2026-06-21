@@ -1,33 +1,73 @@
-# llm-wiki-infra
+# kmd — knowledge-markdown
 
-Workspace for the llm-wiki infrastructure: Postgres sync + the `wiki-mcp` stdio server.
-The vault (markdown content) lives at `../vault/` as a separate git repo.
-The system-wide blueprint lives at `../README.md`.
+CLI + MCP server for structured markdown knowledge vaults. Validate, index (SQLite FTS5), and serve content to AI agents — one `npx` away.
 
-## Prerequisites
+Same primitives as [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) (markdown + YAML frontmatter + directory tree), but opinionated where OKF is minimal:
 
-- Node.js 22+ (use `nvm use` to pick up `.nvmrc`)
-- pnpm 10+ (`corepack enable pnpm`)
-- PostgreSQL 16 with the `pgvector` extension
+| | OKF | kmd |
+|---|---|---|
+| Vocabulary | open — producer picks `type` values | controlled — `vault.yaml` defines kinds, scopes, statuses, tags; `kmd validate` enforces |
+| Structure | flat — organize however | three domains: `projects/` · `research/` · `notes/` |
+| Validation | none — format spec only | deterministic, LLM-free; gates sync + pre-commit hook |
+| Cross-refs | bundle-relative `/path.md` | `[[wikilinks]]` (Obsidian-native, rename-safe, no-dangling guarantee) |
+| Agent surface | none — bring your own | two MCP tools (`prime`, `search`) + template resources |
+| Infrastructure | n/a | `node:sqlite` FTS5; zero external deps |
 
-## Setup
+## Install
+
+```bash
+npx @bartolli/kmd --help
+```
+
+## Commands
+
+```
+kmd validate [<path>]     deterministic vault checker (default: $WIKI_VAULT)
+kmd sync                  vault → SQLite index (runs validate first)
+kmd mcp [<vault-root>]    stdio MCP server
+kmd db reset              delete and recreate the index
+```
+
+## MCP registration
+
+```json
+{
+  "mcpServers": {
+    "wiki": {
+      "command": "npx",
+      "args": ["-y", "@bartolli/kmd", "mcp", "/absolute/path/to/vault"]
+    }
+  }
+}
+```
+
+Two tools:
+
+- **`prime(scope, task?)`** — orientation briefing: identity, primer, active ADRs, plan, vocabulary, hubs, task-relevant pages.
+- **`search(query, scope?, kind?, limit?)`** — FTS5 ranked candidates `{path, title, kind, summary, score}`. Never page bodies.
+
+Templates served as MCP resources at `wiki://template/{domain}/{kind}`.
+
+## Vault structure
+
+```
+vault/
+├── vault.yaml              # controlled vocabulary
+├── templates/               # frontmatter templates → MCP resources
+├── projects/{scope}/        # specs, ADRs, plans, stories
+├── research/{topic}/        # articles, sources
+└── notes/                   # low-ceremony capture
+```
+
+## Development
+
+Requires Node.js 22+ (`node:sqlite` FTS5) and pnpm 11+.
 
 ```bash
 pnpm install
-pnpm -r run typecheck
-pnpm -r run test
+pnpm -r run typecheck && pnpm -r run test && pnpm lint
 ```
 
-## Environment
+## License
 
-```bash
-# ~/.zshrc (or direnv / 1Password)
-export WIKI_VAULT="$HOME/llm-wiki/vault"
-export WIKI_DB="postgresql://localhost/llm_wiki"
-```
-
-## Packages
-
-Not yet scaffolded. See `CLAUDE.md` for the planned monorepo shape and the
-blueprint (`../README.md` §10) for the phase order driving when each
-package gets built.
+MIT

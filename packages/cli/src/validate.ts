@@ -529,7 +529,7 @@ export function validateAmbiguousLinks(
 /**
  * Walk the vault's content domains (reusing the sync walker), build the basename
  * index of valid reference targets (all on-disk pages, including title-less ones),
- * then aggregate findings across all pages. No Postgres — validation is a
+ * then aggregate findings across all pages. No database — validation is a
  * pre-sync, read-only pass over the filesystem.
  */
 export async function validateVault(root: string): Promise<Finding[]> {

@@ -7,7 +7,7 @@ export const SearchInputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Natural-language search query. Matched against title, summary, and body via Postgres tsvector.'
+      'Natural-language search query. Matched against title, summary, and body via SQLite FTS5.'
     ),
   scope: z
     .string()

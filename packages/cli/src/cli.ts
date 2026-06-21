@@ -9,7 +9,7 @@ export type CliResolution = { kind: 'run'; command: Command } | { kind: 'error';
 /**
  * Resolve a `wiki <command>` invocation to the command to run, or a usage
  * error. Pure — no side effects — so the routing is testable without executing
- * the (Postgres-touching) command. `argv` is `process.argv.slice(2)`.
+ * the (index-touching) command. `argv` is `process.argv.slice(2)`.
  */
 export function resolveCli(argv: string[]): CliResolution {
   const { positionals } = parseArgs({ args: argv, allowPositionals: true, strict: false });

@@ -32,7 +32,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
 
   mcp.tool(
     'search',
-    'Full-text search across wiki pages via Postgres tsvector. Returns ranked candidates {path, title, kind, summary, score} — never page bodies. The agent reads the returned paths directly from the filesystem.',
+    'Full-text search across wiki pages via SQLite FTS5. Returns ranked candidates {path, title, kind, summary, score} — never page bodies. The agent reads the returned paths directly from the filesystem.',
     SearchInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'search', input }, 'tool call');
