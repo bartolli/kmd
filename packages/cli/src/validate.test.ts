@@ -188,12 +188,7 @@ describe('primer link integrity', () => {
   it('accepts a resolving wikilink in a primer', () => {
     const raw = '---\nupdated: 2026-06-19\n---\nsee [[adr-infra-cli]]\n';
 
-    const findings = validatePage(
-      'projects/sotto/primer.md',
-      raw,
-      CFG,
-      new Set(['adr-infra-cli'])
-    );
+    const findings = validatePage('projects/sotto/primer.md', raw, CFG, new Set(['adr-infra-cli']));
 
     expect(findings.some((f) => f.rule === 'dangling-link')).toBe(false);
   });
@@ -242,8 +237,7 @@ describe('tags required (open dimension, presence enforced)', () => {
   });
 
   it('exempts tag-optional kinds (artifact, prompt) from the tags requirement', () => {
-    const raw =
-      '---\ntitle: X\nkind: artifact\nstatus: active\nupdated: 2026-06-19\n---\nbody\n';
+    const raw = '---\ntitle: X\nkind: artifact\nstatus: active\nupdated: 2026-06-19\n---\nbody\n';
 
     const findings = validatePage('projects/sotto/ops/pkg/thing.md', raw, CFG, REF);
 
@@ -368,7 +362,9 @@ describe('ambiguous links (basename collision)', () => {
 
     const findings = validateAmbiguousLinks(pages, collide);
 
-    expect(findings.some((f) => f.rule === 'ambiguous-link' && f.severity === 'warning')).toBe(true);
+    expect(findings.some((f) => f.rule === 'ambiguous-link' && f.severity === 'warning')).toBe(
+      true
+    );
   });
 
   it('does not warn when a same-scope copy resolves the bare link', () => {
@@ -463,14 +459,15 @@ describe('validateVault', () => {
       );
       const scopeDir = join(dir, 'projects', 'sotto');
       await mkdir(scopeDir, { recursive: true });
-      await writeFile(join(scopeDir, 'primer.md'), '---\nupdated: 2026-06-19\n---\nsee [[ghost-page]]\n');
+      await writeFile(
+        join(scopeDir, 'primer.md'),
+        '---\nupdated: 2026-06-19\n---\nsee [[ghost-page]]\n'
+      );
 
       const findings = await validateVault(dir);
 
       expect(
-        findings.some(
-          (f) => f.path === 'projects/sotto/primer.md' && f.rule === 'dangling-link'
-        )
+        findings.some((f) => f.path === 'projects/sotto/primer.md' && f.rule === 'dangling-link')
       ).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });

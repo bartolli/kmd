@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { textError, textJson } from '../lib/toolResponse.js';
 
@@ -36,44 +36,52 @@ export interface SearchResult {
   readonly kind: string;
   readonly summary: string | null;
   readonly score: number;
+  readonly scope?: string | null;
 }
 
 export interface SearchDeps {
-  readonly pool: Pool;
+  readonly db: DatabaseSync;
 }
 
-export async function search(
-  deps: SearchDeps,
-  input: SearchInput
-): Promise<{ results: SearchResult[] }> {
-  const clauses: string[] = ["search_vec @@ plainto_tsquery('english', $1)"];
-  const params: unknown[] = [input.query];
+const FTS5_KEYWORDS = new Set(['AND', 'OR', 'NOT', 'NEAR']);
+
+function sanitizeFtsQuery(raw: string): string {
+  return raw
+    .split(/\s+/)
+    .map((t) => t.replace(/["\-*():^]/g, ''))
+    .filter((t) => t.length > 0 && !FTS5_KEYWORDS.has(t))
+    .join(' ');
+}
+
+export function search(deps: SearchDeps, input: SearchInput): { results: SearchResult[] } {
+  const ftsQuery = sanitizeFtsQuery(input.query);
+  if (!ftsQuery) return { results: [] };
+
+  let sql = `SELECT p.path, p.title, p.kind, p.summary, p.scope, bm25(pages_fts) AS score
+     FROM pages_fts
+     JOIN pages p ON p.id = pages_fts.rowid
+     WHERE pages_fts MATCH ?`;
+  const params: Array<string | number> = [ftsQuery];
 
   if (input.scope) {
+    sql += ' AND p.scope = ?';
     params.push(input.scope);
-    clauses.push(`scope = $${params.length}`);
   }
   if (input.kind) {
+    sql += ' AND p.kind = ?';
     params.push(input.kind);
-    clauses.push(`kind = $${params.length}`);
   }
+  sql += ' ORDER BY bm25(pages_fts) LIMIT ?';
   params.push(input.limit);
 
-  const { rows } = await deps.pool.query<{
+  const rows = deps.db.prepare(sql).all(...params) as Array<{
     path: string;
     title: string;
     kind: string;
     summary: string | null;
-    score: string;
-  }>(
-    `SELECT path, title, kind, summary,
-            ts_rank(search_vec, plainto_tsquery('english', $1))::text AS score
-     FROM pages
-     WHERE ${clauses.join(' AND ')}
-     ORDER BY score DESC
-     LIMIT $${params.length}`,
-    params
-  );
+    scope: string | null;
+    score: number;
+  }>;
 
   return {
     results: rows.map((r) => ({
@@ -81,14 +89,15 @@ export async function search(
       title: r.title,
       kind: r.kind,
       summary: r.summary,
-      score: Number(r.score)
+      scope: r.scope,
+      score: r.score
     }))
   };
 }
 
-export async function handleSearch(deps: SearchDeps, input: SearchInput) {
+export function handleSearch(deps: SearchDeps, input: SearchInput) {
   try {
-    return textJson(await search(deps, input));
+    return textJson(search(deps, input));
   } catch (err) {
     return textError({
       code: 'SEARCH_FAILED',

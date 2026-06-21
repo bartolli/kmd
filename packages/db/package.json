@@ -2,8 +2,13 @@
   "name": "@llm-wiki/db",
   "version": "0.0.0",
   "private": true,
-  "description": "Postgres schema for llm-wiki. Apply with `psql $WIKI_DB < schema.sql`.",
+  "type": "module",
+  "description": "SQLite FTS5 index for llm-wiki. Disposable — rebuilt from the canonical vault via sync.",
+  "exports": {
+    "./database": "./src/database.ts"
+  },
   "scripts": {
-    "apply": "psql \"$WIKI_DB\" < schema.sql"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
   }
 }

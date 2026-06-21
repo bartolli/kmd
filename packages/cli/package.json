@@ -13,11 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "pg": "^8.11.0",
+    "@llm-wiki/db": "workspace:*",
     "yaml": "^2.9.0",
     "zod": "^4.0.0"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.11.0"
   }
 }

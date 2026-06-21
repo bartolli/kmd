@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it, vi } from 'vitest';
 import type { VaultConfig } from '../vault-config.js';
 import { handlePrime, type PrimeData, renderMarkdown } from './prime.js';
@@ -30,33 +30,33 @@ const EMPTY_DATA: PrimeData = {
 
 describe('handlePrime scope validation', () => {
   it('rejects an unlisted scope with UNKNOWN_SCOPE before any DB access', async () => {
-    const query = vi.fn(() => {
+    const prepare = vi.fn(() => {
       throw new Error('DB must not be touched for an unknown scope');
     });
-    const pool = { query } as unknown as Pool;
+    const db = { prepare } as unknown as DatabaseSync;
 
     const result = await handlePrime(
-      { pool, vaultRoot: '/nonexistent', vaultConfig: CONFIG },
+      { db, vaultRoot: '/nonexistent', vaultConfig: CONFIG },
       { scope: 'bogus' }
     );
 
     expect(result.structuredContent.code).toBe('UNKNOWN_SCOPE');
-    expect(query).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
   });
 
   it('rejects an Object.prototype member name as an unknown scope', async () => {
-    const query = vi.fn(() => {
+    const prepare = vi.fn(() => {
       throw new Error('DB must not be touched for a prototype-member scope');
     });
-    const pool = { query } as unknown as Pool;
+    const db = { prepare } as unknown as DatabaseSync;
 
     const result = await handlePrime(
-      { pool, vaultRoot: '/nonexistent', vaultConfig: CONFIG },
+      { db, vaultRoot: '/nonexistent', vaultConfig: CONFIG },
       { scope: 'constructor' }
     );
 
     expect(result.structuredContent.code).toBe('UNKNOWN_SCOPE');
-    expect(query).not.toHaveBeenCalled();
+    expect(prepare).not.toHaveBeenCalled();
   });
 });
 

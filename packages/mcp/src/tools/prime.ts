@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { Pool } from 'pg';
+import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
@@ -44,7 +44,7 @@ export interface PrimeData {
 }
 
 export interface PrimeDeps {
-  readonly pool: Pool;
+  readonly db: DatabaseSync;
   readonly vaultRoot: string;
   readonly vaultConfig: VaultConfig;
 }
@@ -65,9 +65,6 @@ async function readIndexFm(vaultRoot: string, scope: string): Promise<ProjectInd
 async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
   try {
     const raw = await readFile(join(vaultRoot, 'projects', scope, 'primer.md'), 'utf8');
-    // Strip the file's own H1 (e.g., "# Primer" / "# Session Primer") — the
-    // primer is inlined under a `## Primer` section header in the response,
-    // so the file's own H1 is redundant when nested.
     return parseFrontmatter(raw)
       .content.trim()
       .replace(/^#\s+[^\n]+\n+/, '');
@@ -76,11 +73,21 @@ async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
   }
 }
 
+const FTS5_KEYWORDS = new Set(['AND', 'OR', 'NOT', 'NEAR']);
+
+function sanitizeFtsQuery(raw: string): string {
+  return raw
+    .split(/\s+/)
+    .map((t) => t.replace(/["\-*():^]/g, ''))
+    .filter((t) => t.length > 0 && !FTS5_KEYWORDS.has(t))
+    .join(' ');
+}
+
 export async function prime(
   deps: PrimeDeps,
   input: PrimeInput
 ): Promise<{ markdown: string; data: PrimeData }> {
-  const { pool, vaultRoot, vaultConfig } = deps;
+  const { db, vaultRoot, vaultConfig } = deps;
   const { scope, task } = input;
 
   const [fm, primer] = await Promise.all([
@@ -88,65 +95,82 @@ export async function prime(
     readPrimer(vaultRoot, scope)
   ]);
 
-  const [counts, adrs, planRow, tags, hubs, events, crossScope] = await Promise.all([
-    pool.query<{ kind: string; count: string }>(
-      'SELECT kind, count(*)::text AS count FROM pages WHERE scope = $1 GROUP BY kind',
-      [scope]
-    ),
-    pool.query<{ path: string; title: string; summary: string | null }>(
-      "SELECT path, title, summary FROM pages WHERE scope = $1 AND kind = 'adr' AND status = 'active' ORDER BY updated DESC NULLS LAST",
-      [scope]
-    ),
-    pool.query<{ path: string; title: string }>(
-      "SELECT path, title FROM pages WHERE scope = $1 AND kind = 'plan' AND status = 'active' ORDER BY updated DESC NULLS LAST LIMIT 1",
-      [scope]
-    ),
-    pool.query<{ tag: string }>(
-      'SELECT tag FROM pages, unnest(tags) AS tag WHERE scope = $1 GROUP BY tag ORDER BY count(*) DESC LIMIT 10',
-      [scope]
-    ),
-    pool.query<{ path: string; title: string; inbound: string }>(
-      `SELECT p.path, p.title, count(*)::text AS inbound
+  const counts = db
+    .prepare('SELECT kind, count(*) AS count FROM pages WHERE scope = ? GROUP BY kind')
+    .all(scope) as Array<{ kind: string; count: number | bigint }>;
+
+  const adrs = db
+    .prepare(
+      "SELECT path, title, summary FROM pages WHERE scope = ? AND kind = 'adr' AND status = 'active' ORDER BY updated DESC"
+    )
+    .all(scope) as Array<{ path: string; title: string; summary: string | null }>;
+
+  const planRow = db
+    .prepare(
+      "SELECT path, title FROM pages WHERE scope = ? AND kind = 'plan' AND status = 'active' ORDER BY updated DESC LIMIT 1"
+    )
+    .get(scope) as { path: string; title: string } | undefined;
+
+  const tags = db
+    .prepare(
+      `SELECT j.value AS tag, count(*) AS cnt
+       FROM pages, json_each(pages.tags) AS j
+       WHERE scope = ?
+       GROUP BY j.value
+       ORDER BY cnt DESC
+       LIMIT 10`
+    )
+    .all(scope) as Array<{ tag: string }>;
+
+  const hubs = db
+    .prepare(
+      `SELECT p.path, p.title, count(*) AS inbound
        FROM links l JOIN pages p ON p.path = l.target_path
-       WHERE p.scope = $1
+       WHERE p.scope = ?
        GROUP BY p.path, p.title
-       ORDER BY count(*) DESC LIMIT 5`,
-      [scope]
-    ),
-    pool.query<{ path: string; operation: string; ts: Date }>(
-      'SELECT path, operation, ts FROM events WHERE scope = $1 ORDER BY ts DESC LIMIT 5',
-      [scope]
-    ),
-    pool.query<{ from_scope: string; from_path: string; to_path: string }>(
+       ORDER BY inbound DESC LIMIT 5`
+    )
+    .all(scope) as Array<{ path: string; title: string; inbound: number | bigint }>;
+
+  const events = db
+    .prepare('SELECT path, operation, ts FROM events WHERE scope = ? ORDER BY ts DESC LIMIT 5')
+    .all(scope) as Array<{ path: string; operation: string; ts: string }>;
+
+  const crossScope = db
+    .prepare(
       `SELECT pf.scope AS from_scope, l.source_path AS from_path, l.target_path AS to_path
        FROM links l
        JOIN pages pt ON pt.path = l.target_path
        JOIN pages pf ON pf.path = l.source_path
-       WHERE pt.scope = $1 AND pf.scope IS NOT NULL AND pf.scope != $1
-       LIMIT 10`,
-      [scope]
+       WHERE pt.scope = ? AND pf.scope IS NOT NULL AND pf.scope != ?
+       LIMIT 10`
     )
-  ]);
+    .all(scope, scope) as Array<{ from_scope: string; from_path: string; to_path: string }>;
 
   let relevant: Array<{ path: string; title: string; score: number }> = [];
   if (task) {
-    const r = await pool.query<{ path: string; title: string; score: string }>(
-      `SELECT path, title,
-              ts_rank(search_vec, plainto_tsquery('english', $2))::text AS score
-       FROM pages
-       WHERE scope = $1 AND search_vec @@ plainto_tsquery('english', $2)
-       ORDER BY score DESC LIMIT 3`,
-      [scope, task]
-    );
-    relevant = r.rows.map((row) => ({
-      path: row.path,
-      title: row.title,
-      score: Number(row.score)
-    }));
+    const ftsQuery = sanitizeFtsQuery(task);
+    if (ftsQuery) {
+      relevant = (
+        db
+          .prepare(
+            `SELECT p.path, p.title, bm25(pages_fts) AS score
+             FROM pages_fts
+             JOIN pages p ON p.id = pages_fts.rowid
+             WHERE pages_fts MATCH ? AND p.scope = ?
+             ORDER BY bm25(pages_fts) LIMIT 3`
+          )
+          .all(ftsQuery, scope) as Array<{ path: string; title: string; score: number }>
+      ).map((row) => ({
+        path: row.path,
+        title: row.title,
+        score: row.score
+      }));
+    }
   }
 
   const countsRecord: Record<string, number> = {};
-  for (const row of counts.rows) countsRecord[row.kind] = Number(row.count);
+  for (const row of counts) countsRecord[row.kind] = Number(row.count);
 
   const data: PrimeData = {
     scope,
@@ -156,32 +180,32 @@ export async function prime(
     summary: fm.summary ?? '',
     primer,
     counts: countsRecord,
-    active_adrs: adrs.rows.map((r) => ({
+    active_adrs: adrs.map((r) => ({
       path: r.path,
       slug: pathSlug(r.path),
       title: r.title,
       summary: r.summary
     })),
-    current_plan: planRow.rows[0]
+    current_plan: planRow
       ? {
-          path: planRow.rows[0].path,
-          slug: pathSlug(planRow.rows[0].path),
-          title: planRow.rows[0].title
+          path: planRow.path,
+          slug: pathSlug(planRow.path),
+          title: planRow.title
         }
       : null,
-    top_tags: tags.rows.map((r) => r.tag),
-    hub_pages: hubs.rows.map((r) => ({
+    top_tags: tags.map((r) => r.tag),
+    hub_pages: hubs.map((r) => ({
       path: r.path,
       title: r.title,
       inbound: Number(r.inbound)
     })),
-    recent: events.rows.map((r) => ({
+    recent: events.map((r) => ({
       path: r.path,
       operation: r.operation,
-      date: r.ts.toISOString().slice(0, 10)
+      date: r.ts.slice(0, 10)
     })),
     relevant,
-    cross_scope: crossScope.rows.map((r) => ({
+    cross_scope: crossScope.map((r) => ({
       from_scope: r.from_scope,
       from_path: r.from_path,
       to_path: r.to_path
@@ -230,9 +254,6 @@ export function renderMarkdown(
     lines.push(countEntries.map(([k, n]) => `${k}: ${n}`).join(' | '));
   }
 
-  // The authoring contract from vault.yaml — kept full (not capped) so the
-  // briefing teaches a fresh agent every allowed value. Distinct from `## Tags`
-  // below, which is the observed top-N usage.
   lines.push('', '## Vocabulary');
   lines.push(`kinds: ${config.kinds.join(', ')}`);
   lines.push(`statuses: ${config.statuses.join(', ')}`);

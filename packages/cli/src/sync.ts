@@ -1,17 +1,14 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
-import { Client } from 'pg';
+import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { loadVaultConfig } from './config.js';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
 
 const EnvSchema = z.object({
-  WIKI_VAULT: z.string().min(1),
-  WIKI_DB: z.string().min(1)
+  WIKI_VAULT: z.string().min(1)
 });
-
-type Env = z.infer<typeof EnvSchema>;
 
 // Scan only the three content domains. raw/, templates/, .obsidian/, .git/
 // are intentionally excluded by the design.
@@ -66,10 +63,9 @@ interface PageFields {
 
 type SyncResult = 'changed' | 'unchanged' | 'skipped';
 
-function loadEnv(): Env {
+function loadEnv(): { WIKI_VAULT: string } {
   const parsed = EnvSchema.safeParse({
-    WIKI_VAULT: process.env.WIKI_VAULT,
-    WIKI_DB: process.env.WIKI_DB
+    WIKI_VAULT: process.env.WIKI_VAULT
   });
   if (!parsed.success) {
     console.error('invalid env:');
@@ -211,76 +207,74 @@ export function buildPageFields(
   };
 }
 
-async function syncPage(client: Client, fields: PageFields): Promise<SyncResult> {
-  const existing = await client.query<{ content_hash: string | null }>(
-    'SELECT content_hash FROM pages WHERE path = $1',
-    [fields.path]
-  );
-  if (existing.rows[0]?.content_hash === fields.hash) {
+export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
+  const existing = db.prepare('SELECT content_hash FROM pages WHERE path = ?').get(fields.path) as
+    | { content_hash: string | null }
+    | undefined;
+  if (existing?.content_hash === fields.hash) {
     return 'unchanged';
   }
 
-  await client.query('BEGIN');
-  try {
-    await client.query(
-      `INSERT INTO pages (path, title, kind, scope, topic, status, summary, tags, updated, body, content_hash, meta)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       ON CONFLICT (path) DO UPDATE SET
-         title        = EXCLUDED.title,
-         kind         = EXCLUDED.kind,
-         scope        = EXCLUDED.scope,
-         topic        = EXCLUDED.topic,
-         status       = EXCLUDED.status,
-         summary      = EXCLUDED.summary,
-         tags         = EXCLUDED.tags,
-         updated      = EXCLUDED.updated,
-         body         = EXCLUDED.body,
-         content_hash = EXCLUDED.content_hash,
-         meta         = EXCLUDED.meta`,
-      [
-        fields.path,
-        fields.title,
-        fields.kind,
-        fields.scope,
-        fields.topic,
-        fields.status,
-        fields.summary,
-        fields.tags,
-        fields.updated,
-        fields.body,
-        fields.hash,
-        fields.meta
-      ]
-    );
+  const upsert = db.prepare(
+    `INSERT INTO pages (path, title, kind, scope, topic, status, summary, tags, updated, body, content_hash, meta)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (path) DO UPDATE SET
+       title        = EXCLUDED.title,
+       kind         = EXCLUDED.kind,
+       scope        = EXCLUDED.scope,
+       topic        = EXCLUDED.topic,
+       status       = EXCLUDED.status,
+       summary      = EXCLUDED.summary,
+       tags         = EXCLUDED.tags,
+       updated      = EXCLUDED.updated,
+       body         = EXCLUDED.body,
+       content_hash = EXCLUDED.content_hash,
+       meta         = EXCLUDED.meta`
+  );
 
-    await client.query('DELETE FROM links WHERE source_path = $1', [fields.path]);
-    for (const link of extractWikilinks(fields.body)) {
-      await client.query(
-        `INSERT INTO links (source_path, target_path, link_text)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (source_path, target_path) DO NOTHING`,
-        [fields.path, link.target, link.text]
-      );
-    }
+  upsert.run(
+    fields.path,
+    fields.title,
+    fields.kind,
+    fields.scope,
+    fields.topic,
+    fields.status,
+    fields.summary,
+    fields.tags ? JSON.stringify(fields.tags) : null,
+    fields.updated,
+    fields.body,
+    fields.hash,
+    fields.meta ? JSON.stringify(fields.meta) : null
+  );
 
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
+  db.prepare('DELETE FROM links WHERE source_path = ?').run(fields.path);
+  const insertLink = db.prepare(
+    `INSERT INTO links (source_path, target_path, link_text)
+     VALUES (?, ?, ?)
+     ON CONFLICT (source_path, target_path) DO NOTHING`
+  );
+  for (const link of extractWikilinks(fields.body)) {
+    insertLink.run(fields.path, link.target, link.text);
   }
 
   return 'changed';
 }
 
 export async function runSync(): Promise<void> {
+  const { openDatabase } = await import('@llm-wiki/db/database');
+  const { mkdirSync } = await import('node:fs');
+  const { homedir } = await import('node:os');
+
   const env = loadEnv();
-  console.log(`sync: ${env.WIKI_VAULT} → ${env.WIKI_DB.replace(/:[^:@]+@/, ':***@')}`);
+  const dbDir = join(homedir(), '.kmd', 'db');
+  const dbPath = join(dbDir, 'index.db');
+  console.log(`sync: ${env.WIKI_VAULT} → ${dbPath}`);
 
   const vaultConfig = await loadVaultConfig(env.WIKI_VAULT);
   const scopes = new Set(Object.keys(vaultConfig.scopes));
 
-  const client = new Client({ connectionString: env.WIKI_DB });
-  await client.connect();
+  mkdirSync(dbDir, { recursive: true });
+  const db = openDatabase(dbPath);
 
   try {
     const files: string[] = [];
@@ -303,7 +297,7 @@ export async function runSync(): Promise<void> {
         continue;
       }
 
-      const result = await syncPage(client, fields);
+      const result = syncPage(db, fields);
       if (result === 'changed') {
         changed++;
       } else {
@@ -315,25 +309,25 @@ export async function runSync(): Promise<void> {
     let pagesDeleted = 0;
     let linksDeleted = 0;
     if (indexedPaths.length > 0) {
-      const placeholders = indexedPaths.map((_, i) => `$${i + 1}`).join(', ');
-      const pageResult = await client.query(
-        `DELETE FROM pages WHERE path NOT IN (${placeholders})`,
-        indexedPaths
-      );
-      pagesDeleted = pageResult.rowCount ?? 0;
-      // No FK on links — clean up orphans whose source_path no longer exists.
-      const linkResult = await client.query(
-        `DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)`
-      );
-      linksDeleted = linkResult.rowCount ?? 0;
+      const placeholders = indexedPaths.map(() => '?').join(', ');
+      const pageResult = db
+        .prepare(`DELETE FROM pages WHERE path NOT IN (${placeholders})`)
+        .run(...indexedPaths);
+      pagesDeleted = Number(pageResult.changes);
+      const linkResult = db
+        .prepare('DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)')
+        .run();
+      linksDeleted = Number(linkResult.changes);
     } else {
       console.warn('no indexable pages found; skipping orphan deletion (safety)');
     }
+
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
 
     console.log(
       `done: ${changed} changed, ${unchanged} unchanged, ${skipped} skipped, ${pagesDeleted} pages deleted, ${linksDeleted} link orphans cleared`
     );
   } finally {
-    await client.end();
+    db.close();
   }
 }

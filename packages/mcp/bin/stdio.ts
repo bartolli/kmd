@@ -6,14 +6,13 @@ diag('process started', {
   argv: process.argv,
   node: process.version,
   WIKI_VAULT: process.env.WIKI_VAULT ?? '(unset)',
-  WIKI_DB_set: Boolean(process.env.WIKI_DB),
   LOG_LEVEL: process.env.LOG_LEVEL ?? '(unset)',
   PATH: process.env.PATH ?? '(unset)'
 });
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig } from '../src/config.js';
-import { createPool } from '../src/db.js';
+import { createDatabase } from '../src/db.js';
 import { createLogger } from '../src/lib/logger.js';
 import { buildServer } from '../src/server.js';
 import { loadVaultConfig } from '../src/vault-config.js';
@@ -26,8 +25,6 @@ async function main(): Promise<void> {
   const config = loadConfig();
   diag('config loaded', { vault: config.wikiVault, level: config.logLevel });
 
-  // Fail-loud before any DB access: a missing/invalid vault.yaml crashes startup
-  // rather than serving without the controlled vocabulary. (story-3 slice 1.)
   const vaultConfig = await loadVaultConfig(config.wikiVault);
   diag('vault config loaded', {
     scopes: Object.keys(vaultConfig.scopes).length,
@@ -41,14 +38,14 @@ async function main(): Promise<void> {
     'starting wiki-mcp on stdio'
   );
 
-  const pool = createPool(config.wikiDb);
-  diag('pool created');
+  const db = createDatabase();
+  diag('database opened');
 
   const mcp = buildServer({
     name: config.serverName,
     version: config.serverVersion,
     vaultRoot: config.wikiVault,
-    pool,
+    db,
     logger,
     vaultConfig
   });
@@ -59,7 +56,7 @@ async function main(): Promise<void> {
     diag('shutting down', { signal });
     try {
       await mcp.close();
-      await pool.end();
+      db.close();
     } catch (err) {
       logger.error({ err }, 'error during shutdown');
     }

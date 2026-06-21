@@ -1,5 +1,5 @@
+import type { DatabaseSync } from 'node:sqlite';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { Pool } from 'pg';
 import type { Logger } from './lib/logger.js';
 import { registerTemplateResources } from './resources/templates.js';
 import { handlePrime, PrimeInputSchema } from './tools/prime.js';
@@ -10,13 +10,13 @@ export interface BuildServerArgs {
   readonly name: string;
   readonly version: string;
   readonly vaultRoot: string;
-  readonly pool: Pool;
+  readonly db: DatabaseSync;
   readonly logger: Logger;
   readonly vaultConfig: VaultConfig;
 }
 
 export function buildServer(args: BuildServerArgs): McpServer {
-  const { name, version, vaultRoot, pool, logger, vaultConfig } = args;
+  const { name, version, vaultRoot, db, logger, vaultConfig } = args;
 
   const mcp = new McpServer({ name, version }, { capabilities: { tools: {}, resources: {} } });
 
@@ -26,7 +26,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
     PrimeInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'prime', input }, 'tool call');
-      return handlePrime({ pool, vaultRoot, vaultConfig }, input);
+      return handlePrime({ db, vaultRoot, vaultConfig }, input);
     }
   );
 
@@ -36,7 +36,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
     SearchInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'search', input }, 'tool call');
-      return handleSearch({ pool }, input);
+      return handleSearch({ db }, input);
     }
   );
 

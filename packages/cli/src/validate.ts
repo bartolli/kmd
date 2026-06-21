@@ -45,7 +45,17 @@ function isPrimer(relPath: string): boolean {
 // glossary-entry, pso-roster) carry no required-field contract. `tags` is
 // governed separately by the `tags-required` rule (non-empty), not this floor.
 const REQUIRED_FIELDS: Record<string, readonly string[]> = {
-  project: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'methodology', 'phase', 'repo'],
+  project: [
+    'title',
+    'kind',
+    'scope',
+    'status',
+    'summary',
+    'updated',
+    'methodology',
+    'phase',
+    'repo'
+  ],
   spec: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'sources'],
   adr: ['title', 'kind', 'scope', 'status', 'updated'],
   plan: ['title', 'kind', 'scope', 'status', 'summary', 'updated'],
@@ -131,7 +141,8 @@ function checkTagsRequired(relPath: string, data: Record<string, unknown>): Find
       path: relPath,
       rule: 'tags-required',
       severity: 'error',
-      message: 'tags must be present and non-empty (tags are open — any values, every content page tagged)'
+      message:
+        'tags must be present and non-empty (tags are open — any values, every content page tagged)'
     }
   ];
 }
@@ -205,7 +216,12 @@ function checkVocabulary(
 function checkScopePath(relPath: string, data: Record<string, unknown>): Finding[] {
   const { scope, topic } = deriveLocation(relPath);
   const findings: Finding[] = [];
-  if (scope !== null && typeof data.scope === 'string' && data.scope !== '' && data.scope !== scope) {
+  if (
+    scope !== null &&
+    typeof data.scope === 'string' &&
+    data.scope !== '' &&
+    data.scope !== scope
+  ) {
     findings.push({
       path: relPath,
       rule: 'path-authority',
@@ -213,7 +229,12 @@ function checkScopePath(relPath: string, data: Record<string, unknown>): Finding
       message: `frontmatter scope "${data.scope}" disagrees with path scope "${scope}"`
     });
   }
-  if (topic !== null && typeof data.topic === 'string' && data.topic !== '' && data.topic !== topic) {
+  if (
+    topic !== null &&
+    typeof data.topic === 'string' &&
+    data.topic !== '' &&
+    data.topic !== topic
+  ) {
     findings.push({
       path: relPath,
       rule: 'path-authority',
@@ -260,11 +281,7 @@ function stripCode(body: string): string {
  * fences/inline-code is not mistaken for a link. Shared by the indexed-page
  * reference checks and the title-less primer carve-in.
  */
-function checkBodyLinks(
-  relPath: string,
-  body: string,
-  refIndex: ReadonlySet<string>
-): Finding[] {
+function checkBodyLinks(relPath: string, body: string, refIndex: ReadonlySet<string>): Finding[] {
   const findings: Finding[] = [];
   for (const link of extractWikilinks(stripCode(body))) {
     if (!link.target.endsWith('.md')) continue;

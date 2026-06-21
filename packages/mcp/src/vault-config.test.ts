@@ -87,12 +87,9 @@ describe('loadVaultConfig', () => {
 describe('wiki-mcp startup', () => {
   it('fails loud when vault.yaml is absent, before any DB access', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'wiki-mcp-startup-'));
-    // WIKI_VAULT has no vault.yaml; WIKI_DB is a fake string the pool never uses,
-    // because loadVaultConfig must throw before createPool.
     const env = {
       ...process.env,
       WIKI_VAULT: dir,
-      WIKI_DB: 'postgresql://invalid/nonexistent',
       LOG_LEVEL: 'silent'
     };
     try {
