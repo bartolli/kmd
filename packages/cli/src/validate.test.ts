@@ -38,7 +38,7 @@ const REF = new Set<string>();
 // A spec frontmatter that satisfies the required-fields floor — tests override
 // one field at a time to isolate a single rule.
 const wellFormedSpec = (over = '') =>
-  `---\ntitle: X\nkind: spec\nscope: sotto\nstatus: active\nsummary: y\ntags: []\nsources: []\nupdated: 2026-06-19\n${over}---\nbody\n`;
+  `---\ntitle: X\nkind: spec\nscope: sotto\nstatus: active\nsummary: y\ntags: [x]\nsources: []\nupdated: 2026-06-19\n${over}---\nbody\n`;
 
 describe('validatePage', () => {
   it('flags frontmatter that fails to parse (unquoted colon)', () => {
@@ -211,7 +211,7 @@ describe('primer link integrity', () => {
 
 describe('tag policy', () => {
   it('warns on a tag alias suggesting the canonical form, without failing the run', () => {
-    const raw = wellFormedSpec().replace('tags: []', 'tags: [model-context-protocol]');
+    const raw = wellFormedSpec().replace('tags: [x]', 'tags: [model-context-protocol]');
 
     const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
 
@@ -219,6 +219,41 @@ describe('tag policy', () => {
     expect(alias?.severity).toBe('warning');
     expect(alias?.message).toContain('mcp');
     expect(hasErrors(findings)).toBe(false);
+  });
+});
+
+describe('tags required (open dimension, presence enforced)', () => {
+  it('flags an indexed content page with empty tags', () => {
+    const raw =
+      '---\ntitle: X\nkind: spec\nscope: sotto\nstatus: active\nsummary: y\ntags: []\nsources: []\nupdated: 2026-06-19\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'tags-required' && f.severity === 'error')).toBe(true);
+  });
+
+  it('flags an indexed content page with no tags field at all', () => {
+    const raw =
+      '---\ntitle: X\nkind: adr\nscope: sotto\nstatus: active\nupdated: 2026-06-19\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/adr/adr-x.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'tags-required' && f.severity === 'error')).toBe(true);
+  });
+
+  it('exempts tag-optional kinds (artifact, prompt) from the tags requirement', () => {
+    const raw =
+      '---\ntitle: X\nkind: artifact\nstatus: active\nupdated: 2026-06-19\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/ops/pkg/thing.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'tags-required')).toBe(false);
+  });
+
+  it('accepts an indexed content page with non-empty tags (any value — open dimension)', () => {
+    const findings = validatePage('projects/sotto/spec/spec-x.md', wellFormedSpec(), CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'tags-required')).toBe(false);
   });
 });
 
@@ -242,13 +277,13 @@ describe('required fields', () => {
 
   it('enforces the note floor for a kind-less note (kind inferred from notes/)', () => {
     // notes carry no `kind` key — sync infers it from location, and so must the floor.
-    const raw = '---\ntitle: T\nupdated: 2026-06-19\n---\nbody\n'; // missing tags
+    const raw = '---\ntitle: T\ntags: [x]\n---\nbody\n'; // missing updated
 
     const findings = validatePage('notes/some-thought.md', raw, CFG, REF);
 
-    expect(findings.some((f) => f.rule === 'required-fields' && f.message.includes('tags'))).toBe(
-      true
-    );
+    expect(
+      findings.some((f) => f.rule === 'required-fields' && f.message.includes('updated'))
+    ).toBe(true);
   });
 });
 

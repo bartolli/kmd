@@ -42,30 +42,19 @@ function isPrimer(relPath: string): boolean {
 // Required-field floor per kind — the set of keys present on 100% of existing
 // pages of that kind (corpus-scanned; spec-wiki-validate § Required fields per
 // kind). Key-presence, not non-emptiness. Kinds absent here (artifact, prompt,
-// glossary-entry, pso-roster) carry no required-field contract.
+// glossary-entry, pso-roster) carry no required-field contract. `tags` is
+// governed separately by the `tags-required` rule (non-empty), not this floor.
 const REQUIRED_FIELDS: Record<string, readonly string[]> = {
-  project: [
-    'title',
-    'kind',
-    'scope',
-    'status',
-    'summary',
-    'tags',
-    'updated',
-    'methodology',
-    'phase',
-    'repo'
-  ],
-  spec: ['title', 'kind', 'scope', 'status', 'summary', 'tags', 'updated', 'sources'],
-  adr: ['title', 'kind', 'scope', 'status', 'tags', 'updated'],
-  plan: ['title', 'kind', 'scope', 'status', 'summary', 'tags', 'updated'],
-  ops: ['title', 'kind', 'scope', 'status', 'summary', 'tags', 'updated'],
+  project: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'methodology', 'phase', 'repo'],
+  spec: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'sources'],
+  adr: ['title', 'kind', 'scope', 'status', 'updated'],
+  plan: ['title', 'kind', 'scope', 'status', 'summary', 'updated'],
+  ops: ['title', 'kind', 'scope', 'status', 'summary', 'updated'],
   story: [
     'title',
     'kind',
     'scope',
     'status',
-    'tags',
     'updated',
     'parent',
     'triage_state',
@@ -73,11 +62,16 @@ const REQUIRED_FIELDS: Record<string, readonly string[]> = {
     'blocked_by',
     'sources'
   ],
-  topic: ['title', 'kind', 'status', 'summary', 'tags', 'updated', 'confidence'],
-  article: ['title', 'kind', 'status', 'tags', 'updated'],
-  src: ['title', 'kind', 'topic', 'status', 'summary', 'tags', 'updated'],
-  note: ['title', 'tags', 'updated']
+  topic: ['title', 'kind', 'status', 'summary', 'updated', 'confidence'],
+  article: ['title', 'kind', 'status', 'updated'],
+  src: ['title', 'kind', 'topic', 'status', 'summary', 'updated'],
+  note: ['title', 'updated']
 };
+
+// Kinds exempt from the tags-required floor: deliverable/package internals
+// (artifact, prompt) and registry stubs (glossary-entry, pso-roster), not
+// discoverable content pages. Mirrors the required-fields floor exemption.
+const TAG_OPTIONAL_KINDS = new Set(['artifact', 'prompt', 'glossary-entry', 'pso-roster']);
 
 // Per-kind path patterns (spec-wiki-validate § Folder and slug patterns). Kinds
 // absent here have no documented pattern and are exempt (article free naming,
@@ -116,6 +110,30 @@ function checkRequiredFields(relPath: string, data: Record<string, unknown>): Fi
     }
   }
   return findings;
+}
+
+/**
+ * Tags are an open dimension — any value, no controlled vocabulary — but every
+ * content page must carry at least one. Indexed pages whose kind is not
+ * tag-optional require a non-empty `tags` list.
+ */
+function checkTagsRequired(relPath: string, data: Record<string, unknown>): Finding[] {
+  const kind =
+    typeof data.kind === 'string' && data.kind !== ''
+      ? data.kind
+      : relPath.startsWith('notes/')
+        ? 'note'
+        : undefined;
+  if (kind && TAG_OPTIONAL_KINDS.has(kind)) return [];
+  if (Array.isArray(data.tags) && data.tags.length > 0) return [];
+  return [
+    {
+      path: relPath,
+      rule: 'tags-required',
+      severity: 'error',
+      message: 'tags must be present and non-empty (tags are open — any values, every content page tagged)'
+    }
+  ];
 }
 
 function checkFolderSlug(relPath: string, data: Record<string, unknown>): Finding[] {
@@ -342,6 +360,7 @@ function checkIndexedPage(
   if (!isIndexed(relPath, data)) return [];
   return [
     ...checkRequiredFields(relPath, data),
+    ...checkTagsRequired(relPath, data),
     ...checkFolderSlug(relPath, data),
     ...checkVocabulary(relPath, data, cfg),
     ...checkScopePath(relPath, data),
