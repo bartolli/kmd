@@ -3,7 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { VaultConfig } from './config.js';
-import { hasErrors, validatePage, validateSupersession, validateVault } from './validate.js';
+import {
+  hasErrors,
+  validateAmbiguousLinks,
+  validatePage,
+  validateSupersession,
+  validateVault
+} from './validate.js';
 
 // Minimal in-memory vocabulary for per-page checks — mirrors the live vault.yaml
 // shape without reading disk. Registers `artifact`/`prompt` (the ontology kinds).
@@ -92,6 +98,33 @@ describe('vocabulary membership', () => {
   });
 });
 
+describe('path authority (frontmatter scope/topic vs path)', () => {
+  it('flags a frontmatter scope that disagrees with the path', () => {
+    // path is authoritative: `projects/sotto/...` but frontmatter claims `llm-wiki`
+    // (itself a valid scope — isolates path-authority from scope-vocabulary).
+    const raw = wellFormedSpec().replace('scope: sotto', 'scope: llm-wiki');
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'path-authority' && f.severity === 'error')).toBe(true);
+  });
+
+  it('accepts a frontmatter scope that matches the path', () => {
+    const findings = validatePage('projects/sotto/spec/spec-x.md', wellFormedSpec(), CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'path-authority')).toBe(false);
+  });
+
+  it('flags a frontmatter topic that disagrees with the path', () => {
+    const raw =
+      '---\ntitle: T\nkind: topic\nstatus: active\nsummary: y\ntags: []\nupdated: 2026-06-19\nconfidence: high\ntopic: other-cluster\n---\nbody\n';
+
+    const findings = validatePage('research/mcp-patterns/index.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'path-authority' && f.severity === 'error')).toBe(true);
+  });
+});
+
 describe('reference resolution', () => {
   it('flags a dangling wikilink whose target is not on disk', () => {
     const raw = wellFormedSpec().replace('body\n', 'see [[ghost-page]]\n');
@@ -138,6 +171,39 @@ describe('reference resolution', () => {
     const raw = wellFormedSpec().replace('body\n', body);
 
     const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, new Set());
+
+    expect(findings.some((f) => f.rule === 'dangling-link')).toBe(false);
+  });
+});
+
+describe('primer link integrity', () => {
+  it('flags a dangling wikilink in a title-less primer', () => {
+    const raw = '---\nupdated: 2026-06-19\n---\nsee [[ghost-page]]\n';
+
+    const findings = validatePage('projects/sotto/primer.md', raw, CFG, new Set());
+
+    expect(findings.some((f) => f.rule === 'dangling-link' && f.severity === 'error')).toBe(true);
+  });
+
+  it('accepts a resolving wikilink in a primer', () => {
+    const raw = '---\nupdated: 2026-06-19\n---\nsee [[adr-infra-cli]]\n';
+
+    const findings = validatePage(
+      'projects/sotto/primer.md',
+      raw,
+      CFG,
+      new Set(['adr-infra-cli'])
+    );
+
+    expect(findings.some((f) => f.rule === 'dangling-link')).toBe(false);
+  });
+
+  it('ignores a [[...]] example inside inline code in a primer', () => {
+    // The primer documents the gap itself ("a stale `[[link]]` ..."); a backticked
+    // example must not be mistaken for a real link.
+    const raw = '---\nupdated: 2026-06-19\n---\na stale `[[link]]` in the first-read surface\n';
+
+    const findings = validatePage('projects/sotto/primer.md', raw, CFG, new Set());
 
     expect(findings.some((f) => f.rule === 'dangling-link')).toBe(false);
   });
@@ -254,7 +320,81 @@ describe('supersession', () => {
   });
 });
 
+describe('ambiguous links (basename collision)', () => {
+  const collide = new Map<string, string[]>([
+    [
+      'spec-architecture',
+      ['projects/svlint/spec/spec-architecture.md', 'projects/alayacare/spec/spec-architecture.md']
+    ]
+  ]);
+
+  it('warns on a bare link to a basename colliding across scopes with no same-scope copy', () => {
+    const pages = [{ path: 'research/snowflake/dossier.md', body: 'see [[spec-architecture]]\n' }];
+
+    const findings = validateAmbiguousLinks(pages, collide);
+
+    expect(findings.some((f) => f.rule === 'ambiguous-link' && f.severity === 'warning')).toBe(true);
+  });
+
+  it('does not warn when a same-scope copy resolves the bare link', () => {
+    const pages = [{ path: 'projects/svlint/primer.md', body: 'see [[spec-architecture]]\n' }];
+
+    expect(validateAmbiguousLinks(pages, collide).some((f) => f.rule === 'ambiguous-link')).toBe(
+      false
+    );
+  });
+
+  it('does not warn on a path-qualified link to a colliding basename', () => {
+    const pages = [
+      {
+        path: 'research/snowflake/dossier.md',
+        body: 'see [[projects/svlint/spec/spec-architecture]]\n'
+      }
+    ];
+
+    expect(validateAmbiguousLinks(pages, collide).some((f) => f.rule === 'ambiguous-link')).toBe(
+      false
+    );
+  });
+
+  it('does not warn on a bare link to a unique basename', () => {
+    const pages = [{ path: 'research/snowflake/dossier.md', body: 'see [[adr-infra-cli]]\n' }];
+
+    expect(validateAmbiguousLinks(pages, collide).some((f) => f.rule === 'ambiguous-link')).toBe(
+      false
+    );
+  });
+});
+
 describe('validateVault', () => {
+  it('surfaces a cross-scope ambiguous bare link (basename in two scopes, link in neither)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wiki-validate-'));
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes:\n  svlint:\n    status: active\n  alayacare:\n    status: active\nkinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+      );
+      for (const s of ['svlint', 'alayacare']) {
+        const specDir = join(dir, 'projects', s, 'spec');
+        await mkdir(specDir, { recursive: true });
+        await writeFile(join(specDir, 'spec-architecture.md'), 'arch body\n');
+      }
+      const resDir = join(dir, 'research', 'snowflake');
+      await mkdir(resDir, { recursive: true });
+      await writeFile(join(resDir, 'dossier.md'), 'see [[spec-architecture]]\n');
+
+      const findings = await validateVault(dir);
+
+      expect(
+        findings.some(
+          (f) => f.path === 'research/snowflake/dossier.md' && f.rule === 'ambiguous-link'
+        )
+      ).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('reports a malformed page found by walking the vault', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'wiki-validate-'));
     try {
@@ -274,6 +414,29 @@ describe('validateVault', () => {
       expect(findings).toHaveLength(1);
       expect(findings[0]?.path).toBe('projects/sotto/spec/spec-x.md');
       expect(findings[0]?.rule).toBe('frontmatter-parse');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces a dangling wikilink in a title-less primer (first-read-surface gate)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wiki-validate-'));
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes:\n  sotto:\n    status: active\nkinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+      );
+      const scopeDir = join(dir, 'projects', 'sotto');
+      await mkdir(scopeDir, { recursive: true });
+      await writeFile(join(scopeDir, 'primer.md'), '---\nupdated: 2026-06-19\n---\nsee [[ghost-page]]\n');
+
+      const findings = await validateVault(dir);
+
+      expect(
+        findings.some(
+          (f) => f.path === 'projects/sotto/primer.md' && f.rule === 'dangling-link'
+        )
+      ).toBe(true);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

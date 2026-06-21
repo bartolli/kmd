@@ -30,6 +30,15 @@ function isIndexed(relPath: string, data: Record<string, unknown>): boolean {
   return relPath.startsWith('notes/');
 }
 
+/**
+ * A reserved `primer.md` (at any level). Title-less, so it is skipped by the
+ * indexed-page checks — but it is the agent's first-read surface, so a stale
+ * `[[link]]` there must not silently pass the gate. Its body links are checked.
+ */
+function isPrimer(relPath: string): boolean {
+  return relPath === 'primer.md' || relPath.endsWith('/primer.md');
+}
+
 // Required-field floor per kind — the set of keys present on 100% of existing
 // pages of that kind (corpus-scanned; spec-wiki-validate § Required fields per
 // kind). Key-presence, not non-emptiness. Kinds absent here (artifact, prompt,
@@ -168,6 +177,35 @@ function checkVocabulary(
   return findings;
 }
 
+/**
+ * Path is authoritative for `scope`/`topic`: sync derives them from the path and
+ * ignores frontmatter. A frontmatter copy is allowed for readability but must not
+ * lie — a mismatch means the label disagrees with where the file actually lives.
+ * Fires only where the path defines the value (projects → scope, research → topic)
+ * and the frontmatter carries it.
+ */
+function checkScopePath(relPath: string, data: Record<string, unknown>): Finding[] {
+  const { scope, topic } = deriveLocation(relPath);
+  const findings: Finding[] = [];
+  if (scope !== null && typeof data.scope === 'string' && data.scope !== '' && data.scope !== scope) {
+    findings.push({
+      path: relPath,
+      rule: 'path-authority',
+      severity: 'error',
+      message: `frontmatter scope "${data.scope}" disagrees with path scope "${scope}"`
+    });
+  }
+  if (topic !== null && typeof data.topic === 'string' && data.topic !== '' && data.topic !== topic) {
+    findings.push({
+      path: relPath,
+      rule: 'path-authority',
+      severity: 'error',
+      message: `frontmatter topic "${data.topic}" disagrees with path topic "${topic}"`
+    });
+  }
+  return findings;
+}
+
 /** A reference's basename target, or null if absent/empty/non-string. */
 function refTarget(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -199,14 +237,13 @@ function stripCode(body: string): string {
 }
 
 /**
- * Reference resolution against the basename index: body `[[wikilinks]]` to `.md`
- * targets, plus the frontmatter reference fields. Empty values never fire (the
- * empty `supersedes:`/`superseded_by:` template keys are the 52/57). Non-`.md`
- * wikilink targets (images, `.base`, external) are not policed.
+ * Body `[[wikilink]]` dangling check against the basename `refIndex`. Code
+ * regions are stripped first (see `stripCode`) so `[[...]]`-shaped syntax inside
+ * fences/inline-code is not mistaken for a link. Shared by the indexed-page
+ * reference checks and the title-less primer carve-in.
  */
-function checkReferences(
+function checkBodyLinks(
   relPath: string,
-  data: Record<string, unknown>,
   body: string,
   refIndex: ReadonlySet<string>
 ): Finding[] {
@@ -222,6 +259,22 @@ function checkReferences(
       });
     }
   }
+  return findings;
+}
+
+/**
+ * Reference resolution against the basename index: body `[[wikilinks]]` to `.md`
+ * targets, plus the frontmatter reference fields. Empty values never fire (the
+ * empty `supersedes:`/`superseded_by:` template keys are the 52/57). Non-`.md`
+ * wikilink targets (images, `.base`, external) are not policed.
+ */
+function checkReferences(
+  relPath: string,
+  data: Record<string, unknown>,
+  body: string,
+  refIndex: ReadonlySet<string>
+): Finding[] {
+  const findings: Finding[] = checkBodyLinks(relPath, body, refIndex);
   const fieldRefs: string[] = [];
   const parent = refTarget(data.parent);
   if (parent !== null) fieldRefs.push(parent);
@@ -291,6 +344,7 @@ function checkIndexedPage(
     ...checkRequiredFields(relPath, data),
     ...checkFolderSlug(relPath, data),
     ...checkVocabulary(relPath, data, cfg),
+    ...checkScopePath(relPath, data),
     ...checkReferences(relPath, data, body, refIndex),
     ...checkSupersededLink(relPath, data),
     ...checkTags(relPath, data, cfg)
@@ -322,6 +376,9 @@ export function validatePage(
         message: err instanceof Error ? err.message : String(err)
       }
     ];
+  }
+  if (isPrimer(relPath)) {
+    return checkBodyLinks(relPath, parsed.content, refIndex);
   }
   return checkIndexedPage(relPath, parsed.data, parsed.content, cfg, refIndex);
 }
@@ -387,6 +444,52 @@ export function validateSupersession(pages: PageData[]): Finding[] {
   return findings;
 }
 
+/** Top-level scope/topic key of a path (`projects/{scope}` or `research/{topic}`), or
+ * null for notes/root pages. Two pages "share a scope" iff their keys are equal. */
+function locationKey(relPath: string): string | null {
+  const seg = relPath.split('/');
+  if ((seg[0] === 'projects' || seg[0] === 'research') && seg[1]) {
+    return `${seg[0]}/${seg[1]}`;
+  }
+  return null;
+}
+
+export interface LinkPage {
+  path: string;
+  body: string;
+}
+
+/**
+ * Cross-page ambiguity warning. A **bare** `[[wikilink]]` whose basename is owned by
+ * more than one file is ambiguous only when none of those owners shares the linking
+ * page's scope: a same-scope copy resolves it locally (the per-scope `spec-context`/
+ * `primer`/`index` pattern), and a path-qualified link (`[[a/b/c]]`) is already
+ * disambiguated. Warning, not error — the link resolves, just not uniquely.
+ */
+export function validateAmbiguousLinks(
+  pages: LinkPage[],
+  basenameToPaths: ReadonlyMap<string, string[]>
+): Finding[] {
+  const findings: Finding[] = [];
+  for (const { path, body } of pages) {
+    const here = locationKey(path);
+    for (const link of extractWikilinks(stripCode(body))) {
+      if (!link.target.endsWith('.md') || link.target.includes('/')) continue;
+      const base = basename(link.target);
+      const owners = basenameToPaths.get(base);
+      if (!owners || owners.length < 2) continue;
+      if (here !== null && owners.some((p) => locationKey(p) === here)) continue;
+      findings.push({
+        path,
+        rule: 'ambiguous-link',
+        severity: 'warning',
+        message: `bare link "[[${base}]]" is ambiguous — basename owned by ${owners.length} files, none in this scope`
+      });
+    }
+  }
+  return findings;
+}
+
 /**
  * Walk the vault's content domains (reusing the sync walker), build the basename
  * index of valid reference targets (all on-disk pages, including title-less ones),
@@ -404,22 +507,36 @@ export async function validateVault(root: string): Promise<Finding[]> {
     relPath: toRelativePath(root, abs),
     abs
   }));
-  const refIndex = new Set<string>(all.map((f) => basename(f.relPath)));
+  // basename → [paths] (the spec's reference-resolution model). `refIndex` (dangling
+  // checks: does the basename exist) is its key set; the multimap also backs the
+  // cross-page ambiguity warning (does a basename have more than one owner).
+  const basenameToPaths = new Map<string, string[]>();
+  for (const f of all) {
+    const b = basename(f.relPath);
+    const owners = basenameToPaths.get(b);
+    if (owners) owners.push(f.relPath);
+    else basenameToPaths.set(b, [f.relPath]);
+  }
+  const refIndex = new Set<string>(basenameToPaths.keys());
 
   // Applicability = only the indexed content domains.
   const files = all.filter((f) => SCAN_DOMAINS.some((d) => f.relPath.startsWith(`${d}/`)));
 
   const findings: Finding[] = [];
   const pages: PageData[] = [];
+  const linkPages: LinkPage[] = [];
   for (const { relPath, abs } of files) {
     const raw = await readFile(abs, 'utf8');
     findings.push(...validatePage(relPath, raw, cfg, refIndex));
     try {
-      pages.push({ path: relPath, data: parseFrontmatter(raw).data });
+      const parsed = parseFrontmatter(raw);
+      pages.push({ path: relPath, data: parsed.data });
+      linkPages.push({ path: relPath, body: parsed.content });
     } catch {
       // Parse failure already reported by validatePage; skip in the graph pass.
     }
   }
   findings.push(...validateSupersession(pages));
+  findings.push(...validateAmbiguousLinks(linkPages, basenameToPaths));
   return findings;
 }
