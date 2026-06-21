@@ -1,18 +1,48 @@
 {
   "name": "@bartolli/kmd",
   "version": "0.1.0",
-  "type": "module",
   "description": "Knowledge-markdown CLI + MCP server. One binary for vault sync, validate, and the wiki-mcp agent tools.",
+  "license": "MIT",
+  "author": "Angel Bartolli <bartolli@gmail.com>",
+  "keywords": [
+    "knowledge-management",
+    "mcp",
+    "obsidian",
+    "wiki",
+    "sqlite",
+    "fts5",
+    "cli"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "sideEffects": false,
   "bin": {
-    "kmd": "./bin/kmd.ts"
+    "kmd": "./dist/kmd.mjs"
   },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
+    "build": "node build.mjs",
+    "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "prepack": "pnpm run clean && pnpm run build"
   },
-  "dependencies": {
+  "devDependencies": {
     "@llm-wiki/cli": "workspace:*",
     "@llm-wiki/db": "workspace:*",
-    "@llm-wiki/mcp": "workspace:*"
+    "@llm-wiki/mcp": "workspace:*",
+    "esbuild": "^0.28.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "pino": "^10.3.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.3.6"
   }
 }

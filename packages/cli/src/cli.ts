@@ -1,4 +1,3 @@
-import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { runSync } from './sync.js';
 import { type Finding, hasErrors, validateVault } from './validate.js';
@@ -60,7 +59,7 @@ export async function runSyncCommand(): Promise<void> {
   await runSync();
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const resolution = resolveCli(process.argv.slice(2));
   if (resolution.kind === 'error') {
     console.error(resolution.message);
@@ -71,14 +70,4 @@ async function main(): Promise<void> {
   } else {
     await runValidate();
   }
-}
-
-const isEntrypoint =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isEntrypoint) {
-  main().catch((err) => {
-    console.error('wiki failed:', err instanceof Error ? (err.stack ?? err.message) : err);
-    process.exit(1);
-  });
 }

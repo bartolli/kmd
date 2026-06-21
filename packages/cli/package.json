@@ -5,13 +5,13 @@
   "type": "module",
   "description": "wiki CLI: vault infra commands (sync, validate).",
   "bin": {
-    "wiki": "./src/cli.ts"
+    "wiki": "./bin/wiki.ts"
   },
   "exports": {
     "./cli": "./src/cli.ts"
   },
   "scripts": {
-    "start": "tsx src/cli.ts sync",
+    "start": "tsx bin/wiki.ts sync",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },

@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { openDatabase } from '@llm-wiki/db/database';
 import { z } from 'zod';
 import { loadVaultConfig } from './config.js';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
@@ -261,10 +264,6 @@ export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
 }
 
 export async function runSync(): Promise<void> {
-  const { openDatabase } = await import('@llm-wiki/db/database');
-  const { mkdirSync } = await import('node:fs');
-  const { homedir } = await import('node:os');
-
   const env = loadEnv();
   const dbDir = join(homedir(), '.kmd', 'db');
   const dbPath = join(dbDir, 'index.db');

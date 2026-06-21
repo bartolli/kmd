@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveCli } from './cli.js';
 
 const execFileAsync = promisify(execFile);
-const CLI_ENTRY = fileURLToPath(new URL('./cli.ts', import.meta.url));
+const CLI_ENTRY = fileURLToPath(new URL('../bin/wiki.ts', import.meta.url));
 
 async function makeInvalidVault(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'wiki-sync-gate-'));
