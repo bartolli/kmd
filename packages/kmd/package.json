@@ -19,7 +19,7 @@
   },
   "sideEffects": false,
   "bin": {
-    "kmd": "./dist/kmd.mjs"
+    "kmd": "dist/kmd.mjs"
   },
   "files": [
     "dist",
