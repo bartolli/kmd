@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
+import { sanitizeFtsQuery } from '../lib/fts.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
 import type { VaultConfig } from '../vault-config.js';
 
@@ -73,15 +74,6 @@ async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
   }
 }
 
-const FTS5_KEYWORDS = new Set(['AND', 'OR', 'NOT', 'NEAR']);
-
-function sanitizeFtsQuery(raw: string): string {
-  return raw
-    .split(/\s+/)
-    .map((t) => t.replace(/["\-*():^]/g, ''))
-    .filter((t) => t.length > 0 && !FTS5_KEYWORDS.has(t))
-    .join(' ');
-}
 
 export async function prime(
   deps: PrimeDeps,

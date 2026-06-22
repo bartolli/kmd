@@ -1,3 +1,10 @@
+## [v0.1.1] - 2026-06-22
+
+### Fixed
+
+- `sanitizeFtsQuery` extracted to `lib/fts.ts`; unicode-aware `[^\p{L}\p{N}\s]` strip — accented letters preserved, `_` stripped (matches unicode61 tokenizer)
+- `kmd` bin path normalized to `dist/kmd.mjs` (no leading `./`)
+
 ## [v0.1.0] - 2026-06-21
 
 ### Added

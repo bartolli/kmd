@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
+import { sanitizeFtsQuery } from '../lib/fts.js';
 import { textError, textJson } from '../lib/toolResponse.js';
 
 export const SearchInputSchema = z.object({
@@ -43,15 +44,6 @@ export interface SearchDeps {
   readonly db: DatabaseSync;
 }
 
-const FTS5_KEYWORDS = new Set(['AND', 'OR', 'NOT', 'NEAR']);
-
-function sanitizeFtsQuery(raw: string): string {
-  return raw
-    .split(/\s+/)
-    .map((t) => t.replace(/["\-*():^]/g, ''))
-    .filter((t) => t.length > 0 && !FTS5_KEYWORDS.has(t))
-    .join(' ');
-}
 
 export function search(deps: SearchDeps, input: SearchInput): { results: SearchResult[] } {
   const ftsQuery = sanitizeFtsQuery(input.query);
