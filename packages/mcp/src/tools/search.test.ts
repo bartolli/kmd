@@ -93,7 +93,9 @@ describe('search against SQLite', () => {
     expect(() => search({ db }, { query: '"exact phrase"', limit: 5 })).not.toThrow();
     expect(() => search({ db }, { query: 'foo AND bar', limit: 5 })).not.toThrow();
     expect(() => search({ db }, { query: 'CLAUDE.md separate pedagogy', limit: 5 })).not.toThrow();
-    expect(() => search({ db }, { query: 'path/to/file.ts @scope +required', limit: 5 })).not.toThrow();
+    expect(() =>
+      search({ db }, { query: 'path/to/file.ts @scope +required', limit: 5 })
+    ).not.toThrow();
 
     db.close();
   });

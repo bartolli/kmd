@@ -74,7 +74,6 @@ async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
   }
 }
 
-
 export async function prime(
   deps: PrimeDeps,
   input: PrimeInput

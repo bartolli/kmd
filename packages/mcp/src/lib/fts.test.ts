@@ -11,11 +11,15 @@ describe('sanitizeFtsQuery', () => {
   });
 
   it('strips slashes and symbols', () => {
-    expect(sanitizeFtsQuery('path/to/file.ts @scope +required')).toBe('path to file ts scope required');
+    expect(sanitizeFtsQuery('path/to/file.ts @scope +required')).toBe(
+      'path to file ts scope required'
+    );
   });
 
   it('strips FTS5 metacharacters', () => {
-    expect(sanitizeFtsQuery('"exact" (grouped) col:filter ^initial')).toBe('exact grouped col filter initial');
+    expect(sanitizeFtsQuery('"exact" (grouped) col:filter ^initial')).toBe(
+      'exact grouped col filter initial'
+    );
   });
 
   it('removes FTS5 boolean keywords', () => {

@@ -44,7 +44,6 @@ export interface SearchDeps {
   readonly db: DatabaseSync;
 }
 
-
 export function search(deps: SearchDeps, input: SearchInput): { results: SearchResult[] } {
   const ftsQuery = sanitizeFtsQuery(input.query);
   if (!ftsQuery) return { results: [] };
