@@ -88,7 +88,7 @@ const KIND_PEDAGOGY: ReadonlyMap<string, KindPedagogy> = new Map([
 ]);
 
 const DEFAULT_AUTHORING_RULES = [
-  '- **Use the matching template** via `wiki://template/{domain}/{kind}` (MCP) or from `templates/` (filesystem). Don\'t hand-roll frontmatter.',
+  "- **Use the matching template** via `wiki://template/{domain}/{kind}` (MCP) or from `templates/` (filesystem). Don't hand-roll frontmatter.",
   '- **Quote prose-bearing frontmatter scalars.** `summary: "..."` — unquoted `Word: phrase` patterns break the YAML parser.',
   '- **On any edit, update the frontmatter `updated` field.**',
   '- **Folder name = slug prefix in `projects/`.** `spec/spec-x.md`, `adr/adr-y.md`, `plan/plan-z.md`, `ops/ops-w.md`. Stories use `story-` prefix under `plan/{plan-name}/`.',
@@ -96,29 +96,21 @@ const DEFAULT_AUTHORING_RULES = [
   '- **Notes have no `kind` field** — implied by location. Sync sets `kind: note`.',
   '- **Reuse existing tags** (visible in `prime` response `top_tags`). No synonyms.',
   '- **ADR supersession is bidirectional**: `superseded_by` on the old ADR + `supersedes` on the new one.',
-  '- **Sources convention**: external paths/URLs go inline in body text. Vault-internal `raw/` paths go in frontmatter `sources:` array. Don\'t mix the two surfaces.',
-  '- **Spec / ADR edits land inline with the slice that surfaces them.** Don\'t queue corrections in plans. The spec must reflect current code at every commit.'
+  "- **Sources convention**: external paths/URLs go inline in body text. Vault-internal `raw/` paths go in frontmatter `sources:` array. Don't mix the two surfaces.",
+  "- **Spec / ADR edits land inline with the slice that surfaces them.** Don't queue corrections in plans. The spec must reflect current code at every commit."
 ].join('\n');
 
 function buildAuthoringRules(config: VaultConfig): string {
-  return [
-    '## Authoring rules',
-    '',
-    config.authoring_rules ?? DEFAULT_AUTHORING_RULES
-  ].join('\n');
+  return ['## Authoring rules', '', config.authoring_rules ?? DEFAULT_AUTHORING_RULES].join('\n');
 }
 
 const DEFAULT_SYNC_PROTOCOL =
   'Edit the smallest set of files that reflects the change. ' +
-  'A milestone tick is plan-only; don\'t cascade to index.md unless phase or status changed. ' +
+  "A milestone tick is plan-only; don't cascade to index.md unless phase or status changed. " +
   'Controlled-vocabulary edits need explicit user approval.';
 
 function buildSyncProtocol(config: VaultConfig): string {
-  return [
-    '## Resync protocol',
-    '',
-    config.sync_protocol ?? DEFAULT_SYNC_PROTOCOL
-  ].join('\n');
+  return ['## Resync protocol', '', config.sync_protocol ?? DEFAULT_SYNC_PROTOCOL].join('\n');
 }
 
 function buildKindSelector(kinds: ReadonlyArray<string>): string {
