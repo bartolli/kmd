@@ -1,6 +1,3 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { VaultConfig } from '../vault-config.js';
@@ -58,16 +55,6 @@ async function readAuthoring(
   return result.contents[0]?.text ?? '';
 }
 
-async function withTmpVault(fn: (vaultRoot: string) => Promise<void>): Promise<void> {
-  const dir = join(tmpdir(), `authoring-test-${Date.now()}`);
-  await mkdir(dir, { recursive: true });
-  try {
-    await fn(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
 describe('wiki://authoring resource', () => {
   it('registers at wiki://authoring', () => {
     const { mcp } = captureMcp();
@@ -81,137 +68,120 @@ describe('wiki://authoring resource', () => {
   });
 
   it('includes the kind selector table', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('## Kind selector');
-      expect(text).toContain('| Signal | Kind | Where |');
-      expect(text).toContain('**adr**');
-      expect(text).toContain('**spec**');
-      expect(text).toContain('**note**');
-      expect(text).not.toContain('| — |');
-    });
+    expect(text).toContain('## Kind selector');
+    expect(text).toContain('| Signal | Kind | Where |');
+    expect(text).toContain('**adr**');
+    expect(text).toContain('**spec**');
+    expect(text).toContain('**note**');
+    expect(text).not.toContain('| — |');
   });
 
   it('kind selector is config-driven — only configured kinds appear', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, MINIMAL_CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('**recipe**');
-      expect(text).toContain('**note**');
-      expect(text).not.toContain('**adr**');
-      expect(text).not.toContain('**spec**');
-      expect(text).not.toContain('**story**');
-      expect(text).toContain('If none fits → note.');
-      expect(text).not.toContain('torn between adr and spec');
-    });
+    expect(text).toContain('**recipe**');
+    expect(text).toContain('**note**');
+    expect(text).not.toContain('**adr**');
+    expect(text).not.toContain('**spec**');
+    expect(text).not.toContain('**story**');
+    expect(text).toContain('If none fits → note.');
+    expect(text).not.toContain('torn between adr and spec');
   });
 
   it('unknown kinds get a graceful row with dashes', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, MINIMAL_CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toMatch(/\| — \| \*\*recipe\*\* \| — \|/);
-    });
+    expect(text).toMatch(/\| — \| \*\*recipe\*\* \| — \|/);
   });
 
   it('project-kind paths include the projects/ prefix', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('`projects/{scope}/adr/adr-{slug}.md`');
-      expect(text).toContain('`projects/{scope}/spec/spec-{slug}.md`');
-      expect(text).toContain('`projects/{scope}/plan/plan-{slug}.md`');
-      expect(text).toContain('`research/{topic}/{slug}.md`');
-      expect(text).toContain('`notes/{slug}.md`');
-    });
+    expect(text).toContain('`projects/{scope}/adr/adr-{slug}.md`');
+    expect(text).toContain('`projects/{scope}/spec/spec-{slug}.md`');
+    expect(text).toContain('`projects/{scope}/plan/plan-{slug}.md`');
+    expect(text).toContain('`research/{topic}/{slug}.md`');
+    expect(text).toContain('`notes/{slug}.md`');
   });
 
   it('includes controlled vocabulary from vault config', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('## Controlled vocabulary');
-      expect(text).toContain('project, spec, adr');
-      expect(text).toContain('draft');
-      expect(text).toContain('sdd');
-      expect(text).toContain('mcp, sync, cli');
-      expect(text).toContain('server → mcp');
-    });
+    expect(text).toContain('## Controlled vocabulary');
+    expect(text).toContain('project, spec, adr');
+    expect(text).toContain('draft');
+    expect(text).toContain('sdd');
+    expect(text).toContain('mcp, sync, cli');
+    expect(text).toContain('server → mcp');
   });
 
   it('references wiki://templates instead of embedding the list', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('## Templates');
-      expect(text).toContain('`wiki://templates`');
-      expect(text).not.toContain('wiki://template/project/adr');
-    });
+    expect(text).toContain('## Templates');
+    expect(text).toContain('`wiki://templates`');
+    expect(text).not.toContain('wiki://template/project/adr');
   });
 
-  it('includes authoring rules when vault CLAUDE.md has the section', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      await writeFile(
-        join(vaultRoot, 'CLAUDE.md'),
-        [
-          '# Vault docs',
-          '',
-          '## Authoring rules',
-          '',
-          '- Always use wikilinks for cross-references.',
-          '- Keep summaries under 120 chars.',
-          '',
-          '## Other section',
-          '',
-          'Unrelated content.'
-        ].join('\n')
-      );
+  it('includes default authoring rules when authoring_rules is absent', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
-
-      expect(text).toContain('## Authoring rules');
-      expect(text).toContain('Always use wikilinks');
-      expect(text).toContain('Keep summaries under 120 chars');
-      expect(text).not.toContain('Unrelated content');
-    });
+    expect(text).toContain('## Authoring rules');
+    expect(text).toContain('Use the matching template');
+    expect(text).toContain('Quote prose-bearing frontmatter scalars');
+    expect(text).toContain('ADR supersession is bidirectional');
   });
 
-  it('omits authoring rules when vault CLAUDE.md is absent', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+  it('uses custom authoring_rules from vault config when provided', async () => {
+    const custom: VaultConfig = {
+      ...CONFIG,
+      authoring_rules: 'Always use wikilinks for cross-references.'
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
 
-      expect(text).toContain('## Kind selector');
-      expect(text).not.toContain('## Authoring rules');
-    });
+    expect(text).toContain('## Authoring rules');
+    expect(text).toContain('Always use wikilinks for cross-references.');
+    expect(text).not.toContain('Use the matching template');
   });
 
-  it('handles a CLAUDE.md with no authoring-rules heading', async () => {
-    await withTmpVault(async (vaultRoot) => {
-      await writeFile(join(vaultRoot, 'CLAUDE.md'), '# Vault docs\n\nJust some notes.\n');
+  it('includes default resync protocol when sync_protocol is absent', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
 
-      const { mcp, handlers } = captureMcp();
-      registerAuthoringResource(mcp, vaultRoot, CONFIG);
-      const text = await readAuthoring(handlers);
+    expect(text).toContain('## Resync protocol');
+    expect(text).toContain('smallest set of files');
+  });
 
-      expect(text).not.toContain('## Authoring rules');
-      expect(text).toContain('## Kind selector');
-    });
+  it('uses custom sync_protocol from vault config when provided', async () => {
+    const custom: VaultConfig = {
+      ...CONFIG,
+      sync_protocol: 'Always run wiki validate after edits.'
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('## Resync protocol');
+    expect(text).toContain('Always run wiki validate after edits.');
+    expect(text).not.toContain('smallest set of files');
   });
 });

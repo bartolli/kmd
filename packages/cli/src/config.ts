@@ -17,7 +17,9 @@ const VaultConfigSchema = z.object({
   tags: z.object({
     canonical: z.array(z.string()),
     aliases: z.record(z.string(), z.string())
-  })
+  }),
+  authoring_rules: z.string().optional(),
+  sync_protocol: z.string().optional()
 });
 
 export type VaultConfig = z.infer<typeof VaultConfigSchema>;

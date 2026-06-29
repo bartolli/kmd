@@ -1,3 +1,11 @@
+## [v0.3.0] - 2026-06-29
+
+### Changed
+
+- `wiki://authoring` resource self-contained: authoring rules and resync protocol built from defaults, no vault CLAUDE.md filesystem read
+- `vault.yaml` accepts optional `authoring_rules` and `sync_protocol` string fields; override built-in defaults when present
+- `registerAuthoringResource` no longer reads from disk at serve time; output determined at registration by `VaultConfig`
+
 ## [v0.2.0] - 2026-06-28
 
 ### Added
