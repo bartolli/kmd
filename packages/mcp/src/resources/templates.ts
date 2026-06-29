@@ -21,7 +21,7 @@ interface TemplateSpec {
  * that mental model. `note` collapses to a single segment because the
  * notes domain has only one kind.
  */
-const TEMPLATES: ReadonlyArray<TemplateSpec> = [
+export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
   {
     uri: 'wiki://template/project/index',
     name: 'Project index',
@@ -125,4 +125,24 @@ export function registerTemplateResources(mcp: McpServer, vaultRoot: string): vo
       }
     );
   }
+
+  const indexLines = ['# Wiki Templates', ''];
+  for (const tmpl of TEMPLATES) {
+    indexLines.push(`- **${tmpl.name}** — \`${tmpl.uri}\`  `);
+    indexLines.push(`  ${tmpl.description}`);
+  }
+  const indexText = indexLines.join('\n');
+
+  mcp.registerResource(
+    'Template index',
+    'wiki://templates',
+    {
+      description:
+        'Index of all wiki templates with URIs and descriptions. Read a specific template via its URI.',
+      mimeType: 'text/markdown'
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.toString(), mimeType: 'text/markdown' as const, text: indexText }]
+    })
+  );
 }

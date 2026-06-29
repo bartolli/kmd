@@ -52,12 +52,72 @@ Templates served as MCP resources at `wiki://template/{domain}/{kind}`.
 
 ```
 vault/
-├── vault.yaml              # controlled vocabulary
+├── vault.yaml               # controlled vocabulary
 ├── templates/               # frontmatter templates → MCP resources
 ├── projects/{scope}/        # specs, ADRs, plans, stories
 ├── research/{topic}/        # articles, sources
 └── notes/                   # low-ceremony capture
 ```
+
+`vault.yaml` defines what `kmd validate` enforces:
+
+```yaml
+scopes:
+  my-app:
+    methodology: sdd        # optional — shown in prime output
+    status: active
+  research-notes:
+    status: active
+
+kinds: [spec, adr, plan, story, ops, article, src, note]
+statuses: [draft, active, superseded, archived]
+methodologies: [sdd, tdd, hybrid]
+
+tags:
+  canonical: [auth, api, sync]
+  aliases:
+    authentication: auth    # normalize on write; warn on validate
+```
+
+## Pages
+
+Every page has YAML frontmatter validated against `vault.yaml`. Use the templates in `templates/` (or `wiki://template/{domain}/{kind}` via MCP) — don't hand-roll.
+
+```yaml
+# projects/my-app/adr/adr-sqlite-index.md
+---
+title: "SQLite for the index"
+kind: adr
+status: active
+tags: [storage]
+created: "2025-03-15"
+updated: 2025-06-01
+---
+```
+
+```yaml
+# research/retrieval/snowflake-cortex.md
+---
+title: "Snowflake Cortex architecture"
+kind: article
+status: draft
+tags: [retrieval]
+created: "2025-04-20"
+updated: 2025-04-20
+---
+```
+
+```yaml
+# notes/caching-thought.md
+---
+title: "Quick thought on caching"
+tags: [perf]
+created: "2025-06-28"
+updated: 2025-06-28
+---
+```
+
+`kind` selects the template shape. `status` tracks lifecycle. Notes skip `kind` — location implies it. All values must appear in `vault.yaml` or validate fails.
 
 ## Development
 

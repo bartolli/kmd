@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Logger } from './lib/logger.js';
+import { registerAuthoringResource } from './resources/authoring.js';
 import { registerTemplateResources } from './resources/templates.js';
 import { handlePrime, PrimeInputSchema } from './tools/prime.js';
 import { handleSearch, SearchInputSchema } from './tools/search.js';
@@ -41,6 +42,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
   );
 
   registerTemplateResources(mcp, vaultRoot);
+  registerAuthoringResource(mcp, vaultRoot, vaultConfig);
 
   return mcp;
 }

@@ -1,3 +1,17 @@
+## [v0.2.0] - 2026-06-28
+
+### Added
+
+- `wiki://authoring` MCP resource: config-driven kind selector, controlled vocabulary, authoring rules (from vault CLAUDE.md), template reference
+- `wiki://templates` MCP resource: index of all 11 template URIs with descriptions
+- Kind selector derived from `vault.yaml` kinds; pedagogy entries for all 12 standard kinds; unknown kinds degrade to `—` rows
+- `prime` markdown output ends with `wiki://authoring` footer
+- README: `vault.yaml` example and frontmatter page examples
+
+### Fixed
+
+- Vitest config excludes `dist/`; stale compiled test artifacts in `dist/src/` no longer shadow source tests
+
 ## [v0.1.1] - 2026-06-22
 
 ### Fixed

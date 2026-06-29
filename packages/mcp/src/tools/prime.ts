@@ -283,6 +283,12 @@ export function renderMarkdown(
     }
   }
 
+  lines.push(
+    '',
+    '---',
+    'Authoring wiki content? Read `wiki://authoring` for kind selector, rules, and templates.'
+  );
+
   return lines.join('\n');
 }
 

@@ -70,6 +70,14 @@ describe('renderMarkdown Vocabulary section', () => {
     expect(md).toContain('mcp'); // a canonical tag
   });
 
+  it('ends with an authoring-guide footer', () => {
+    const md = renderMarkdown(EMPTY_DATA, CONFIG, undefined);
+    const lines = md.split('\n');
+    const last = lines[lines.length - 1];
+
+    expect(last).toContain('wiki://authoring');
+  });
+
   it('serves each vault its own vocabulary — same binary, no recompile', () => {
     const other: VaultConfig = {
       scopes: { elsewhere: { status: 'active' } },
