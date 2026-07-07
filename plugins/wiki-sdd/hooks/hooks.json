@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "WIKI_VAULT=\"${user_config.vault_path}\" node \"${CLAUDE_PLUGIN_ROOT}/hooks/wiki-frontmatter-check.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

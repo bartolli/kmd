@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "wiki": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@bartolli/kmd@0.4.0", "mcp", "${user_config.vault_path}"],
+      "env": {
+        "WIKI_VAULT": "${user_config.vault_path}",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
