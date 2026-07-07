@@ -41,7 +41,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
     }
   );
 
-  registerTemplateResources(mcp, vaultRoot);
+  registerTemplateResources(mcp, vaultRoot, vaultConfig);
   registerAuthoringResource(mcp, vaultRoot, vaultConfig);
 
   return mcp;

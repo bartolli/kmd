@@ -96,6 +96,134 @@ describe('vocabulary membership', () => {
       findings.some((f) => f.rule === 'methodology-vocabulary' && f.severity === 'error')
     ).toBe(true);
   });
+
+  it('accepts a kind declared via the object form in vault.yaml', () => {
+    const cfg: VaultConfig = {
+      ...CFG,
+      kinds: [...CFG.kinds, { name: 'experiment', signal: 'Lab log', where: '`lab/{slug}.md`' }]
+    };
+    const raw = wellFormedSpec().replace('kind: spec', 'kind: experiment');
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, cfg, REF);
+
+    expect(findings.some((f) => f.rule === 'kind-vocabulary')).toBe(false);
+  });
+});
+
+describe('kind-floor gating (silent index drop)', () => {
+  it('flags a title-less page of a floor kind — previously zero findings', () => {
+    // No title → sync skips the page; the old isIndexed gate skipped every
+    // check too, so the drop was invisible. The floor now gates on kind intent.
+    const raw =
+      '---\nkind: spec\nscope: sotto\nstatus: active\nsummary: y\ntags: [x]\nsources: []\nupdated: 2026-06-19\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(
+      findings.some(
+        (f) =>
+          f.rule === 'required-fields' && f.severity === 'error' && f.message.includes('"title"')
+      )
+    ).toBe(true);
+  });
+
+  it('flags an empty title on a floor kind as unindexable', () => {
+    const raw = wellFormedSpec().replace('title: X', 'title: ""');
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(
+      findings.some((f) => f.rule === 'required-fields' && f.message.includes('non-empty string'))
+    ).toBe(true);
+  });
+
+  it('flags a title-less note — notes infer kind from location', () => {
+    const raw = '---\ntags: [x]\nupdated: 2026-06-19\n---\nbody\n';
+
+    const findings = validatePage('notes/scratch.md', raw, CFG, REF);
+
+    expect(
+      findings.some((f) => f.rule === 'required-fields' && f.message.includes('"title"'))
+    ).toBe(true);
+  });
+
+  it('leaves deliberate title-less pages of no-floor kinds silent', () => {
+    // artifact carries no required-field contract — reserved/stub pages of
+    // such kinds are intentionally unindexed.
+    const raw = '---\nkind: artifact\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/ops/cortex/config.md', raw, CFG, REF);
+
+    expect(findings).toEqual([]);
+  });
+});
+
+describe('custom-kind universal floor', () => {
+  const cfgWithCustom: VaultConfig = {
+    ...CFG,
+    kinds: [...CFG.kinds, { name: 'experiment', signal: 'Lab log', where: '`lab/{slug}.md`' }]
+  };
+
+  it('warns (never errors) when an object-form kind page misses title/summary/updated', () => {
+    const raw = '---\nkind: experiment\nscope: sotto\ntags: [x]\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/lab/exp-x.md', raw, cfgWithCustom, REF);
+    const floor = findings.filter((f) => f.rule === 'custom-kind-floor');
+
+    expect(floor.map((f) => f.message)).toEqual([
+      expect.stringContaining('"title"'),
+      expect.stringContaining('"summary"'),
+      expect.stringContaining('"updated"')
+    ]);
+    expect(floor.every((f) => f.severity === 'warning')).toBe(true);
+  });
+
+  it('is silent when the universal floor is present', () => {
+    const raw =
+      '---\ntitle: X\nkind: experiment\nscope: sotto\nsummary: y\ntags: [x]\nupdated: 2026-07-06\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/lab/exp-x.md', raw, cfgWithCustom, REF);
+
+    expect(findings.some((f) => f.rule === 'custom-kind-floor')).toBe(false);
+  });
+
+  it('does not apply the floor to plain-string unknown kinds', () => {
+    // glossary-entry is registered as a plain string — no pedagogy opt-in, no floor.
+    const cfg: VaultConfig = { ...CFG, kinds: [...CFG.kinds, 'glossary-entry'] };
+    const raw = '---\nkind: glossary-entry\nscope: sotto\ntags: [x]\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/spec/spec-g.md', raw, cfg, REF);
+
+    expect(findings.some((f) => f.rule === 'custom-kind-floor')).toBe(false);
+  });
+
+  it('warns on an empty title — sync would silently skip the page', () => {
+    const raw =
+      '---\ntitle: ""\nkind: experiment\nscope: sotto\nsummary: y\ntags: [x]\nupdated: 2026-07-06\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/lab/exp-x.md', raw, cfgWithCustom, REF);
+
+    expect(
+      findings.some(
+        (f) =>
+          f.rule === 'custom-kind-floor' &&
+          f.severity === 'warning' &&
+          f.message.includes('will not be indexed')
+      )
+    ).toBe(true);
+  });
+
+  it('does not apply the floor to an object-form built-in kind', () => {
+    const cfg: VaultConfig = {
+      ...CFG,
+      kinds: ['spec', { name: 'adr', signal: 'Reworded', where: '`x`' }, 'note']
+    };
+    const raw = '---\nkind: adr\nscope: sotto\ntags: [x]\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/adr/adr-x.md', raw, cfg, REF);
+
+    expect(findings.some((f) => f.rule === 'custom-kind-floor')).toBe(false);
+  });
 });
 
 describe('path authority (frontmatter scope/topic vs path)', () => {
@@ -421,6 +549,51 @@ describe('validateVault', () => {
           (f) => f.path === 'research/snowflake/dossier.md' && f.rule === 'ambiguous-link'
         )
       ).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('warns when a declared custom kind has no template file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wiki-validate-'));
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes:\n  sotto:\n    status: active\n' +
+          'kinds:\n  - spec\n  - name: experiment\n    signal: Lab log\n    where: "`lab/{slug}.md`"\n' +
+          'statuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+      );
+
+      const findings = await validateVault(dir);
+
+      expect(
+        findings.some(
+          (f) =>
+            f.rule === 'custom-kind-template' &&
+            f.severity === 'warning' &&
+            f.path === 'templates/experiment.md'
+        )
+      ).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('is silent when the custom kind template file exists', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wiki-validate-'));
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes:\n  sotto:\n    status: active\n' +
+          'kinds:\n  - spec\n  - name: experiment\n    signal: Lab log\n    where: "`lab/{slug}.md`"\n' +
+          'statuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+      );
+      await mkdir(join(dir, 'templates'), { recursive: true });
+      await writeFile(join(dir, 'templates', 'experiment.md'), '---\nkind: experiment\n---\n');
+
+      const findings = await validateVault(dir);
+
+      expect(findings.some((f) => f.rule === 'custom-kind-template')).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

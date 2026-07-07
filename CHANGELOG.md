@@ -1,3 +1,18 @@
+## [v0.4.0] - 2026-07-06
+
+### Added
+
+- `vault.yaml` `kinds` entries accept object form `{name, signal, where}` for custom kinds; served kind selector and `wiki://template/{name}` follow from the declaration
+- `authoring_rules_extra` / `sync_protocol_extra` vault.yaml fields append to the served defaults instead of replacing them
+- `methodologies` list is the sole authority for scope and page methodology values — no hard-coded enum
+- `kmd validate`: custom-kind universal floor (title, summary, updated) as warnings; `custom-kind-template` warning when a declared custom kind has no `templates/{name}.md`
+- `vault.yaml.example`: complete annotated reference for every field
+
+### Changed
+
+- Scope `methodology` validated against the `methodologies` list at `vault.yaml` load (fail-loud)
+- Non-canonical `statuses` lists served as a plain enumeration in `wiki://authoring` instead of the default lifecycle arrows
+
 ## [v0.3.0] - 2026-06-29
 
 ### Changed

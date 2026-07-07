@@ -1,0 +1,87 @@
+# vault.yaml — your vault's controlled vocabulary and served pedagogy.
+# Lives at the vault root. Everything the tooling enforces and everything
+# the agent is taught about your vault starts here.
+#
+# Loading is fail-loud: a broken vault.yaml means no working tooling —
+# the MCP server refuses to start and `kmd sync` / `kmd validate` refuse
+# to run. Run `kmd validate` after editing this file.
+
+# --- scopes (required) -------------------------------------------------
+# One entry per project. Key = the directory name under projects/.
+# The agent's `prime(scope)` call resolves against this map, and pages
+# under an unlisted scope fail validation.
+scopes:
+  my-app:
+    repo: ~/code/my-app        # optional — where the consumer repo lives
+    methodology: sdd           # optional — must appear in `methodologies` below
+    status: active             # required — keep it within `statuses` below
+  research-notes:
+    status: active
+
+# --- vocabulary lists (required) ---------------------------------------
+# kinds: every `kind:` a page may carry. A page whose kind is not listed
+# fails `kmd validate`.
+#
+# These built-in kinds come with full agent pedagogy (a row in the
+# wiki://authoring kind selector telling the agent when to use them and
+# where the page goes): project, spec, adr, plan, story, ops, topic,
+# article, src, note, artifact, prompt.
+#
+# To add your own kind WITH pedagogy, use the object form — signal is
+# "when to pick this kind", where is the path pattern the agent follows:
+#
+#   kinds:
+#     - spec
+#     - adr
+#     - name: experiment
+#       signal: Hypothesis, setup, and outcome of a lab run
+#       where: "`projects/{scope}/lab/{slug}.md`"
+#
+# A custom kind's template is served from templates/{name}.md at
+# wiki://template/{name} (signal doubles as its description). Declared
+# kind without a template file → `kmd validate` warning. Custom pages
+# get a soft floor: missing title/summary/updated warns, never blocks.
+kinds: [project, spec, adr, plan, story, ops, topic, article, src, note]
+
+# statuses: every `status:` a page may carry. The default set below is
+# served to the agent as a one-directional lifecycle
+# (draft → active → superseded → archived). A custom set is served as a
+# plain list — the tooling won't invent an ordering for it.
+statuses: [draft, active, superseded, archived]
+
+# methodologies: every `methodology:` value allowed — on pages and on
+# scope entries above. One list, one authority: add your own (e.g.
+# pdca-raci, kanban) and it is immediately legal in both places.
+methodologies: [sdd, tdd, hybrid]
+
+# --- tags (required, both sub-fields) ----------------------------------
+# canonical: the approved tag set. The agent is told to reuse these and
+# avoid synonyms; `prime` surfaces the most-used ones as top_tags.
+# aliases: alias → canonical. `kmd validate` warns when a page carries
+# an alias instead of its canonical form. `{}` is valid.
+tags:
+  canonical: [auth, api, sync]
+  aliases:
+    authentication: auth
+
+# --- served pedagogy (optional) -----------------------------------------
+# The MCP resource wiki://authoring teaches the agent how to write in
+# your vault: where pages go, frontmatter discipline, content quality
+# bar, linking rules, and the resync protocol. It ships with strong
+# defaults. Changes here take effect on the next read — no restart.
+#
+# authoring_rules_extra / sync_protocol_extra (recommended): appended
+# after the defaults. You keep every default rule and future default
+# improvements, plus your additions.
+#
+# authoring_rules / sync_protocol (escape hatch): replace the defaults
+# entirely. Everything not restated here is gone from the served guide —
+# prefer the _extra fields unless you truly want a different rulebook.
+
+authoring_rules_extra: |
+  - **Diagrams live in `assets/`** as `.excalidraw.md`; embed, don't inline.
+
+sync_protocol_extra: |
+  Session-closing primer resyncs run /retro first: answer the two retro
+  questions, convert every answer into wiki artifacts, then author the
+  primer from the corrected state.

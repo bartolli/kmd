@@ -144,7 +144,7 @@ describe('wiki://authoring resource', () => {
 
     expect(text).toContain('## Authoring rules');
     expect(text).toContain('Use the matching template');
-    expect(text).toContain('Quote prose-bearing frontmatter scalars');
+    expect(text).toContain('Quote prose-bearing scalars');
     expect(text).toContain('ADR supersession is bidirectional');
   });
 
@@ -183,5 +183,83 @@ describe('wiki://authoring resource', () => {
     expect(text).toContain('## Resync protocol');
     expect(text).toContain('Always run wiki validate after edits.');
     expect(text).not.toContain('smallest set of files');
+  });
+
+  it('appends authoring_rules_extra after the default rules', async () => {
+    const custom: VaultConfig = {
+      ...CONFIG,
+      authoring_rules_extra: '- Vault-specific extra rule.'
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('Use the matching template');
+    expect(text).toContain('Vault-specific extra rule.');
+    expect(text.indexOf('Vault-specific extra rule.')).toBeGreaterThan(
+      text.indexOf('Use the matching template')
+    );
+  });
+
+  it('appends authoring_rules_extra after a full replacement', async () => {
+    const custom: VaultConfig = {
+      ...CONFIG,
+      authoring_rules: 'Replaced rules.',
+      authoring_rules_extra: '- Vault-specific extra rule.'
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('Replaced rules.');
+    expect(text).toContain('Vault-specific extra rule.');
+    expect(text).not.toContain('Use the matching template');
+  });
+
+  it('appends sync_protocol_extra after the default protocol', async () => {
+    const custom: VaultConfig = {
+      ...CONFIG,
+      sync_protocol_extra: 'Session-closing resyncs run /retro first.'
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('smallest set of files');
+    expect(text).toContain('Session-closing resyncs run /retro first.');
+  });
+
+  it('renders selector pedagogy for object-form kind entries', async () => {
+    const custom: VaultConfig = {
+      ...MINIMAL_CONFIG,
+      kinds: [
+        { name: 'recipe', signal: 'Cooking recipe with steps', where: '`recipes/{slug}.md`' },
+        'note'
+      ]
+    };
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', custom);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('| Cooking recipe with steps | **recipe** | `recipes/{slug}.md` |');
+    expect(text).not.toMatch(/\| — \| \*\*recipe\*\* \| — \|/);
+  });
+
+  it('renders the canonical status set as a one-directional flow', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('**Statuses:** draft → active → superseded → archived (one-directional');
+  });
+
+  it('renders a custom status set as a plain list without lifecycle claims', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('**Statuses:** draft, published');
+    expect(text).not.toContain('one-directional');
+    expect(text).not.toContain('draft → published');
   });
 });

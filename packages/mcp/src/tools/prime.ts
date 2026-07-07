@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { sanitizeFtsQuery } from '../lib/fts.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
-import type { VaultConfig } from '../vault-config.js';
+import { kindName, type VaultConfig } from '../vault-config.js';
 
 export const PrimeInputSchema = z.object({
   scope: z
@@ -246,7 +246,7 @@ export function renderMarkdown(
   }
 
   lines.push('', '## Vocabulary');
-  lines.push(`kinds: ${config.kinds.join(', ')}`);
+  lines.push(`kinds: ${config.kinds.map(kindName).join(', ')}`);
   lines.push(`statuses: ${config.statuses.join(', ')}`);
   lines.push(`tags: ${config.tags.canonical.join(', ')}`);
 
@@ -286,7 +286,7 @@ export function renderMarkdown(
   lines.push(
     '',
     '---',
-    'Authoring wiki content? Read `wiki://authoring` for kind selector, rules, and templates.'
+    'Authoring wiki content? Read `wiki://authoring` for kind selector, rules, and templates. After edits: `kmd validate`, then `kmd sync`.'
   );
 
   return lines.join('\n');

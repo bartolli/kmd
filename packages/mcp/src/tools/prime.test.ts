@@ -70,12 +70,25 @@ describe('renderMarkdown Vocabulary section', () => {
     expect(md).toContain('mcp'); // a canonical tag
   });
 
-  it('ends with an authoring-guide footer', () => {
+  it('ends with an authoring-guide footer carrying the validate step', () => {
     const md = renderMarkdown(EMPTY_DATA, CONFIG, undefined);
     const lines = md.split('\n');
     const last = lines[lines.length - 1];
 
     expect(last).toContain('wiki://authoring');
+    expect(last).toContain('kmd validate');
+  });
+
+  it('renders object-form kind entries by name', () => {
+    const cfg: VaultConfig = {
+      ...CONFIG,
+      kinds: ['spec', { name: 'experiment', signal: 'Lab log', where: '`lab/{slug}.md`' }]
+    };
+
+    const md = renderMarkdown(EMPTY_DATA, cfg, undefined);
+
+    expect(md).toContain('kinds: spec, experiment');
+    expect(md).not.toContain('[object Object]');
   });
 
   it('serves each vault its own vocabulary — same binary, no recompile', () => {

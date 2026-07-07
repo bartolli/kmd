@@ -82,6 +82,31 @@ describe('loadVaultConfig', () => {
 
     await expect(loadVaultConfig(dir)).rejects.toThrow(/Invalid vault\.yaml/);
   });
+
+  it('accepts a scope methodology that the methodologies list declares', async () => {
+    // The list is the authority — no hard-coded sdd|tdd|hybrid enum.
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  alayacare:\n    methodology: pdca-raci\n    status: active\n' +
+        'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd, pdca-raci]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.scopes.alayacare?.methodology).toBe('pdca-raci');
+  });
+
+  it('rejects a scope methodology missing from the methodologies list', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    methodology: waterfall\n    status: active\n' +
+        'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/not in the methodologies list/);
+  });
 });
 
 describe('wiki-mcp startup', () => {

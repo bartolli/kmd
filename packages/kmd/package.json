@@ -1,6 +1,6 @@
 {
   "name": "@bartolli/kmd",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Knowledge-markdown CLI + MCP server. One binary for vault sync, validate, and the wiki-mcp agent tools.",
   "license": "MIT",
   "author": "Angel Bartolli <bartolli@gmail.com>",

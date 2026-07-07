@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { BUILT_IN_KINDS, type VaultConfig } from '../vault-config.js';
 
 interface TemplateSpec {
   /** wiki://template/{domain}/{kind} — `note` collapses to single segment. */
@@ -100,19 +101,51 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
 ];
 
 /**
+ * Registry entries for custom kinds — object-form `kinds` entries outside the
+ * built-in set. Single-segment URI (the `note` precedent: no domain to encode),
+ * file by convention at `templates/{name}.md`, the kind's `signal` doubles as
+ * the description.
+ */
+function customTemplates(config: VaultConfig): TemplateSpec[] {
+  const specs: TemplateSpec[] = [];
+  for (const entry of config.kinds) {
+    if (typeof entry === 'string' || BUILT_IN_KINDS.has(entry.name)) continue;
+    specs.push({
+      uri: `wiki://template/${entry.name}`,
+      name: entry.name.charAt(0).toUpperCase() + entry.name.slice(1),
+      file: `${entry.name}.md`,
+      description: entry.signal
+    });
+  }
+  return specs;
+}
+
+/**
  * Register all template resources with the MCP server. Each template is a
  * fixed URI; `resources/read` re-reads the file on every call, so edits to
  * vault/templates/*.md are picked up without restarting the server.
  */
-export function registerTemplateResources(mcp: McpServer, vaultRoot: string): void {
+export function registerTemplateResources(
+  mcp: McpServer,
+  vaultRoot: string,
+  vaultConfig: VaultConfig
+): void {
   const dir = join(vaultRoot, 'templates');
-  for (const tmpl of TEMPLATES) {
+  const templates = [...TEMPLATES, ...customTemplates(vaultConfig)];
+  for (const tmpl of templates) {
     mcp.registerResource(
       tmpl.name,
       tmpl.uri,
       { description: tmpl.description, mimeType: 'text/markdown' },
       async (uri) => {
-        const text = await readFile(join(dir, tmpl.file), 'utf8');
+        let text: string;
+        try {
+          text = await readFile(join(dir, tmpl.file), 'utf8');
+        } catch (err) {
+          throw new Error(`template file missing: templates/${tmpl.file} (${tmpl.uri})`, {
+            cause: err
+          });
+        }
         return {
           contents: [
             {
@@ -127,7 +160,7 @@ export function registerTemplateResources(mcp: McpServer, vaultRoot: string): vo
   }
 
   const indexLines = ['# Wiki Templates', ''];
-  for (const tmpl of TEMPLATES) {
+  for (const tmpl of templates) {
     indexLines.push(`- **${tmpl.name}** — \`${tmpl.uri}\`  `);
     indexLines.push(`  ${tmpl.description}`);
   }

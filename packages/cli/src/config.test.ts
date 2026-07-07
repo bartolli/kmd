@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadVaultConfig } from './config.js';
+import { kindName, loadVaultConfig } from './config.js';
 
 describe('loadVaultConfig', () => {
   let dir: string;
@@ -68,6 +68,81 @@ describe('loadVaultConfig', () => {
     await writeFile(join(dir, 'vault.yaml'), 'scopes:\n  sotto:\n    methodology: tdd\n');
 
     await expect(loadVaultConfig(dir)).rejects.toThrow(/Invalid vault\.yaml/);
+  });
+
+  it('accepts a scope methodology that the methodologies list declares', async () => {
+    // The list is the authority — no hard-coded sdd|tdd|hybrid enum.
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  alayacare:\n    methodology: pdca-raci\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd, pdca-raci]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.scopes.alayacare?.methodology).toBe('pdca-raci');
+  });
+
+  it('rejects a scope methodology missing from the methodologies list', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    methodology: waterfall\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/not in the methodologies list/);
+  });
+
+  it('accepts object-form kind entries carrying selector pedagogy', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds:\n  - spec\n  - name: experiment\n    signal: Lab experiment log\n    where: "`projects/{scope}/lab/{slug}.md`"\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.kinds.map(kindName)).toEqual(['spec', 'experiment']);
+  });
+
+  it('rejects an object-form kind entry missing its pedagogy fields', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds:\n  - name: experiment\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/Invalid vault\.yaml/);
+  });
+
+  it('returns the additive pedagogy override fields when present', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'authoring_rules_extra: |\n  - Extra rule.\n' +
+        'sync_protocol_extra: |\n  Extra protocol line.\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.authoring_rules_extra).toContain('Extra rule.');
+    expect(config.sync_protocol_extra).toContain('Extra protocol line.');
   });
 
   it('throws when a required vocabulary section is missing', async () => {

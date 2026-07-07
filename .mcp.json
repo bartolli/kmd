@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "wiki-dev": {
+      "type": "stdio",
+      "command": "pnpm",
+      "args": ["exec", "tsx", "packages/mcp/bin/stdio.ts"],
+      "env": {
+        "WIKI_VAULT": "/Users/bartolli/llm-wiki/vault",
+        "LOG_LEVEL": "debug"
+      }
+    }
+  }
+}

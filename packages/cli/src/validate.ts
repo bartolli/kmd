@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { loadVaultConfig, type VaultConfig } from './config.js';
+import { readFile, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { BUILT_IN_KINDS, kindName, loadVaultConfig, type VaultConfig } from './config.js';
 import { parseFrontmatter } from './frontmatter.js';
 import {
   deriveLocation,
@@ -18,14 +19,22 @@ export interface Finding {
   message: string;
 }
 
+/** Mirrors sync's indexability marker: `buildPageFields` skips any page whose
+ * `title` is not a non-empty string. */
+function hasIndexableTitle(data: Record<string, unknown>): boolean {
+  return typeof data.title === 'string' && data.title.trim() !== '';
+}
+
 /**
  * A page sync would index: it has a `title` and either a `kind` or lives under
  * notes/ (notes imply kind=note). Title-less narrative/reserved pages (primers,
- * the title-less ontology/alayacare pages) are skipped by sync, so every check
- * except frontmatter-parse is gated on this — validate governs what sync governs.
+ * the title-less ontology/alayacare pages) are skipped by sync, so the
+ * sync-mirror checks are gated on this — validate governs what sync governs.
+ * The kind-floor contract checks gate on kind intent instead: a missing or
+ * empty title is itself a floor violation, and must not gate itself out.
  */
 function isIndexed(relPath: string, data: Record<string, unknown>): boolean {
-  if (typeof data.title !== 'string' || data.title.trim() === '') return false;
+  if (!hasIndexableTitle(data)) return false;
   if (typeof data.kind === 'string' && data.kind !== '') return true;
   return relPath.startsWith('notes/');
 }
@@ -119,6 +128,61 @@ function checkRequiredFields(relPath: string, data: Record<string, unknown>): Fi
       });
     }
   }
+  // Title carve-out from key-presence: the one floor field where emptiness is
+  // a violation — sync skips any page without a non-empty title, silently
+  // dropping it from the index.
+  if (Object.hasOwn(data, 'title') && !hasIndexableTitle(data)) {
+    findings.push({
+      path: relPath,
+      rule: 'required-fields',
+      severity: 'error',
+      message: `"title" must be a non-empty string for kind "${kind}" — sync skips the page otherwise`
+    });
+  }
+  return findings;
+}
+
+// Universal floor for custom kinds: the fields the index serves. Warnings,
+// never errors — custom kinds keep their freedom; the nudge keeps pages
+// retrievable (title/summary feed FTS, updated feeds prime ordering).
+const UNIVERSAL_FLOOR = ['title', 'summary', 'updated'] as const;
+
+/** Names of object-form kinds outside the built-in set — the explicit opt-in
+ * to custom pedagogy. Plain-string unknown kinds stay floor-free. */
+function customKindNames(cfg: VaultConfig): Set<string> {
+  const names = new Set<string>();
+  for (const entry of cfg.kinds) {
+    if (typeof entry !== 'string' && !BUILT_IN_KINDS.has(entry.name)) names.add(entry.name);
+  }
+  return names;
+}
+
+function checkCustomKindFloor(
+  relPath: string,
+  data: Record<string, unknown>,
+  cfg: VaultConfig
+): Finding[] {
+  const kind = data.kind;
+  if (typeof kind !== 'string' || !customKindNames(cfg).has(kind)) return [];
+  const findings: Finding[] = [];
+  for (const field of UNIVERSAL_FLOOR) {
+    if (!Object.hasOwn(data, field)) {
+      findings.push({
+        path: relPath,
+        rule: 'custom-kind-floor',
+        severity: 'warning',
+        message: `custom kind "${kind}": missing "${field}" — the universal floor (title, summary, updated) keeps the page retrievable`
+      });
+    }
+  }
+  if (Object.hasOwn(data, 'title') && !hasIndexableTitle(data)) {
+    findings.push({
+      path: relPath,
+      rule: 'custom-kind-floor',
+      severity: 'warning',
+      message: `custom kind "${kind}": "title" is empty — sync skips title-less pages; this page will not be indexed`
+    });
+  }
   return findings;
 }
 
@@ -168,7 +232,7 @@ function checkVocabulary(
 ): Finding[] {
   const findings: Finding[] = [];
   const kind = data.kind;
-  if (typeof kind === 'string' && !cfg.kinds.includes(kind)) {
+  if (typeof kind === 'string' && !cfg.kinds.some((k) => kindName(k) === kind)) {
     findings.push({
       path: relPath,
       rule: 'kind-vocabulary',
@@ -366,7 +430,8 @@ function checkSupersededLink(relPath: string, data: Record<string, unknown>): Fi
   return [];
 }
 
-/** Indexed-page checks on already-parsed frontmatter. Pure. */
+/** Sync-mirror checks on already-parsed frontmatter — gated on indexability,
+ * governing exactly what sync indexes. Pure. */
 function checkIndexedPage(
   relPath: string,
   data: Record<string, unknown>,
@@ -376,7 +441,6 @@ function checkIndexedPage(
 ): Finding[] {
   if (!isIndexed(relPath, data)) return [];
   return [
-    ...checkRequiredFields(relPath, data),
     ...checkTagsRequired(relPath, data),
     ...checkFolderSlug(relPath, data),
     ...checkVocabulary(relPath, data, cfg),
@@ -416,7 +480,15 @@ export function validatePage(
   if (isPrimer(relPath)) {
     return checkBodyLinks(relPath, parsed.content, refIndex);
   }
-  return checkIndexedPage(relPath, parsed.data, parsed.content, cfg, refIndex);
+  // Two-stage pipeline. Contract checks (the kind floors) gate on kind intent:
+  // a floor violation must surface even when the violation is the very field
+  // (title) that decides indexability — otherwise the page silently drops from
+  // the index with zero findings. Sync-mirror checks gate on isIndexed.
+  return [
+    ...checkRequiredFields(relPath, parsed.data),
+    ...checkCustomKindFloor(relPath, parsed.data, cfg),
+    ...checkIndexedPage(relPath, parsed.data, parsed.content, cfg, refIndex)
+  ];
 }
 
 /** Exit-code decision: any error-severity finding fails the run. */
@@ -574,5 +646,21 @@ export async function validateVault(root: string): Promise<Finding[]> {
   }
   findings.push(...validateSupersession(pages));
   findings.push(...validateAmbiguousLinks(linkPages, basenameToPaths));
+
+  // A declared custom kind without its template file leaves the served
+  // "use the matching template" rule unsatisfiable — warn, don't block.
+  for (const name of customKindNames(cfg)) {
+    const file = `templates/${name}.md`;
+    try {
+      await stat(join(root, file));
+    } catch {
+      findings.push({
+        path: file,
+        rule: 'custom-kind-template',
+        severity: 'warning',
+        message: `custom kind "${name}" declared in vault.yaml has no template file`
+      });
+    }
+  }
   return findings;
 }
