@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
+import { canonicalVaultRoot } from '@llm-wiki/db/database';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { sanitizeFtsQuery } from '../lib/fts.js';
@@ -29,6 +30,7 @@ interface ProjectIndexFm {
 
 export interface PrimeData {
   scope: string;
+  vault_root: string;
   title: string | null;
   methodology: string | null;
   phase: number | null;
@@ -165,6 +167,7 @@ export async function prime(
 
   const data: PrimeData = {
     scope,
+    vault_root: canonicalVaultRoot(vaultRoot),
     title: fm.title ?? null,
     methodology: fm.methodology ?? null,
     phase: typeof fm.phase === 'number' ? fm.phase : null,
@@ -222,6 +225,8 @@ export function renderMarkdown(
   const header = phaseLabel ? `${d.scope} — ${phaseLabel}` : d.scope;
   lines.push(`# ${header}`);
   if (d.summary) lines.push(d.summary);
+  // Search returns vault-relative paths; this is what the agent resolves them against.
+  lines.push(`Vault root: \`${d.vault_root}\``);
 
   if (d.primer) {
     lines.push('', '## Primer', d.primer);

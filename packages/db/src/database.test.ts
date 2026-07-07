@@ -1,5 +1,8 @@
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { openDatabase } from './database.js';
+import { getMeta, openDatabase, resolveIndexPath, setMeta, vaultKey } from './database.js';
 
 function insertPage(
   db: ReturnType<typeof openDatabase>,
@@ -58,6 +61,57 @@ describe('openDatabase', () => {
     expect(first?.title).toBe('Test Spec');
     expect(first?.score).toBeLessThan(0);
 
+    db.close();
+  });
+});
+
+describe('per-vault index layout', () => {
+  it('keys the index by resolved vault path under ~/.kmd/db', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kmd-vault-'));
+    try {
+      const path = resolveIndexPath(dir);
+
+      expect(path.startsWith(join(homedir(), '.kmd', 'db'))).toBe(true);
+      expect(path.endsWith('index.db')).toBe(true);
+      expect(vaultKey(dir)).toMatch(/^kmd-vault-.+-[0-9a-f]{8}$/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('two vaults get distinct index paths; the same vault is stable', () => {
+    const a = mkdtempSync(join(tmpdir(), 'kmd-vault-a-'));
+    const b = mkdtempSync(join(tmpdir(), 'kmd-vault-b-'));
+    try {
+      expect(resolveIndexPath(a)).not.toBe(resolveIndexPath(b));
+      expect(resolveIndexPath(a)).toBe(resolveIndexPath(a));
+    } finally {
+      rmSync(a, { recursive: true, force: true });
+      rmSync(b, { recursive: true, force: true });
+    }
+  });
+
+  it('a symlink to a vault maps to the same index as the real path', () => {
+    const real = mkdtempSync(join(tmpdir(), 'kmd-vault-real-'));
+    const link = join(tmpdir(), `kmd-vault-link-${Date.now()}`);
+    try {
+      symlinkSync(realpathSync(real), link);
+
+      expect(resolveIndexPath(link)).toBe(resolveIndexPath(real));
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
+  });
+
+  it('meta round-trips and upserts', () => {
+    const db = openDatabase(':memory:');
+
+    expect(getMeta(db, 'vault_root')).toBeNull();
+    setMeta(db, 'vault_root', '/vaults/a');
+    setMeta(db, 'vault_root', '/vaults/b');
+
+    expect(getMeta(db, 'vault_root')).toBe('/vaults/b');
     db.close();
   });
 });

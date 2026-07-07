@@ -25,7 +25,7 @@ export async function startMcpServer(): Promise<void> {
     'starting wiki-mcp on stdio'
   );
 
-  const db = createDatabase();
+  const db = createDatabase(config.wikiVault);
   diag('database opened');
 
   const mcp = buildServer({

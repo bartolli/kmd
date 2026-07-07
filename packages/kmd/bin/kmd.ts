@@ -4,10 +4,11 @@ import { parseArgs } from 'node:util';
 const USAGE = `usage: kmd <command> [options]
 
 commands:
-  sync                 vault → index sync (runs validate first)
-  validate [<path>]    deterministic vault checker (default: $WIKI_VAULT)
-  mcp [<vault-root>]   start the stdio MCP server (default: $WIKI_VAULT)
-  db reset             delete and recreate the index
+  sync                     vault → index sync (runs validate first)
+  validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
+  mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
+  config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
+  db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
 
 options:
   --version   print version
@@ -51,25 +52,20 @@ async function run(): Promise<void> {
       await startMcpServer();
       break;
     }
+    case 'config': {
+      applyVaultRoot(1);
+      const { runConfig } = await import('@llm-wiki/cli/cli');
+      await runConfig();
+      break;
+    }
     case 'db': {
       const sub = positionals[1];
       if (sub === 'reset') {
-        const { homedir } = await import('node:os');
-        const { join } = await import('node:path');
-        const { unlinkSync } = await import('node:fs');
-        const dbPath = join(homedir(), '.kmd', 'db', 'index.db');
-        let deleted = false;
-        for (const suffix of ['', '-wal', '-shm']) {
-          try {
-            unlinkSync(dbPath + suffix);
-            deleted = true;
-          } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-          }
-        }
-        console.log(deleted ? `deleted ${dbPath}` : `${dbPath} does not exist — nothing to reset`);
+        applyVaultRoot(2);
+        const { runDbReset } = await import('@llm-wiki/cli/cli');
+        await runDbReset();
       } else {
-        console.error(sub ? `unknown db subcommand: ${sub}` : 'usage: kmd db reset');
+        console.error(sub ? `unknown db subcommand: ${sub}` : 'usage: kmd db reset [<vault-root>]');
         process.exit(2);
       }
       break;

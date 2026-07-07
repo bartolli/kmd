@@ -13,6 +13,7 @@ const CONFIG: VaultConfig = {
 
 const EMPTY_DATA: PrimeData = {
   scope: 'llm-wiki',
+  vault_root: '/vaults/wiki',
   title: 'LLM Wiki',
   methodology: 'sdd',
   phase: 1,
@@ -68,6 +69,12 @@ describe('renderMarkdown Vocabulary section', () => {
     expect(md).toContain('story'); // a kind
     expect(md).toContain('superseded'); // a status
     expect(md).toContain('mcp'); // a canonical tag
+  });
+
+  it('states the vault root — the base for search-returned relative paths', () => {
+    const md = renderMarkdown(EMPTY_DATA, CONFIG, undefined);
+
+    expect(md).toContain('Vault root: `/vaults/wiki`');
   });
 
   it('ends with an authoring-guide footer carrying the validate step', () => {

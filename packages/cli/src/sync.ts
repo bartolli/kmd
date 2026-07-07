@@ -1,10 +1,9 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDatabase } from '@llm-wiki/db/database';
+import { canonicalVaultRoot, openDatabase, resolveIndexPath, setMeta } from '@llm-wiki/db/database';
 import { z } from 'zod';
 import { loadVaultConfig } from './config.js';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
@@ -265,14 +264,13 @@ export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
 
 export async function runSync(): Promise<void> {
   const env = loadEnv();
-  const dbDir = join(homedir(), '.kmd', 'db');
-  const dbPath = join(dbDir, 'index.db');
+  const dbPath = resolveIndexPath(env.WIKI_VAULT);
   console.log(`sync: ${env.WIKI_VAULT} → ${dbPath}`);
 
   const vaultConfig = await loadVaultConfig(env.WIKI_VAULT);
   const scopes = new Set(Object.keys(vaultConfig.scopes));
 
-  mkdirSync(dbDir, { recursive: true });
+  mkdirSync(dirname(dbPath), { recursive: true });
   const db = openDatabase(dbPath);
 
   try {
@@ -322,6 +320,9 @@ export async function runSync(): Promise<void> {
     }
 
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+
+    setMeta(db, 'vault_root', canonicalVaultRoot(env.WIKI_VAULT));
+    setMeta(db, 'last_synced', new Date().toISOString());
 
     console.log(
       `done: ${changed} changed, ${unchanged} unchanged, ${skipped} skipped, ${pagesDeleted} pages deleted, ${linksDeleted} link orphans cleared`

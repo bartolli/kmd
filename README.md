@@ -22,11 +22,14 @@ npx @bartolli/kmd --help
 ## Commands
 
 ```
-kmd validate [<path>]     deterministic vault checker (default: $WIKI_VAULT)
-kmd sync                  vault → SQLite index (runs validate first)
-kmd mcp [<vault-root>]    stdio MCP server
-kmd db reset              delete and recreate the index
+kmd validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
+kmd sync                     vault → SQLite index (runs validate first)
+kmd mcp [<vault-root>]       stdio MCP server
+kmd config [<vault-root>]    print vault + index resolution; no vault → list known vaults
+kmd db reset [<vault-root>]  delete the vault's index
 ```
+
+The index is **per-vault**: `~/.kmd/db/{vault-key}/index.db`, keyed by the resolved vault root — multiple vaults never share or clobber an index, and re-pointing a server at a different vault can't serve stale rows from the old one. `kmd config` prints the resolution (or lists every known vault), and agents get `vault_root` in every `prime` response — that's the base for resolving `search`'s vault-relative paths.
 
 ## MCP registration
 
@@ -99,7 +102,7 @@ tags:
 
 ## Served pedagogy
 
-The MCP resource `wiki://authoring` is how agents learn to write in your vault: a kind-selector table, the controlled vocabulary, authoring rules (structure, frontmatter discipline, content quality bar, linking), and the resync protocol. It ships with strong defaults and is assembled fresh from `vault.yaml` on every read — edit the config, and the next agent session works under the new rules. No rebuild, no restart.
+The MCP resource `wiki://authoring` is how agents learn to write in your vault: it opens with the vault root (so every path it teaches is immediately actionable), then a kind-selector table, the controlled vocabulary, authoring rules (structure, frontmatter discipline, content quality bar, linking), and the resync protocol. It ships with strong defaults and is assembled fresh from `vault.yaml` on every read — edit the config, and the next agent session works under the new rules. No rebuild, no restart.
 
 ### Add vault-specific rules — keep every default
 
@@ -206,6 +209,15 @@ updated: 2025-06-28
 ```
 
 `kind` selects the template shape. `status` tracks lifecycle. Notes skip `kind` — location implies it. All values must appear in `vault.yaml` or validate fails.
+
+## Claude Code plugin
+
+The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus a frontmatter guard hook and this MCP server preconfigured via `npx @bartolli/kmd`.
+
+```bash
+claude plugin marketplace add bartolli/kmd
+claude plugin install wiki-sdd@kmd
+```
 
 ## Development
 

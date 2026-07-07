@@ -1,3 +1,4 @@
+import { canonicalVaultRoot } from '@llm-wiki/db/database';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { type KindEntry, kindName, type VaultConfig } from '../vault-config.js';
 
@@ -191,7 +192,7 @@ function buildVocabulary(config: VaultConfig): string {
 
 export function registerAuthoringResource(
   mcp: McpServer,
-  _vaultRoot: string,
+  vaultRoot: string,
   vaultConfig: VaultConfig
 ): void {
   mcp.registerResource(
@@ -205,6 +206,8 @@ export function registerAuthoringResource(
     async (uri) => {
       const sections = [
         '# Wiki authoring guide',
+        '',
+        `Vault root: \`${canonicalVaultRoot(vaultRoot)}\` — every page path below is relative to it; write files and run \`kmd validate\` / \`kmd sync\` against it.`,
         '',
         buildKindSelector(vaultConfig.kinds),
         '',

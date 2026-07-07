@@ -1,3 +1,16 @@
+## [v0.5.0] - 2026-07-07
+
+### Added
+
+- `kmd config [<vault-root>]` — prints `vault:` / `index:` / `synced:` resolution (arg > `$WIKI_VAULT`); with no vault resolvable, lists every known vault from the per-vault index metas
+- `prime` response carries `vault_root` (markdown line + `structuredContent`); `wiki://authoring` opens with the vault root
+- index `meta` table (`vault_root`, `last_synced`), written by `kmd sync` and the MCP server at startup
+
+### Changed
+
+- per-vault index layout: `$KMD_HOME/db/{basename}-{hash8 of resolved root}/index.db` (default `KMD_HOME` = `~/.kmd`) replaces the single `~/.kmd/db/index.db` — vaults never share or clobber an index. Run `kmd sync` once after upgrade; the legacy file is ignored and may be deleted
+- `kmd db reset [<vault-root>]` deletes the resolved vault's index directory only
+
 ## [v0.4.0] - 2026-07-06
 
 ### Added

@@ -67,6 +67,14 @@ describe('wiki://authoring resource', () => {
     );
   });
 
+  it('opens with the vault root — the base for every page path it teaches', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('Vault root: `/fake-vault`');
+  });
+
   it('includes the kind selector table', async () => {
     const { mcp, handlers } = captureMcp();
     registerAuthoringResource(mcp, '/fake-vault', CONFIG);
