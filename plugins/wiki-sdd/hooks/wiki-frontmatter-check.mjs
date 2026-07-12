@@ -19,7 +19,7 @@ if (tool !== 'Write' && tool !== 'Edit') process.exit(0);
 const filePath = event.tool_input?.file_path;
 if (!filePath || !filePath.endsWith('.md')) process.exit(0);
 
-const vaultRoot = process.env.WIKI_VAULT;
+const vaultRoot = process.argv[2];
 if (!vaultRoot || !filePath.startsWith(vaultRoot)) process.exit(0);
 
 const rel = filePath.slice(vaultRoot.length).replace(/^\//, '');

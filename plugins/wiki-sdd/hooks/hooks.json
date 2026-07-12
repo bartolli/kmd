@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "WIKI_VAULT=\"${user_config.vault_path}\" node \"${CLAUDE_PLUGIN_ROOT}/hooks/wiki-frontmatter-check.mjs\""
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/wiki-frontmatter-check.mjs", "${user_config.vault_path}"]
           }
         ]
       }
