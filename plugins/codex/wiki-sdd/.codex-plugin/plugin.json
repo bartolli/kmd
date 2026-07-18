@@ -1,0 +1,41 @@
+{
+  "name": "wiki-sdd",
+  "version": "0.5.1",
+  "description": "Wiki-native spec-driven development loop for an Obsidian-based agent wiki.",
+  "author": {
+    "name": "Angel Bartolli"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "spec-driven-development",
+    "sdd",
+    "obsidian",
+    "prd",
+    "user-stories",
+    "triage",
+    "tdd",
+    "agent-wiki",
+    "mcp",
+    "kmd"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Wiki SDD",
+    "shortDescription": "Wiki-native spec-driven development workflows",
+    "longDescription": "Bootstrap projects into an agent wiki, refine intent, create plans and stories, triage work, slice issues, implement with TDD, and close sessions with retrospectives.",
+    "developerName": "Angel Bartolli",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Use $wiki to connect this project to my agent wiki.",
+      "Use $grill-with-docs to refine this workstream.",
+      "Use $to-prd to turn our discussion into stories."
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/wiki-frontmatter-check.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Validating wiki frontmatter"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "kmd",
+  "interface": {
+    "displayName": "kmd"
+  },
+  "plugins": [
+    {
+      "name": "wiki-sdd",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex/wiki-sdd"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

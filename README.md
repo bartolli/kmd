@@ -212,12 +212,23 @@ updated: 2025-06-28
 
 ## Claude Code plugin
 
-The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus a frontmatter guard hook and this MCP server preconfigured via `npx @bartolli/kmd`.
+The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/claude/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus a frontmatter guard hook and this MCP server preconfigured via `npx @bartolli/kmd`.
 
 ```bash
 claude plugin marketplace add bartolli/kmd
 claude plugin install wiki-sdd@kmd
 ```
+
+## Codex plugin
+
+The repo also provides a Codex marketplace (`kmd`) shipping [`wiki-sdd`](plugins/codex/wiki-sdd/README.md).
+
+```bash
+codex plugin marketplace add bartolli/kmd
+codex plugin add wiki-sdd@kmd
+```
+
+Start a new Codex thread after installation so the plugin's skills and MCP tools are loaded.
 
 ## Development
 

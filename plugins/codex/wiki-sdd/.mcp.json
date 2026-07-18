@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "wiki": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./scripts/start-wiki-mcp.mjs"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "WIKI_VAULT",
+        "WIKI_MCP_LOG_LEVEL"
+      ]
+    }
+  }
+}
