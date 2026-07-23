@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "wiki": {
+      "command": "npx",
+      "args": ["-y", "@bartolli/kmd@0.5.0", "mcp"],
+      "env": {
+        "WIKI_VAULT": "${WIKI_VAULT}"
+      },
+      "disabled": false,
+      "autoApprove": ["prime", "search"]
+    }
+  }
+}

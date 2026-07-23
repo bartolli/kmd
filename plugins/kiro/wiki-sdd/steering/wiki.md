@@ -1,6 +1,7 @@
 ---
+inclusion: auto
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides harness-aware MCP registration and file placement (Claude Code, Kiro IDE/CLI) when not already available. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides harness-aware MCP registration and file placement (Claude Code, Kiro IDE/CLI) when not already available. Also serves as the central mental-model hub for the wiki-aware skill constellation (`grill-with-docs`, `to-prd`, `triage`, `to-issues`, `tdd`, `retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 ---
 
 # Wiki — Project Bootstrap
@@ -13,14 +14,14 @@ This is a **prompt-driven bootstrap**, not a deterministic script. Explore, pres
 
 In the consumer project:
 
-1. **Project instructions** (`CLAUDE.md`, `AGENTS.md`, or equivalent) populated from `templates/project-agents.md.template` with three sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning`.
+1. **Project instructions** (`AGENTS.md` or equivalent) populated from `wiki/templates/project-agents.md.template` with three sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning`.
 2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `npx @bartolli/kmd mcp <vault-path>` JSON and lets the user place it.
 
 Both are idempotent — if a section/entry already exists, update in place rather than duplicate.
 
 In the vault, only when no vault exists yet (new-vault bootstrap):
 
-3. **Barebone vault structure** the MCP server requires — `vault.yaml` from the starter in `references/vault-yaml.md`, `templates/` populated verbatim from the bundled `assets/vault-templates/`, and the `projects/`, `research/`, `notes/` domain dirs.
+3. **Barebone vault structure** the MCP server requires — `vault.yaml` from the starter in `wiki/references/vault-yaml.md`, `templates/` populated verbatim from the bundled `wiki/assets/vault-templates/`, and the `projects/`, `research/`, `notes/` domain dirs.
 
 ## Mental model
 
@@ -31,26 +32,26 @@ In the vault, only when no vault exists yet (new-vault bootstrap):
 - Two MCP tools: `prime(scope, task?)` for orientation, `search(query, scope?, kind?, limit?)` for retrieval
 - Templates exposed as MCP resources at `wiki://template/{domain}/{kind}` (11 templates: project-{index, primer, spec, adr, plan, ops, story}, research-{index, article, src}, note) — served from `templates/` at the vault root, re-read on every call; a missing file errors at resource-read time
 
-A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its project instructions (`CLAUDE.md`, `AGENTS.md`, or equivalent). The agent reads this at session start and calls `prime(scope)` automatically.
+A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or equivalent). The agent reads this at session start and calls `prime(scope)` automatically.
 
 ### Wiki-aware skill constellation
 
-`/wiki` is the on-ramp. The other six wiki-aware skills form a workflow loop, each consuming what the previous produced:
+`wiki` is the on-ramp. The other six wiki-aware skills form a workflow loop, each consuming what the previous produced:
 
 | Skill | Reads | Writes |
 |---|---|---|
-| `/grill-with-docs` | wiki state via `prime(scope)`; codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
-| `/to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
-| `/triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
-| `/to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
-| `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
-| `/retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
+| `grill-with-docs` | wiki state via `prime(scope)`; codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
+| `to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
+| `triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
+| `to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
+| `tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
+| `retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
 
-Typical session arc for new work: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` (per slice) → repeat triage when stories complete or new ones surface → `/retro` before the closing primer resync.
+Typical session arc for new work: `grill-with-docs` → `to-prd` → `triage` → `to-issues` → `tdd` (per slice) → repeat triage when stories complete or new ones surface → `retro` before the closing primer resync.
 
 ### Companion skills (vault file editing)
 
-When Claude edits files in the vault, four global skills cover Obsidian-flavored markdown and adjacent file types. They are NOT wiki-aware (no `WIKI_SCOPE` knowledge), but they handle the *file format* that the wiki uses:
+When Kiro edits files in the vault, four global skills cover Obsidian-flavored markdown and adjacent file types. They are NOT wiki-aware (no `WIKI_SCOPE` knowledge), but they handle the *file format* that the wiki uses:
 
 | Skill | When to use |
 |---|---|
@@ -59,7 +60,7 @@ When Claude edits files in the vault, four global skills cover Obsidian-flavored
 | `obsidian-cli` | Only when a live Obsidian instance is genuinely needed — plugin/theme dev, screenshots, Dataview re-render. **Not** the canonical search/read surface — use the wiki MCP `search` tool and filesystem `Read` instead. |
 | `json-canvas` | Editing `.canvas` files (mind maps, flowcharts). Not in the standard wiki authoring loop. |
 
-These compose with the wiki-aware skills: `/to-prd` writes story files (using `wiki://template/project/story` for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
+These compose with the wiki-aware skills: `to-prd` writes story files (using `wiki://template/project/story` for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
 
 ### Harness placement
 
@@ -69,7 +70,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 |---|---|---|
 | Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
 | MCP registration | `.mcp.json` at the project root, or user-level settings | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
-| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
+| Project instructions | `AGENTS.md` (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
 ## Process
 
@@ -78,16 +79,16 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 Read the current state. Don't assume.
 
 - `git remote -v` — does this repo have a remote? GitHub? GitLab? Or no remote?
-- Read `CLAUDE.md` or `AGENTS.md` at the project root (whichever exists). Is there already a `## Wiki` block?
+- Read `AGENTS.md` at the project root (Kiro picks it up automatically). Is there already a `## Wiki` block?
 - Read `.mcp.json` at the project root if it exists. Is the `wiki` server already registered?
 - Read `vault.yaml` in the vault root — the `scopes:` field is the authoritative scope vocabulary.
 - Check whether `prime` and `search` tools from a wiki MCP server are already available in the session.
 
 ### 2. Determine scope
 
-**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Load `references/vault-yaml.md` (full field reference + minimal starter + structure scaffold) and follow its § Vault structure scaffold: write `vault.yaml` from the starter with the user's first scope, copy the bundled template files from `assets/vault-templates/` into `<vault>/templates/`, and create the `projects/`, `research/`, `notes/` domain dirs. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing.
+**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Load `wiki/references/vault-yaml.md` (full field reference + minimal starter + structure scaffold) and follow its § Vault structure scaffold: write `vault.yaml` from the starter with the user's first scope, copy the bundled template files from `wiki/assets/vault-templates/` into `<vault>/templates/`, and create the `projects/`, `research/`, `notes/` domain dirs. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing.
 
-**If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
+**If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `wiki/references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
 
 Ask the user which wiki scope this project belongs to. Show the scopes from `vault.yaml` as options.
 
@@ -97,7 +98,7 @@ Ask the user which wiki scope this project belongs to. Show the scopes from `vau
 
 > "`<requested-scope>` is not in the wiki's scope vocabulary (currently: `<comma-separated scopes from vault.yaml>`). Adding a new scope requires updating `~/llm-wiki/vault/vault.yaml` and is a deliberate vocabulary extension. Do you want to (a) approve adding `<scope>` to the vocabulary, (b) pick an existing scope, or (c) abort?"
 
-If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `/grill-with-docs` next to scaffold `projects/{scope}/`.
+If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `grill-with-docs` next to scaffold `projects/{scope}/`.
 
 ### 3. Determine issue tracker
 
@@ -111,7 +112,7 @@ State your recommendation with reasoning. Let the user override.
 
 **Behavior implications** (mention briefly):
 
-- `github` / `gitlab`: `/to-issues` mirrors `ready-for-agent` slices to the remote tracker; story files in the wiki remain canonical.
+- `github` / `gitlab`: `to-issues` mirrors `ready-for-agent` slices to the remote tracker; story files in the wiki remain canonical.
 - `local`: slices and triage state live entirely in story files under `plan/{plan-name}/story-N-{slug}.md`; no remote calls.
 
 ### 4. Triage label vocabulary
@@ -119,12 +120,12 @@ State your recommendation with reasoning. Let the user override.
 Default to Matt Pocock's canonical roles:
 
 - `needs-triage` — story needs evaluation
-- `needs-info` — agent waits on user clarification (in solo+Claude context, this means *Claude needs a decision from the user*)
+- `needs-info` — agent waits on user clarification (in solo+Kiro context, this means *Kiro needs a decision from the user*)
 - `ready-for-agent` — fully specified, AFK-ready
 - `ready-for-human` — needs human implementation (judgment, external access, hardware)
 - `wontfix` — will not be actioned
 
-In a solo+Claude context, `needs-info` semantically reads as "Claude is blocked on a user decision." This is the intended interpretation — flag it once during setup so the user understands the role mapping.
+In a solo+Kiro context, `needs-info` semantically reads as "Kiro is blocked on a user decision." This is the intended interpretation — flag it once during setup so the user understands the role mapping.
 
 If the user wants to override any label string (because their issue tracker uses different conventions), capture the mapping in `WIKI_TRIAGE_LABELS:` as a JSON object.
 
@@ -134,9 +135,9 @@ Default: `WIKI_TRIAGE_LABELS: {"needs-triage":"needs-triage","needs-info":"needs
 
 Check whether the `wiki` MCP server is already available to this session — look for it in the available tools list (a `prime` and `search` tool from a wiki-named server).
 
-**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration. Nothing to do — skip to step 6.
+**If the wiki-sdd power is installed:** its bundled `mcp.json` registers the server (Kiro namespaces it on install). Nothing to do — skip to step 6.
 
-**If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:
+**If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `wiki/templates/mcp-entry.json.template` with the vault path filled in:
 
 ```json
 {
@@ -152,20 +153,20 @@ Check whether the `wiki` MCP server is already available to this session — loo
 **Placement is harness-specific** (§ Harness placement):
 
 - **Claude Code:** project-local `.mcp.json`, or user-level settings — let the user choose the scope.
-- **Kiro (IDE and CLI):** `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user), from `templates/mcp-entry-kiro.json.template` — Kiro wraps the same entry in `mcpServers` and adds `disabled` and `autoApprove`; pre-approving `prime` and `search` keeps orientation friction-free, and `env` values support `${VARIABLE}` expansion. The Kiro CLI can register the same server via `kiro-cli mcp add` (defer to its `--help` for current flags rather than guessing them).
+- **Kiro (IDE and CLI):** `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user), from `wiki/templates/mcp-entry-kiro.json.template` — Kiro wraps the same entry in `mcpServers` and adds `disabled` and `autoApprove`; pre-approving `prime` and `search` keeps orientation friction-free, and `env` values support `${VARIABLE}` expansion. The Kiro CLI can register the same server via `kiro-cli mcp add` (defer to its `--help` for current flags rather than guessing them).
 - **Other harnesses:** show the generic JSON and let the user place it per their harness's MCP docs. Don't prescribe OS-specific paths.
 
-### 6. Confirm and write the project CLAUDE.md / AGENTS.md
+### 6. Confirm and write the project AGENTS.md
 
 **Pick the file to edit:**
 
-- If `CLAUDE.md` exists at the project root, edit it.
-- Else if `AGENTS.md` exists, edit it (same template applies).
-- If neither exists, ask which one to create — don't pick for the user.
+- If `AGENTS.md` exists at the project root, edit it.
+- Else if a `.kiro/steering/` project-instructions file exists, edit it.
+- If neither exists, ask whether to create `AGENTS.md`.
 
 **Kiro:** picks up `AGENTS.md` automatically (always included, no inclusion modes) — target it with the same template. A `.kiro/steering/` file is the native alternative when the user wants conditional inclusion; the same three sections apply.
 
-**Use the bundled template** at `templates/project-agents.md.template`. Fill these placeholders:
+**Use the bundled template** at `wiki/templates/project-agents.md.template`. Fill these placeholders:
 
 | Placeholder | Source |
 |---|---|
@@ -178,7 +179,7 @@ Check whether the `wiki` MCP server is already available to this session — loo
 **Per-scope adaptations to the template:**
 
 - The Sub-agent spawning section references `projects/{{scope}}/ops/ops-slicing-protocol`. If that file doesn't exist in the vault, change "if it exists" to "if/when it exists" — keep the pointer so future readers know where to look.
-- The template adds two lines (`WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`) that aren't in the original minimal shape. They're inert if unused; `/to-issues` reads `WIKI_ISSUE_TRACKER`, `/triage` reads `WIKI_TRIAGE_LABELS`.
+- The template adds two lines (`WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`) that aren't in the original minimal shape. They're inert if unused; `to-issues` reads `WIKI_ISSUE_TRACKER`, `triage` reads `WIKI_TRIAGE_LABELS`.
 
 **Show the rendered template to the user before writing.** Let them edit. Then write.
 
@@ -188,16 +189,16 @@ Tell the user setup is complete and which wiki-aware skills will now read from t
 
 Suggest the next step:
 
-- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `/grill-with-docs` to refine intent or kick off a new workstream."
-- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `/grill-with-docs` to scaffold it."
+- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `grill-with-docs` to refine intent or kick off a new workstream."
+- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `grill-with-docs` to scaffold it."
 
 ## Rules
 
 - **Never silently add a new scope** to `vault.yaml`. Always confirm with the user.
-- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`** without showing the diff first.
+- **Never overwrite a non-empty `AGENTS.md` or `.kiro/steering/` file** without showing the diff first.
 - **Check for an existing wiki MCP server** (plugin-bundled or user-registered) before offering to register one. If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.
 - **Use `npx @bartolli/kmd mcp <vault-path>`** for standalone registration — don't construct `pnpm`/`tsx` dev paths. Let the user choose where to place the `.mcp.json`.
 - **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
-- **Use the bundled `templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
-- **Copy `assets/vault-templates/` verbatim** when scaffolding a new vault — filenames are the server's URI→file contract and the content is served to future agents as-is; never author replacements inline or rename files. The bundle mirrors the kmd server's fixed template registry; refresh it from the canonical vault when kmd's registry changes.
-- **Don't run `/grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.
+- **Use the bundled `wiki/templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
+- **Copy `wiki/assets/vault-templates/` verbatim** when scaffolding a new vault — filenames are the server's URI→file contract and the content is served to future agents as-is; never author replacements inline or rename files. The bundle mirrors the kmd server's fixed template registry; refresh it from the canonical vault when kmd's registry changes.
+- **Don't run `grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.

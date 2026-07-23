@@ -90,7 +90,7 @@ template presence — the gap only surfaces when an agent first fetches
    cp <skill-root>/assets/vault-templates/*.md <vault>/templates/
    ```
 
-   `<skill-root>` is the directory holding this skill's `SKILL.md`.
+   `<skill-root>` is the `wiki/` directory at the power root.
    Filenames are the server's contract — never rename. Expected set
    (11 files): `project-index.md`, `project-primer.md`,
    `project-spec.md`, `project-adr.md`, `project-plan.md`,
@@ -116,5 +116,5 @@ bootstrap that "renders" them breaks every future page.
 2. Register/start the wiki MCP server pointing at the vault root;
    verify `prime({{scope}})` answers and `wiki://templates` lists all
    11 entries.
-3. Continue the standard `$wiki` bootstrap (scope, tracker, project
+3. Continue the standard `wiki` bootstrap (scope, tracker, project
    instructions template).

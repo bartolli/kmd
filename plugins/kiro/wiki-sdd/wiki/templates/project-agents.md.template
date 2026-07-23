@@ -1,0 +1,32 @@
+# Project Instructions
+
+Project-local agent instructions.
+
+## First read
+
+Wiki primer at `projects/{{scope}}/primer.md`, loaded via the wiki MCP
+server's `prime(scope="{{scope}}")` tool. The tool prefix varies by
+harness and server registration name — discover it from the available
+tools list at session start.
+
+## Wiki integration
+
+WIKI_SCOPE: {{scope}}
+WIKI_ISSUE_TRACKER: {{issue_tracker}}
+WIKI_TRIAGE_LABELS: {{triage_labels}}
+
+Authoring rules and resync protocol: `wiki://authoring` (MCP resource).
+
+Wiki-aware skills: `grill-with-docs`, `to-prd`, `triage`, `to-issues`, `tdd`, `retro`. Run `grill-with-docs` to scaffold a new scope or refine intent on an existing one. `wiki` is the central hub — invoke it for the full constellation map. `retro` runs before every session-closing primer resync.
+
+Companion skills for vault file editing: `obsidian-markdown` (wikilinks/callouts/frontmatter in `.md` files), `obsidian-bases` (`.base` views), `obsidian-cli` (live-Obsidian-only operations), `json-canvas` (`.canvas` files).
+
+## Sub-agent spawning
+
+When spawning a sub-agent for {{scope}} work, the prompt must include:
+
+- the WIKI_SCOPE (so it can prime),
+- the specific spec / ADR section relevant to the task,
+- the slicing methodology pointer (`projects/{{scope}}/ops/ops-slicing-protocol`) if it exists.
+
+Don't assume the sub-agent will discover these via search.

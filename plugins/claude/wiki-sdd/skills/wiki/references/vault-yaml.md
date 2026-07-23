@@ -1,4 +1,4 @@
-# vault.yaml — schema reference for new-vault bootstrap
+# vault.yaml — schema and structure scaffold for new-vault bootstrap
 
 The vault's controlled vocabulary and served pedagogy, at the vault
 root. Authority is the `kmd` tooling — when this reference and
@@ -73,11 +73,48 @@ conventions; add kinds only as a deliberate vault-blueprint decision
 (the built-in set covers the methodology), and if you do, use the
 object form so the agent learns when and where to use them.
 
-## After writing the file
+## Vault structure scaffold
 
-1. `kmd validate` — confirms the file parses and the (empty) vault is
-   consistent.
+`vault.yaml` alone is not a working vault. The MCP server serves the
+11 built-in templates from `templates/` at the vault root — the
+URI→filename mapping is fixed in the server, files are re-read on
+every `resources/read`, and a missing file errors at read time.
+`kmd validate` checks pages and custom-kind templates, NOT built-in
+template presence — the gap only surfaces when an agent first fetches
+`wiki://template/...`. Scaffold the structure now, not lazily.
+
+1. Copy the bundled template set verbatim into the vault:
+
+   ```sh
+   mkdir -p <vault>/templates
+   cp <skill-root>/assets/vault-templates/*.md <vault>/templates/
+   ```
+
+   `<skill-root>` is the directory holding this skill's `SKILL.md`.
+   Filenames are the server's contract — never rename. Expected set
+   (11 files): `project-index.md`, `project-primer.md`,
+   `project-spec.md`, `project-adr.md`, `project-plan.md`,
+   `project-ops.md`, `project-story.md`, `research-index.md`,
+   `research-article.md`, `research-src.md`, `note.md`.
+
+2. Create the domain dirs — `prime(scope)` resolves
+   `projects/{scope}/index.md` and `primer.md`; search indexes all
+   three:
+
+   ```sh
+   mkdir -p <vault>/projects <vault>/research <vault>/notes
+   ```
+
+The `{{placeholder}}` tokens inside the templates are for the
+authoring agent to fill when stamping a page — copy them as-is; a
+bootstrap that "renders" them breaks every future page.
+
+## After scaffolding
+
+1. `kmd validate` — confirms `vault.yaml` parses and the (empty)
+   vault is consistent.
 2. Register/start the wiki MCP server pointing at the vault root;
-   verify `prime({{scope}})` answers.
+   verify `prime({{scope}})` answers and `wiki://templates` lists all
+   11 entries.
 3. Continue the standard `/wiki` bootstrap (scope, tracker, project
    instructions template).
