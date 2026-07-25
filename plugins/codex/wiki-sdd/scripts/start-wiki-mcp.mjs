@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const vault = process.env.WIKI_VAULT || join(homedir(), 'llm-wiki', 'vault');
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-const child = spawn(command, ['-y', '@bartolli/kmd@0.5.0', 'mcp', vault], {
+const child = spawn(command, ['-y', '@bartolli/kmd@latest', 'mcp', vault], {
   stdio: 'inherit',
   env: {
     ...process.env,
