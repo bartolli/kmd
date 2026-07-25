@@ -85,6 +85,45 @@ describe('search against SQLite', () => {
     db.close();
   });
 
+  it('ranks title and summary matches above repeated body mentions', () => {
+    const db = openDatabase(':memory:');
+    const insert = db.prepare(
+      `INSERT INTO pages (path, title, kind, scope, status, summary, body, content_hash, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    // Body-only page mentions the term repeatedly; the title page names it once.
+    // Unweighted bm25 lets term frequency in body outrank the title naming.
+    insert.run(
+      'projects/sotto/ops/ops-runbook.md',
+      'Deploy Runbook',
+      'ops',
+      'sotto',
+      'active',
+      'Deploy steps',
+      'telemetry telemetry telemetry appears all over this body about telemetry dashboards and telemetry alerts',
+      'h4',
+      '[]'
+    );
+    insert.run(
+      'projects/sotto/spec/spec-telemetry.md',
+      'Telemetry Pipeline',
+      'spec',
+      'sotto',
+      'active',
+      'Event telemetry contract',
+      'Spans are batched and exported on a fixed interval',
+      'h5',
+      '[]'
+    );
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+
+    const result = search({ db }, { query: 'telemetry', limit: 5 });
+
+    expect(result.results[0]?.path).toBe('projects/sotto/spec/spec-telemetry.md');
+
+    db.close();
+  });
+
   it('handles special characters in queries without throwing', () => {
     const db = openDatabase(':memory:');
     seedPages(db);

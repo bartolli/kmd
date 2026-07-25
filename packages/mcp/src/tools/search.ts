@@ -44,11 +44,16 @@ export interface SearchDeps {
   readonly db: DatabaseSync;
 }
 
+// Column weights over pages_fts(title, summary, body): a page NAMING the
+// concept outranks pages that merely mention it, however often. Shared
+// ranking policy with prime's task-relevant pages.
+export const FTS_RANK = 'bm25(pages_fts, 10.0, 5.0, 1.0)';
+
 export function search(deps: SearchDeps, input: SearchInput): { results: SearchResult[] } {
   const ftsQuery = sanitizeFtsQuery(input.query);
   if (!ftsQuery) return { results: [] };
 
-  let sql = `SELECT p.path, p.title, p.kind, p.summary, p.scope, bm25(pages_fts) AS score
+  let sql = `SELECT p.path, p.title, p.kind, p.summary, p.scope, ${FTS_RANK} AS score
      FROM pages_fts
      JOIN pages p ON p.id = pages_fts.rowid
      WHERE pages_fts MATCH ?`;
@@ -62,7 +67,7 @@ export function search(deps: SearchDeps, input: SearchInput): { results: SearchR
     sql += ' AND p.kind = ?';
     params.push(input.kind);
   }
-  sql += ' ORDER BY bm25(pages_fts) LIMIT ?';
+  sql += ` ORDER BY ${FTS_RANK} LIMIT ?`;
   params.push(input.limit);
 
   const rows = deps.db.prepare(sql).all(...params) as Array<{

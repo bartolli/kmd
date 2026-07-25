@@ -7,6 +7,7 @@ import { parseFrontmatter } from '../frontmatter.js';
 import { sanitizeFtsQuery } from '../lib/fts.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
 import { kindName, type VaultConfig } from '../vault-config.js';
+import { FTS_RANK } from './search.js';
 
 export const PrimeInputSchema = z.object({
   scope: z
@@ -147,11 +148,11 @@ export async function prime(
       relevant = (
         db
           .prepare(
-            `SELECT p.path, p.title, bm25(pages_fts) AS score
+            `SELECT p.path, p.title, ${FTS_RANK} AS score
              FROM pages_fts
              JOIN pages p ON p.id = pages_fts.rowid
              WHERE pages_fts MATCH ? AND p.scope = ?
-             ORDER BY bm25(pages_fts) LIMIT 3`
+             ORDER BY ${FTS_RANK} LIMIT 3`
           )
           .all(ftsQuery, scope) as Array<{ path: string; title: string; score: number }>
       ).map((row) => ({

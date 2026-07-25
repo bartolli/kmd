@@ -1,3 +1,10 @@
+## [v0.5.1] - 2026-07-25
+
+### Fixed
+
+- FTS5 ranking weights title 10×, summary 5×, body 1× — pages naming a concept rank above pages that merely mention it
+- `search` and `prime` share `FTS_RANK` constant for consistent ranking policy
+
 ## [v0.5.0] - 2026-07-07
 
 ### Added
