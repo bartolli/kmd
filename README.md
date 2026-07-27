@@ -11,6 +11,7 @@ Same primitives as [Open Knowledge Format](https://github.com/GoogleCloudPlatfor
 | Validation | none — format spec only | deterministic, LLM-free; gates sync + pre-commit hook |
 | Cross-refs | bundle-relative `/path.md` | `[[wikilinks]]` (Obsidian-native, rename-safe, no-dangling guarantee) |
 | Agent surface | none — bring your own | two MCP tools (`prime`, `search`) + template resources |
+| Guardrails | none | declarative prompt reminders + tool gates from `vault.yaml` (`kmd hook`) |
 | Infrastructure | n/a | `node:sqlite` FTS5; zero external deps |
 
 ## Install
@@ -27,6 +28,7 @@ kmd sync                     vault → SQLite index (runs validate first)
 kmd mcp [<vault-root>]       stdio MCP server
 kmd config [<vault-root>]    print vault + index resolution; no vault → list known vaults
 kmd db reset [<vault-root>]  delete the vault's index
+kmd hook <prompt|pretool>    harness gate engine — see "Hook gates" below
 ```
 
 The index is **per-vault**: `~/.kmd/db/{vault-key}/index.db`, keyed by the resolved vault root — multiple vaults never share or clobber an index, and re-pointing a server at a different vault can't serve stale rows from the old one. `kmd config` prints the resolution (or lists every known vault), and agents get `vault_root` in every `prime` response — that's the base for resolving `search`'s vault-relative paths.
@@ -68,7 +70,7 @@ vault/
 |---|---|---|---|
 | `scopes` | map of scope name → entry | yes | schema; `prime(scope)` resolves against it |
 | `scopes.*.status` | string | yes | schema (free string; keep within `statuses` by convention) |
-| `scopes.*.repo` | string | no | — (informational) |
+| `scopes.*.repo` | string | no | `kmd hook` — resolves the active scope from the session's working directory |
 | `scopes.*.methodology` | string | no | schema — must appear in `methodologies` |
 | `kinds` | (string \| `{name, signal, where}`)[] | yes | `kmd validate`: page `kind` must be listed; object form adds a kind-selector row |
 | `statuses` | string[] | yes | `kmd validate`: page `status` must be listed |
@@ -79,6 +81,8 @@ vault/
 | `authoring_rules_extra` | multiline string | no | appended after the served § Authoring rules |
 | `sync_protocol` | multiline string | no | replaces `wiki://authoring` § Resync protocol (escape hatch) |
 | `sync_protocol_extra` | multiline string | no | appended after the served § Resync protocol |
+| `triggers` | map scope → trigger list | no | full-replace of the built-in + plugin trigger base for that scope (escape hatch) |
+| `triggers_extra` | map scope → trigger list | no | appended per scope; the reserved `_all` key applies to every session |
 
 Kinds with built-in authoring pedagogy (kind-selector rows): `project`, `spec`, `adr`, `plan`, `story`, `ops`, `topic`, `article`, `src`, `note`, `artifact`, `prompt`. A custom kind gets its row via the object form: `{name, signal, where}` — *signal* is when to pick the kind, *where* is the path pattern.
 
@@ -170,6 +174,74 @@ A scope methodology missing from the list fails the whole file at load — fail-
 
 `authoring_rules` / `sync_protocol` (without `_extra`) replace the served section entirely. Every default rule not restated is gone — reach for this only when your vault genuinely runs a different rulebook. Custom `statuses` behave similarly on the serving side: only the canonical `draft → active → superseded → archived` set is presented as a one-directional lifecycle; any other list is served as a plain enumeration, and the ordering pedagogy is yours to supply via `authoring_rules_extra`.
 
+## Hook gates
+
+A rule written in prose loses the agent's attention a hundred thousand tokens in. A trigger fires at the exact moment the rule matters — as a reminder injected into context, or as a gate that stops the tool call. Triggers are declared in `vault.yaml`; `kmd hook` evaluates them when the agent harness fires an event.
+
+Two events:
+
+- **`kmd hook prompt`** — runs when the user submits a prompt. Matching triggers each inject one context line (a protocol pointer, a skill reminder). Each trigger fires **once per session** — a rule you've seen is a rule you've seen.
+- **`kmd hook pretool`** — runs before the agent executes a tool. A matching gate can inject context, warn, or **deny the call with a reason the agent reads**. Deny-class gates fire every time; only reminders spend the once-per-session budget.
+
+```yaml
+triggers_extra:
+  _all:                        # reserved: every session, whatever the scope
+    - id: skill-notes
+      on: prompt
+      enforce: inject
+      keywords: [scratchpad, jot]
+      text: "Skill: /notes captures scratch thoughts into the vault."
+  my-app:
+    - id: retro-before-tag
+      on: pretool
+      enforce: block
+      tool: Bash
+      args_match: "\\bgit tag\\b"
+      when:                    # precondition — the gate fires only when it is UNMET
+        name: newer-than
+        fresh: ["notes/my-app-retro-*.md"]
+        than: ["projects/my-app/ops/release-*.md"]
+      reason: "Retro gate: run the retro before tagging."
+```
+
+**Matching.** Prompt triggers match `keywords` on word boundaries with stemming — `releasing` and `released` match the keyword `release`, `prerelease` does not — with `intent` regexes as the escape hatch for phrasings stemming can't reach. Pretool matchers AND-compose: `tool` equals the tool name, `args_match` is a regex over the tool's input, `files` is a glob list checked against the file paths the tool touches (relative to the session's working directory; `**` crosses directories, `*` stays within a segment).
+
+**State-aware gates.** `when` names a precondition checked against your vault at the moment of the call. One predicate ships today: `newer-than` — the newest page matching `fresh` must carry a frontmatter `updated` at or after the newest page matching `than`. In the example above: tagging a release is denied unless a retro note postdates the last release note. While no release note exists, the gate passes — it arms itself the day you write the first one.
+
+**Wiring (Claude Code).** Installing the [wiki-sdd plugin](#claude-code-plugin) registers both hooks automatically — manual wiring is for setups without the plugin. For those, install the binary on `PATH` first — hooks spawn on every event, and a global install keeps that spawn fast:
+
+```bash
+npm i -g @bartolli/kmd
+```
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command",
+        "command": "kmd hook prompt /absolute/path/to/vault --scope my-app" }] }
+    ],
+    "PreToolUse": [
+      { "hooks": [{ "type": "command",
+        "command": "kmd hook pretool /absolute/path/to/vault --scope my-app --harness claude" }] }
+    ]
+  }
+}
+```
+
+`--harness claude` emits Claude Code's PreToolUse decision JSON — deny with reason, context injection, never a silent auto-approve. Without the flag the output is a neutral JSON contract for other integrations. Plugins that ship skills can compile their activation triggers into a file and pass `--triggers <file>` — those fire even when no scope is active.
+
+Declare `repo:` on your scopes and you can drop `--scope` entirely — the engine resolves the scope from the session's working directory (longest declared path wins, `~` expands):
+
+```yaml
+scopes:
+  my-app:
+    status: active
+    repo: ~/Projects/my-app
+```
+
+**Failure mode: open, and loud.** A missing or invalid `vault.yaml`, an unreadable trigger file, or a broken predicate never blocks your prompt or denies unrelated tool calls — the engine emits one stderr diagnostic and stands down until the config is fixed.
+
 ## Pages
 
 Every page has YAML frontmatter validated against `vault.yaml`. Use the templates in `templates/` (or `wiki://template/{domain}/{kind}` via MCP) — don't hand-roll.
@@ -212,7 +284,7 @@ updated: 2025-06-28
 
 ## Claude Code plugin
 
-The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/claude/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus a frontmatter guard hook and this MCP server preconfigured via `npx @bartolli/kmd`.
+The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/claude/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus the gate hooks (`kmd hook` on prompt and tool events), a frontmatter guard, and this MCP server preconfigured via `npx @bartolli/kmd`.
 
 ```bash
 claude plugin marketplace add bartolli/kmd

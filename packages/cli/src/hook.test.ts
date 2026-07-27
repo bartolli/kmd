@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Trigger, VaultConfig } from './config.js';
@@ -10,12 +10,14 @@ import {
   dedupePretoolMatches,
   effectiveTriggers,
   evaluateMatches,
+  kiroIdePromptEvent,
   loadTriggerFile,
   matchPretoolTriggers,
   matchPromptTriggers,
   parsePretoolEvent,
   parsePromptEvent,
-  renderPretool
+  renderPretool,
+  resolveScope
 } from './hook.js';
 
 function injectTrigger(overrides: Partial<Trigger> = {}): Trigger {
@@ -221,6 +223,50 @@ describe('effectiveTriggers', () => {
 
     expect(triggers.map((t) => t.text)).toEqual(['from file']);
     expect(duplicates).toEqual(['dup']);
+  });
+});
+
+describe('resolveScope', () => {
+  function config(repos: Record<string, string | undefined>): VaultConfig {
+    const scopes: VaultConfig['scopes'] = {};
+    for (const [name, repo] of Object.entries(repos)) {
+      scopes[name] = { status: 'active', ...(repo !== undefined && { repo }) };
+    }
+    return {
+      scopes,
+      kinds: ['spec'],
+      statuses: ['active'],
+      methodologies: ['sdd'],
+      tags: { canonical: [], aliases: {} }
+    };
+  }
+
+  it('resolves the scope whose repo contains the event cwd', () => {
+    const loaded = config({ codanna: '/p/codanna', svlint: '/p/svlint' });
+
+    expect(resolveScope(loaded, '/p/codanna/src/lib')).toBe('codanna');
+    expect(resolveScope(loaded, '/p/codanna')).toBe('codanna');
+    expect(resolveScope(loaded, '/p/elsewhere')).toBeUndefined();
+  });
+
+  it('matches on path boundaries, not string prefixes', () => {
+    const loaded = config({ codanna: '/p/codanna' });
+
+    expect(resolveScope(loaded, '/p/codanna-web/src')).toBeUndefined();
+  });
+
+  it('prefers the longest declared repo for nested checkouts', () => {
+    const loaded = config({ umbrella: '/p', codanna: '/p/codanna' });
+
+    expect(resolveScope(loaded, '/p/codanna/src')).toBe('codanna');
+    expect(resolveScope(loaded, '/p/other')).toBe('umbrella');
+  });
+
+  it('expands ~ in repo values and ignores relative ones', () => {
+    const loaded = config({ home: '~/proj/x', rel: 'not/absolute' });
+
+    expect(resolveScope(loaded, join(homedir(), 'proj/x/sub'))).toBe('home');
+    expect(resolveScope(loaded, 'not/absolute/sub')).toBeUndefined();
   });
 });
 
@@ -584,7 +630,7 @@ describe('parsePromptEvent', () => {
       JSON.stringify({ session_id: 's1', prompt: 'hello', cwd: '/x', extra: 1 })
     );
 
-    expect(event).toEqual({ session_id: 's1', prompt: 'hello' });
+    expect(event).toEqual({ session_id: 's1', prompt: 'hello', cwd: '/x' });
   });
 
   it('returns null for malformed payloads', () => {
@@ -595,6 +641,16 @@ describe('parsePromptEvent', () => {
   });
 });
 
+describe('parsePromptEvent cwd', () => {
+  it('carries cwd for repo-based scope resolution', () => {
+    const event = parsePromptEvent(
+      JSON.stringify({ session_id: 's1', prompt: 'hi', cwd: '/p/codanna' })
+    );
+
+    expect(event?.cwd).toBe('/p/codanna');
+  });
+});
+
 describe('parsePretoolEvent', () => {
   it('carries cwd for files-glob relativization', () => {
     const event = parsePretoolEvent(
@@ -602,5 +658,42 @@ describe('parsePretoolEvent', () => {
     );
 
     expect(event?.cwd).toBe('/repo');
+  });
+});
+
+describe('kiroIdePromptEvent', () => {
+  const original = process.env.USER_PROMPT;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.USER_PROMPT;
+    else process.env.USER_PROMPT = original;
+  });
+
+  it('returns null when $USER_PROMPT is unset or empty', () => {
+    delete process.env.USER_PROMPT;
+    expect(kiroIdePromptEvent()).toBeNull();
+
+    process.env.USER_PROMPT = '';
+    expect(kiroIdePromptEvent()).toBeNull();
+  });
+
+  it('builds the event from $USER_PROMPT and the process cwd', () => {
+    process.env.USER_PROMPT = 'cut the release';
+
+    expect(kiroIdePromptEvent(0)).toEqual({
+      session_id: `kiro:${process.cwd()}:0`,
+      prompt: 'cut the release',
+      cwd: process.cwd()
+    });
+  });
+
+  it('keys dedup to a 30-minute bucket', () => {
+    process.env.USER_PROMPT = 'release';
+    const bucket = 30 * 60 * 1000;
+    const start = 1000 * bucket;
+    const keyAt = (now: number) => kiroIdePromptEvent(now)?.session_id;
+
+    expect(keyAt(start)).toBe(keyAt(start + bucket - 1));
+    expect(keyAt(start)).not.toBe(keyAt(start + bucket));
   });
 });

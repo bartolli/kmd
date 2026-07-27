@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 
+// node:sqlite is the engine's storage bet; on older Node 22.x its
+// ExperimentalWarning lands on stderr — the hook diagnostics channel, printed
+// per spawned event. Filter that one warning, pass every other through.
+process.removeAllListeners('warning');
+process.on('warning', (warning) => {
+  if (warning.name !== 'ExperimentalWarning') {
+    console.error(warning.stack ?? `${warning.name}: ${warning.message}`);
+  }
+});
+
 const USAGE = `usage: kmd <command> [options]
 
 commands:
@@ -9,7 +19,7 @@ commands:
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
   config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
   db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
-  hook <prompt|pretool> [<vault-root>] [--scope <s>] [--harness claude] [--triggers <file>]
+  hook <prompt|pretool> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout
 
 options:
@@ -87,7 +97,7 @@ async function run(): Promise<void> {
         console.error(
           sub
             ? `unknown hook event: ${sub}`
-            : 'usage: kmd hook <prompt|pretool> [<vault-root>] [--scope <scope>] [--harness claude]'
+            : 'usage: kmd hook <prompt|pretool> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
         );
         process.exit(2);
       }

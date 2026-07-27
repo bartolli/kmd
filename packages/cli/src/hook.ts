@@ -1,4 +1,5 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
@@ -12,6 +13,7 @@ import { parseFrontmatter } from './frontmatter.js';
 export interface PromptEvent {
   session_id: string;
   prompt: string;
+  cwd?: string;
 }
 
 export interface InjectMatch {
@@ -42,9 +44,28 @@ function eventFields(raw: string): Record<string, unknown> | null {
 export function parsePromptEvent(raw: string): PromptEvent | null {
   const fields = eventFields(raw);
   if (fields === null) return null;
-  const { session_id, prompt } = fields;
+  const { session_id, prompt, cwd } = fields;
   if (typeof session_id !== 'string' || typeof prompt !== 'string') return null;
-  return { session_id, prompt };
+  return { session_id, prompt, ...(typeof cwd === 'string' && { cwd }) };
+}
+
+/** Dedup key granularity for the kiro-ide codec, which has no session id. */
+const KIRO_IDE_BUCKET_MS = 30 * 60 * 1000;
+
+/**
+ * Kiro IDE (≤0.12.x) delivers the prompt via $USER_PROMPT and neither writes
+ * nor closes stdin — reading it blocks until the hook timeout, so this codec
+ * must never touch the pipe. Absent env means a newer build that delivers the
+ * event on stdin instead; the caller falls back to the neutral codec. With no
+ * session identifier available, the dedup key is a per-workspace 30-minute
+ * time bucket: noise bounded, suppression never permanent. A bucket boundary
+ * crossed mid-conversation re-fires triggers that already fired.
+ */
+export function kiroIdePromptEvent(now = Date.now()): PromptEvent | null {
+  const prompt = process.env.USER_PROMPT;
+  if (prompt === undefined || prompt === '') return null;
+  const cwd = process.cwd();
+  return { session_id: `kiro:${cwd}:${Math.floor(now / KIRO_IDE_BUCKET_MS)}`, prompt, cwd };
 }
 
 /**
@@ -92,6 +113,33 @@ export function effectiveTriggers(
     triggers.push(trigger);
   }
   return { triggers, duplicates };
+}
+
+function expandHome(path: string): string {
+  if (path === '~') return homedir();
+  return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
+}
+
+/**
+ * Scope from the event's working directory: the scope whose `repo` contains
+ * cwd, longest declared path winning. `~` expands to the home directory;
+ * non-absolute repo values never match.
+ */
+export function resolveScope(config: VaultConfig, cwd: string | undefined): string | undefined {
+  if (cwd === undefined || cwd === '') return undefined;
+  let best: string | undefined;
+  let bestLength = -1;
+  for (const [name, scope] of Object.entries(config.scopes)) {
+    if (scope.repo === undefined) continue;
+    const repo = expandHome(scope.repo).replace(/\/+$/, '');
+    if (!repo.startsWith('/')) continue;
+    if (cwd !== repo && !cwd.startsWith(`${repo}/`)) continue;
+    if (repo.length > bestLength) {
+      best = name;
+      bestLength = repo.length;
+    }
+  }
+  return best;
 }
 
 type InjectTrigger = Trigger & { text: string };
@@ -418,10 +466,11 @@ function pruneStale(stateDir: string, keep: string): void {
 }
 
 /**
- * `kmd hook prompt [<vault-root>] [--scope <s>]`. Exits 0 on every path and
- * never throws: stdout is the harness's context-injection channel, so a
- * degraded gate engine emits one stderr diagnostic and injects nothing —
- * it must never block a prompt.
+ * `kmd hook prompt [<vault-root>] [--scope <s>] [--harness kiro-ide]`. Exits 0
+ * on every path and never throws: stdout is the harness's context-injection
+ * channel, so a degraded gate engine emits one stderr diagnostic and injects
+ * nothing — it must never block a prompt. `--harness` selects the input codec;
+ * without it (claude, codex, kiro-cli) the event arrives as JSON on stdin.
  */
 interface HookInvocation {
   vaultRoot: string;
@@ -468,13 +517,20 @@ export async function runHookPrompt(): Promise<void> {
   try {
     const invocation = hookInvocation();
     if (invocation === null) return;
-    const { vaultRoot, scope } = invocation;
-    const event = parsePromptEvent(await readStdin());
+    const { vaultRoot } = invocation;
+    let event: PromptEvent | null = null;
+    if (invocation.harness === 'kiro-ide') {
+      event = kiroIdePromptEvent();
+    } else if (invocation.harness !== undefined) {
+      diag(`unknown harness "${String(invocation.harness)}" — reading the neutral stdin event`);
+    }
+    event ??= parsePromptEvent(await readStdin());
     if (event === null) {
       diag('stdin is not a prompt event ({session_id, prompt})');
       return;
     }
     const config = await loadVaultConfig(vaultRoot);
+    const scope = invocation.scope ?? resolveScope(config, event.cwd);
     const { triggers, duplicates } = effectiveTriggers(
       config,
       scope,
@@ -502,7 +558,7 @@ export async function runHookPretool(): Promise<void> {
   try {
     const invocation = hookInvocation();
     if (invocation === null) return;
-    const { vaultRoot, scope } = invocation;
+    const { vaultRoot } = invocation;
     let format: 'neutral' | 'claude' = 'neutral';
     if (invocation.harness === 'claude') {
       format = 'claude';
@@ -515,6 +571,7 @@ export async function runHookPretool(): Promise<void> {
       return;
     }
     const config = await loadVaultConfig(vaultRoot);
+    const scope = invocation.scope ?? resolveScope(config, event.cwd);
     const { triggers, duplicates } = effectiveTriggers(
       config,
       scope,

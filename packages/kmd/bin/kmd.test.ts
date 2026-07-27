@@ -12,6 +12,7 @@ const KMD_ENTRY = fileURLToPath(new URL('./kmd.ts', import.meta.url));
 const VAULT_YAML = `scopes:
   demo:
     status: active
+    repo: /kmd-e2e-demo-repo
 kinds: [spec]
 statuses: [active]
 methodologies: [sdd]
@@ -49,10 +50,17 @@ interface RunResult {
   stderr: string;
 }
 
-async function runKmd(args: string[], stdin: string, kmdHome: string): Promise<RunResult> {
+async function runKmd(
+  args: string[],
+  stdin: string,
+  kmdHome: string,
+  extraEnv: NodeJS.ProcessEnv = {}
+): Promise<RunResult> {
   const env: NodeJS.ProcessEnv = { ...process.env, KMD_HOME: kmdHome };
   delete env.WIKI_VAULT;
   delete env.WIKI_SCOPE;
+  delete env.USER_PROMPT;
+  Object.assign(env, extraEnv);
   const promise = execFileAsync('node', ['--import', 'tsx', KMD_ENTRY, ...args], {
     env,
     timeout: 20_000
@@ -106,6 +114,29 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(other.code).toBe(0);
     expect(other.stdout).toBe('Release protocol: retro gates the tag.\n');
   }, 60_000);
+
+  it('reads the kiro-ide event from $USER_PROMPT, ignoring stdin', async () => {
+    const result = await runKmd(
+      ['hook', 'prompt', vaultRoot, '--scope', 'demo', '--harness', 'kiro-ide'],
+      'not json — must never be read',
+      kmdHome,
+      { USER_PROMPT: "let's cut the release" }
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+  }, 30_000);
+
+  it('falls back to the stdin event when kiro-ide has no $USER_PROMPT', async () => {
+    const result = await runKmd(
+      ['hook', 'prompt', vaultRoot, '--scope', 'demo', '--harness', 'kiro-ide'],
+      promptEvent('s1', 'cut the release'),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+  }, 30_000);
 
   it('stays silent on a non-matching prompt', async () => {
     const result = await runKmd(
@@ -183,6 +214,32 @@ describe('kmd hook prompt (end-to-end)', () => {
     const fresh = await runKmd(args, push('e2e-when-2'), kmdHome);
     expect(fresh.code).toBe(0);
     expect(fresh.stdout).toBe('');
+  }, 60_000);
+
+  it('resolves the scope from the event cwd via scopes.*.repo', async () => {
+    const inRepo = await runKmd(
+      ['hook', 'prompt', vaultRoot],
+      JSON.stringify({
+        session_id: 'e2e-repo-1',
+        prompt: "let's cut the release",
+        cwd: '/kmd-e2e-demo-repo/src'
+      }),
+      kmdHome
+    );
+    expect(inRepo.code).toBe(0);
+    expect(inRepo.stdout).toBe('Release protocol: retro gates the tag.\n');
+
+    const outside = await runKmd(
+      ['hook', 'prompt', vaultRoot],
+      JSON.stringify({
+        session_id: 'e2e-repo-2',
+        prompt: "let's cut the release",
+        cwd: '/somewhere/else'
+      }),
+      kmdHome
+    );
+    expect(outside.code).toBe(0);
+    expect(outside.stdout).toBe('');
   }, 60_000);
 
   it('fires compiled --triggers file triggers without an active scope', async () => {
