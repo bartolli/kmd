@@ -10,6 +10,7 @@ import {
   dedupePretoolMatches,
   effectiveTriggers,
   evaluateMatches,
+  loadTriggerFile,
   matchPretoolTriggers,
   matchPromptTriggers,
   parsePretoolEvent,
@@ -90,6 +91,40 @@ describe('matchPromptTriggers', () => {
   });
 });
 
+describe('loadTriggerFile', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'kmd-triggers-file-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('loads a compiled trigger list and its triggers match', () => {
+    const file = join(dir, 'triggers.yaml');
+    writeFileSync(
+      file,
+      '- id: triage-skill\n  on: prompt\n  enforce: inject\n  keywords: [triage]\n  text: "Skill: /triage moves stories through the state machine."\n'
+    );
+
+    const triggers = loadTriggerFile(file);
+
+    expect(triggers).not.toBeNull();
+    const matches = matchPromptTriggers('please triage the backlog', triggers as Trigger[]);
+    expect(matches.map((m) => m.id)).toEqual(['triage-skill']);
+  });
+
+  it('returns null for a missing or schema-invalid triggers file', () => {
+    expect(loadTriggerFile(join(dir, 'nope.yaml'))).toBeNull();
+
+    const bad = join(dir, 'bad.yaml');
+    writeFileSync(bad, '- id: bare\n  on: prompt\n  enforce: inject\n  text: "T."\n');
+    expect(loadTriggerFile(bad)).toBeNull();
+  });
+});
+
 describe('effectiveTriggers', () => {
   function config(overrides: Partial<VaultConfig> = {}): VaultConfig {
     return {
@@ -103,11 +138,11 @@ describe('effectiveTriggers', () => {
   }
 
   it('returns engine defaults only when no scope is active', () => {
-    expect(effectiveTriggers(config(), undefined)).toEqual([]);
+    expect(effectiveTriggers(config(), undefined).triggers).toEqual([]);
   });
 
   it('returns an empty set for a scope with no trigger config', () => {
-    expect(effectiveTriggers(config(), 'demo')).toEqual([]);
+    expect(effectiveTriggers(config(), 'demo').triggers).toEqual([]);
   });
 
   it('appends triggers_extra after the replaced base set', () => {
@@ -118,13 +153,74 @@ describe('effectiveTriggers', () => {
       triggers_extra: { demo: [extra] }
     });
 
-    expect(effectiveTriggers(loaded, 'demo').map((t) => t.id)).toEqual(['base', 'extra']);
+    expect(effectiveTriggers(loaded, 'demo').triggers.map((t) => t.id)).toEqual(['base', 'extra']);
   });
 
   it("does not leak another scope's triggers", () => {
     const loaded = config({ triggers_extra: { other: [injectTrigger()] } });
 
-    expect(effectiveTriggers(loaded, 'demo')).toEqual([]);
+    expect(effectiveTriggers(loaded, 'demo').triggers).toEqual([]);
+  });
+
+  it('appends file triggers after defaults and before scope extras', () => {
+    const file = injectTrigger({ id: 'from-file' });
+    const extra = injectTrigger({ id: 'extra' });
+    const loaded = config({ triggers_extra: { demo: [extra] } });
+
+    const { triggers } = effectiveTriggers(loaded, 'demo', [file]);
+
+    expect(triggers.map((t) => t.id)).toEqual(['from-file', 'extra']);
+  });
+
+  it('drops file triggers under a full-replace triggers section', () => {
+    const file = injectTrigger({ id: 'from-file' });
+    const replace = injectTrigger({ id: 'replace' });
+    const loaded = config({ triggers: { demo: [replace] } });
+
+    const { triggers } = effectiveTriggers(loaded, 'demo', [file]);
+
+    expect(triggers.map((t) => t.id)).toEqual(['replace']);
+  });
+
+  it('fires file triggers with no active scope', () => {
+    const { triggers } = effectiveTriggers(config(), undefined, [
+      injectTrigger({ id: 'from-file' })
+    ]);
+
+    expect(triggers.map((t) => t.id)).toEqual(['from-file']);
+  });
+
+  it('fires _all extras with no active scope', () => {
+    const loaded = config({ triggers_extra: { _all: [injectTrigger({ id: 'global' })] } });
+
+    expect(effectiveTriggers(loaded, undefined).triggers.map((t) => t.id)).toEqual(['global']);
+  });
+
+  it('appends _all extras before scope extras, surviving a full-replace', () => {
+    const loaded = config({
+      triggers: { demo: [injectTrigger({ id: 'replace' })] },
+      triggers_extra: {
+        _all: [injectTrigger({ id: 'global' })],
+        demo: [injectTrigger({ id: 'scoped' })]
+      }
+    });
+
+    expect(effectiveTriggers(loaded, 'demo').triggers.map((t) => t.id)).toEqual([
+      'replace',
+      'global',
+      'scoped'
+    ]);
+  });
+
+  it('keeps the first occurrence of a duplicate id and reports the rest', () => {
+    const file = injectTrigger({ id: 'dup', text: 'from file' });
+    const extra = injectTrigger({ id: 'dup', text: 'from vault' });
+    const loaded = config({ triggers_extra: { demo: [extra] } });
+
+    const { triggers, duplicates } = effectiveTriggers(loaded, 'demo', [file]);
+
+    expect(triggers.map((t) => t.text)).toEqual(['from file']);
+    expect(duplicates).toEqual(['dup']);
   });
 });
 

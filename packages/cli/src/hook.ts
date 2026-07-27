@@ -3,8 +3,10 @@ import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { kmdHome } from '@llm-wiki/db/database';
+import { parse as parseYaml } from 'yaml';
+import { z } from 'zod';
 import type { Trigger, VaultConfig } from './config.js';
-import { loadVaultConfig } from './config.js';
+import { loadVaultConfig, TriggerSchema } from './config.js';
 import { parseFrontmatter } from './frontmatter.js';
 
 export interface PromptEvent {
@@ -45,10 +47,51 @@ export function parsePromptEvent(raw: string): PromptEvent | null {
   return { session_id, prompt };
 }
 
-export function effectiveTriggers(config: VaultConfig, scope: string | undefined): Trigger[] {
-  if (scope === undefined) return DEFAULT_TRIGGERS;
-  const base = config.triggers?.[scope] ?? DEFAULT_TRIGGERS;
-  return [...base, ...(config.triggers_extra?.[scope] ?? [])];
+/**
+ * Compiled skill-activation triggers shipped by a plugin (`--triggers`).
+ * Returns null on any failure — the shell diags and degrades open, keeping
+ * vault-owned triggers alive.
+ */
+export function loadTriggerFile(path: string): Trigger[] | null {
+  try {
+    const result = z.array(TriggerSchema).safeParse(parseYaml(readFileSync(path, 'utf8')));
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Reserved `triggers_extra` key whose entries apply to every invocation. */
+const ALL_SCOPES_KEY = '_all';
+
+/**
+ * DEFAULT_TRIGGERS ++ file triggers ++ `_all` extras ++ scope `triggers_extra`;
+ * a scope's full-replace `triggers` takes total control of the base (defaults
+ * and file source) while both extras sections still append. Duplicate ids keep
+ * the first occurrence and report the rest.
+ */
+export function effectiveTriggers(
+  config: VaultConfig,
+  scope: string | undefined,
+  fileTriggers: Trigger[] = []
+): { triggers: Trigger[]; duplicates: string[] } {
+  const replace = scope === undefined ? undefined : config.triggers?.[scope];
+  const base = replace ?? [...DEFAULT_TRIGGERS, ...fileTriggers];
+  const allExtras = config.triggers_extra?.[ALL_SCOPES_KEY] ?? [];
+  const scopeExtras =
+    scope === undefined || scope === ALL_SCOPES_KEY ? [] : (config.triggers_extra?.[scope] ?? []);
+  const seen = new Set<string>();
+  const triggers: Trigger[] = [];
+  const duplicates: string[] = [];
+  for (const trigger of [...base, ...allExtras, ...scopeExtras]) {
+    if (seen.has(trigger.id)) {
+      duplicates.push(trigger.id);
+      continue;
+    }
+    seen.add(trigger.id);
+    triggers.push(trigger);
+  }
+  return { triggers, duplicates };
 }
 
 type InjectTrigger = Trigger & { text: string };
@@ -384,6 +427,7 @@ interface HookInvocation {
   vaultRoot: string;
   scope: string | undefined;
   harness: unknown;
+  triggersFile: unknown;
 }
 
 function hookInvocation(): HookInvocation | null {
@@ -391,7 +435,11 @@ function hookInvocation(): HookInvocation | null {
     args: process.argv.slice(2),
     allowPositionals: true,
     strict: false,
-    options: { scope: { type: 'string' }, harness: { type: 'string' } }
+    options: {
+      scope: { type: 'string' },
+      harness: { type: 'string' },
+      triggers: { type: 'string' }
+    }
   });
   const vaultRoot = positionals[2] ?? process.env.WIKI_VAULT;
   if (vaultRoot === undefined || vaultRoot === '') {
@@ -401,8 +449,19 @@ function hookInvocation(): HookInvocation | null {
   return {
     vaultRoot,
     scope: typeof values.scope === 'string' ? values.scope : process.env.WIKI_SCOPE,
-    harness: values.harness
+    harness: values.harness,
+    triggersFile: values.triggers
   };
+}
+
+function resolveFileTriggers(invocation: HookInvocation): Trigger[] {
+  if (typeof invocation.triggersFile !== 'string') return [];
+  const loaded = loadTriggerFile(invocation.triggersFile);
+  if (loaded === null) {
+    diag(`triggers file unreadable or invalid: ${invocation.triggersFile}`);
+    return [];
+  }
+  return loaded;
 }
 
 export async function runHookPrompt(): Promise<void> {
@@ -416,7 +475,15 @@ export async function runHookPrompt(): Promise<void> {
       return;
     }
     const config = await loadVaultConfig(vaultRoot);
-    const matches = matchPromptTriggers(event.prompt, effectiveTriggers(config, scope));
+    const { triggers, duplicates } = effectiveTriggers(
+      config,
+      scope,
+      resolveFileTriggers(invocation)
+    );
+    for (const id of duplicates) {
+      diag(`duplicate trigger id "${id}" — later occurrence ignored`);
+    }
+    const matches = matchPromptTriggers(event.prompt, triggers);
     for (const match of dedupeMatches(hookStateDir(), event.session_id, matches)) {
       console.log(match.text);
     }
@@ -448,12 +515,15 @@ export async function runHookPretool(): Promise<void> {
       return;
     }
     const config = await loadVaultConfig(vaultRoot);
-    const matches = matchPretoolTriggers(
-      event.tool_name,
-      event.tool_input,
-      effectiveTriggers(config, scope),
-      event.cwd
+    const { triggers, duplicates } = effectiveTriggers(
+      config,
+      scope,
+      resolveFileTriggers(invocation)
     );
+    for (const id of duplicates) {
+      diag(`duplicate trigger id "${id}" — later occurrence ignored`);
+    }
+    const matches = matchPretoolTriggers(event.tool_name, event.tool_input, triggers, event.cwd);
     const { fired, skipped } = evaluateMatches(matches, vaultRoot);
     for (const id of skipped) {
       diag(`trigger "${id}": unknown or unevaluable predicate — skipped`);

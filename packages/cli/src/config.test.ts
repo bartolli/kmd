@@ -251,6 +251,24 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/needs a reason/);
   });
 
+  it('accepts _all under triggers_extra and rejects it under triggers', async () => {
+    const body =
+      'scopes:\n  sotto:\n    status: active\n' +
+      'kinds: [spec]\n' +
+      'statuses: [active]\n' +
+      'methodologies: [sdd]\n' +
+      'tags:\n  canonical: []\n  aliases: {}\n';
+    const entry =
+      '  _all:\n    - id: skill-notes\n      on: prompt\n      enforce: inject\n      keywords: [scratchpad]\n      text: "Skill: /notes."\n';
+
+    await writeFile(join(dir, 'vault.yaml'), `${body}triggers_extra:\n${entry}`);
+    const config = await loadVaultConfig(dir);
+    expect(config.triggers_extra?._all?.[0]?.id).toBe('skill-notes');
+
+    await writeFile(join(dir, 'vault.yaml'), `${body}triggers:\n${entry}`);
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/"_all" is reserved for triggers_extra/);
+  });
+
   it('accepts an object-form when predicate with fresh and than globs', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),

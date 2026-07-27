@@ -9,7 +9,7 @@ commands:
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
   config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
   db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
-  hook <prompt|pretool> [<vault-root>] [--scope <s>] [--harness claude]
+  hook <prompt|pretool> [<vault-root>] [--scope <s>] [--harness claude] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout
 
 options:

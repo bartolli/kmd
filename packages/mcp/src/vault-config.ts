@@ -40,7 +40,9 @@ const WhenSchema = z.union([
   })
 ]);
 
-const TriggerSchema = z
+// Exported for parity with the cli twin, which feeds it to
+// `kmd hook --triggers` file validation.
+export const TriggerSchema = z
   .object({
     id: z.string().min(1),
     on: z.enum(['prompt', 'pretool']),
@@ -127,6 +129,13 @@ const VaultConfigSchema = z
           message: `"${scope.methodology}" is not in the methodologies list`
         });
       }
+    }
+    if (config.triggers?._all !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['triggers', '_all'],
+        message: '"_all" is reserved for triggers_extra'
+      });
     }
     for (const field of ['triggers', 'triggers_extra'] as const) {
       for (const [scope, list] of Object.entries(config[field] ?? {})) {

@@ -185,6 +185,23 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(fresh.stdout).toBe('');
   }, 60_000);
 
+  it('fires compiled --triggers file triggers without an active scope', async () => {
+    const triggersFile = join(base, 'compiled-triggers.yaml');
+    await writeFile(
+      triggersFile,
+      '- id: triage-skill\n  on: prompt\n  enforce: inject\n  keywords: [triage]\n  text: "Skill: /triage moves stories through the state machine."\n'
+    );
+
+    const result = await runKmd(
+      ['hook', 'prompt', vaultRoot, '--triggers', triggersFile],
+      promptEvent('e2e-skill-1', 'time to triage these findings'),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Skill: /triage moves stories through the state machine.\n');
+  }, 30_000);
+
   it('fails open on a pretool event when vault.yaml is missing', async () => {
     const emptyRoot = join(base, 'no-vault');
     await mkdir(emptyRoot, { recursive: true });

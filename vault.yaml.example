@@ -94,6 +94,12 @@ sync_protocol_extra: |
 # "release"; prerelease does not) with `intent` regexes as escape hatch.
 #
 # triggers_extra:
+#   _all:                     # reserved: applies to every session, scoped or not
+#     - id: skill-notes
+#       on: prompt
+#       enforce: inject
+#       keywords: [scratchpad, jot]
+#       text: "Skill: /notes captures scratch thoughts into the vault."
 #   my-scope:
 #     - id: release-protocol
 #       on: prompt            # prompt | pretool
