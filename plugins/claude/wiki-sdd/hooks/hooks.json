@@ -1,5 +1,21 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "prompt",
+              "${user_config.vault_path}"
+            ]
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
@@ -8,6 +24,22 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/wiki-frontmatter-check.mjs", "${user_config.vault_path}"]
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "pretool",
+              "${user_config.vault_path}",
+              "--harness",
+              "claude"
+            ]
           }
         ]
       }

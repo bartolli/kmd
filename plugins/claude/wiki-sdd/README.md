@@ -23,6 +23,15 @@ Arc: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` 
 
 Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) via `npx @bartolli/kmd`; on install the plugin asks for your vault path (`vault_path` user config). If the `wiki` server is also registered globally in `~/.mcp.json`, remove the global entry when enabling this plugin to avoid double registration.
 
+## Gate hooks
+
+Registers the `kmd hook` gate engine on two events — no manual wiring:
+
+- **UserPromptSubmit** — prompt-time reminders from your vault's `triggers_extra` (`vault.yaml`), injected once per session per trigger.
+- **PreToolUse** — vault-declared gates on tool calls: deny with a reason, warn, or inject context, including state-aware preconditions (`when: newer-than`). The frontmatter guard for vault writes rides the same event.
+
+Scope resolves from the session's working directory when your `vault.yaml` scopes declare `repo:`; a project can override with `WIKI_SCOPE` in its settings `env`. The hooks run `@bartolli/kmd@latest` — the same registration shape as the MCP server. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
+
 ## Recommended companion
 
 `obsidian-vault` — vault file-format skills (Obsidian Flavored Markdown, Bases, JSON Canvas, Obsidian CLI). The SDD loop writes vault files; `obsidian-vault` handles their format. Enable both in agent-wiki projects.
