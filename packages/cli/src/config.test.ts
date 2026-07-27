@@ -191,6 +191,52 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/needs keywords or intent/);
   });
 
+  it('rejects a pretool trigger with no matcher at all', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: wide\n      on: pretool\n      enforce: block\n      reason: "R."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(
+      /needs a tool, args_match, or files matcher/
+    );
+  });
+
+  it('accepts files globs as the sole matcher of a pretool trigger', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: no-dist\n      on: pretool\n      enforce: block\n      files: ["dist/**"]\n      reason: "Generated output."\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.triggers_extra?.sotto?.[0]?.files).toEqual(['dist/**']);
+  });
+
+  it('rejects files globs on a prompt trigger', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: misfiled\n      on: prompt\n      enforce: inject\n      keywords: [release]\n      files: ["docs/**"]\n      text: "T."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/files applies to pretool triggers only/);
+  });
+
   it('rejects a block trigger without a reason', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),

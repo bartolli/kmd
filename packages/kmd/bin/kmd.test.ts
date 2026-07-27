@@ -25,6 +25,12 @@ triggers_extra:
       enforce: inject
       keywords: [release]
       text: "Release protocol: retro gates the tag."
+    - id: retro-gate
+      on: pretool
+      enforce: block
+      tool: Bash
+      args_match: "git tag"
+      reason: "Retro gate: no retro in scope newer than the last release note."
 `;
 
 interface RunResult {
@@ -122,5 +128,41 @@ describe('kmd hook prompt (end-to-end)', () => {
 
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('unknown hook event: nope');
+  }, 30_000);
+
+  it('denies a gated tool call through the binary (claude format)', async () => {
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-pretool-1',
+        tool_name: 'Bash',
+        tool_input: { command: 'cd /repo && git tag v1.0.0' }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { hookSpecificOutput: Record<string, string> };
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('Retro gate');
+  }, 30_000);
+
+  it('fails open on a pretool event when vault.yaml is missing', async () => {
+    const emptyRoot = join(base, 'no-vault');
+    await mkdir(emptyRoot, { recursive: true });
+
+    const result = await runKmd(
+      ['hook', 'pretool', emptyRoot, '--scope', 'demo', '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-pretool-2',
+        tool_name: 'Bash',
+        tool_input: { command: 'git tag v2' }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('kmd hook:');
   }, 30_000);
 });

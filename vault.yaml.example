@@ -96,8 +96,14 @@ sync_protocol_extra: |
 # triggers_extra:
 #   my-scope:
 #     - id: release-protocol
-#       on: prompt            # prompt | pretool (pretool: slice 2)
+#       on: prompt            # prompt | pretool
 #       enforce: inject       # inject | warn | block
 #       keywords: [release, tag, publish]
 #       intent: ["cut (a )?release"]
 #       text: "Release protocol: retro gates the tag."
+#     - id: no-dist-edits
+#       on: pretool           # tool/args_match/files AND-compose
+#       enforce: block
+#       tool: Edit
+#       files: ["dist/**"]    # globs, relative to the session cwd
+#       reason: "Generated output; edit the source."

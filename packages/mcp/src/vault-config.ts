@@ -40,6 +40,7 @@ const TriggerSchema = z
     intent: z.array(z.string()).optional(),
     tool: z.string().optional(),
     args_match: z.string().optional(),
+    files: z.array(z.string().min(1)).optional(),
     when: z.string().optional(),
     text: z.string().optional(),
     reason: z.string().optional()
@@ -49,6 +50,23 @@ const TriggerSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `prompt trigger "${trigger.id}" needs keywords or intent`
+      });
+    }
+    if (
+      trigger.on === 'pretool' &&
+      trigger.tool === undefined &&
+      trigger.args_match === undefined &&
+      !trigger.files?.length
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `pretool trigger "${trigger.id}" needs a tool, args_match, or files matcher`
+      });
+    }
+    if (trigger.on === 'prompt' && trigger.files !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `trigger "${trigger.id}": files applies to pretool triggers only`
       });
     }
     if (trigger.enforce === 'block' ? trigger.reason === undefined : trigger.text === undefined) {
