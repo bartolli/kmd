@@ -107,3 +107,13 @@ sync_protocol_extra: |
 #       tool: Edit
 #       files: ["dist/**"]    # globs, relative to the session cwd
 #       reason: "Generated output; edit the source."
+#     - id: retro-before-tag
+#       on: pretool
+#       enforce: block
+#       tool: Bash
+#       args_match: "git tag"
+#       when:                 # precondition — the gate fires when it is UNMET
+#         name: newer-than    # newest `fresh` page updated >= newest `than` page
+#         fresh: ["notes/my-scope-retro-*.md"]
+#         than: ["projects/my-scope/ops/release-*.md"]
+#       reason: "Retro gate: run the retro before tagging."

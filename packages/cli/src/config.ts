@@ -26,6 +26,15 @@ function isValidRegex(pattern: string): boolean {
   }
 }
 
+const WhenSchema = z.union([
+  z.string(),
+  z.object({
+    name: z.enum(['newer-than']),
+    fresh: z.array(z.string().min(1)).min(1),
+    than: z.array(z.string().min(1)).min(1)
+  })
+]);
+
 const TriggerSchema = z
   .object({
     id: z.string().min(1),
@@ -36,7 +45,7 @@ const TriggerSchema = z
     tool: z.string().optional(),
     args_match: z.string().optional(),
     files: z.array(z.string().min(1)).optional(),
-    when: z.string().optional(),
+    when: WhenSchema.optional(),
     text: z.string().optional(),
     reason: z.string().optional()
   })

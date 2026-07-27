@@ -31,6 +31,16 @@ triggers_extra:
       tool: Bash
       args_match: "git tag"
       reason: "Retro gate: no retro in scope newer than the last release note."
+    - id: push-gate
+      on: pretool
+      enforce: block
+      tool: Bash
+      args_match: "git push"
+      when:
+        name: newer-than
+        fresh: ["notes/demo-retro-*.md"]
+        than: ["ops/release-*.md"]
+      reason: "Retro gate: the retro is older than the last release note."
 `;
 
 interface RunResult {
@@ -146,6 +156,34 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
     expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('Retro gate');
   }, 30_000);
+
+  it('evaluates a newer-than gate through the binary', async () => {
+    async function writePage(rel: string, updated: string): Promise<void> {
+      const path = join(vaultRoot, rel);
+      await mkdir(join(path, '..'), { recursive: true });
+      await writeFile(path, `---\ntitle: p\nupdated: ${updated}\n---\nbody\n`);
+    }
+    const args = ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'claude'];
+    const push = (session: string): string =>
+      JSON.stringify({
+        session_id: session,
+        tool_name: 'Bash',
+        tool_input: { command: 'git push origin main' }
+      });
+
+    await writePage('ops/release-1.md', '2026-07-20');
+    await writePage('notes/demo-retro-1.md', '2026-07-10');
+    const stale = await runKmd(args, push('e2e-when-1'), kmdHome);
+    expect(stale.code).toBe(0);
+    const parsed = JSON.parse(stale.stdout) as { hookSpecificOutput: Record<string, string> };
+    expect(parsed.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(parsed.hookSpecificOutput.permissionDecisionReason).toContain('older than');
+
+    await writePage('notes/demo-retro-1.md', '2026-07-26');
+    const fresh = await runKmd(args, push('e2e-when-2'), kmdHome);
+    expect(fresh.code).toBe(0);
+    expect(fresh.stdout).toBe('');
+  }, 60_000);
 
   it('fails open on a pretool event when vault.yaml is missing', async () => {
     const emptyRoot = join(base, 'no-vault');

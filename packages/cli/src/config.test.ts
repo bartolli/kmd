@@ -251,6 +251,58 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/needs a reason/);
   });
 
+  it('accepts an object-form when predicate with fresh and than globs', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: retro-gate\n      on: pretool\n      enforce: block\n      tool: Bash\n      args_match: "git tag"\n' +
+        '      when:\n        name: newer-than\n        fresh: ["notes/sotto-retro-*.md"]\n        than: ["projects/sotto/ops/release-*.md"]\n' +
+        '      reason: "Retro gate."\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+    const when = config.triggers_extra?.sotto?.[0]?.when;
+
+    expect(typeof when).toBe('object');
+    expect((when as { name: string }).name).toBe('newer-than');
+  });
+
+  it('rejects an object-form when with an unknown predicate name', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: bad\n      on: pretool\n      enforce: block\n      tool: Bash\n' +
+        '      when:\n        name: fresher-than\n        fresh: ["a"]\n        than: ["b"]\n' +
+        '      reason: "R."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/Invalid vault\.yaml/);
+  });
+
+  it('rejects newer-than without both fresh and than globs', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: half\n      on: pretool\n      enforce: block\n      tool: Bash\n' +
+        '      when:\n        name: newer-than\n        fresh: ["a"]\n' +
+        '      reason: "R."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/Invalid vault\.yaml/);
+  });
+
   it('rejects an invalid trigger regex', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),

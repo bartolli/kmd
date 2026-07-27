@@ -1,10 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { kmdHome } from '@llm-wiki/db/database';
 import type { Trigger, VaultConfig } from './config.js';
 import { loadVaultConfig } from './config.js';
+import { parseFrontmatter } from './frontmatter.js';
 
 export interface PromptEvent {
   session_id: string;
@@ -113,6 +114,7 @@ export interface PretoolMatch {
   id: string;
   enforce: 'inject' | 'warn' | 'block';
   text: string;
+  when?: Trigger['when'];
 }
 
 export function parsePretoolEvent(raw: string): PretoolEvent | null {
@@ -177,16 +179,10 @@ export function matchPretoolTriggers(
   toolInput: unknown,
   triggers: Trigger[],
   cwd?: string
-): { matches: PretoolMatch[]; skipped: string[] } {
+): PretoolMatch[] {
   const matches: PretoolMatch[] = [];
-  const skipped: string[] = [];
   for (const trigger of triggers) {
     if (trigger.on !== 'pretool') continue;
-    if (trigger.when !== undefined) {
-      // State predicates land in slice 3; skipping silently would fake a gate.
-      skipped.push(trigger.id);
-      continue;
-    }
     if (trigger.tool !== undefined && trigger.tool !== toolName) continue;
     if (trigger.args_match !== undefined) {
       const serialized = JSON.stringify(toolInput ?? {});
@@ -202,9 +198,80 @@ export function matchPretoolTriggers(
     }
     const text = trigger.enforce === 'block' ? trigger.reason : trigger.text;
     if (text === undefined) continue;
-    matches.push({ id: trigger.id, enforce: trigger.enforce, text });
+    matches.push({
+      id: trigger.id,
+      enforce: trigger.enforce,
+      text,
+      ...(trigger.when !== undefined && { when: trigger.when })
+    });
   }
-  return { matches, skipped };
+  return matches;
+}
+
+/**
+ * Resolve `when` preconditions for matched triggers only — a predicate walk
+ * never runs for a tool call no trigger matched. `when` names the condition
+ * under which the action is ALLOWED: the trigger fires when it evaluates
+ * false, is suppressed when true, and is skipped (reported) when the
+ * predicate is unknown or unevaluable.
+ */
+export function evaluateMatches(
+  matches: PretoolMatch[],
+  vaultRoot: string
+): { fired: PretoolMatch[]; skipped: string[] } {
+  const fired: PretoolMatch[] = [];
+  const skipped: string[] = [];
+  for (const match of matches) {
+    if (match.when === undefined) {
+      fired.push(match);
+      continue;
+    }
+    const verdict = evaluateWhen(match.when, vaultRoot);
+    if (verdict === null) skipped.push(match.id);
+    else if (!verdict) fired.push(match);
+  }
+  return { fired, skipped };
+}
+
+function evaluateWhen(when: NonNullable<Trigger['when']>, vaultRoot: string): boolean | null {
+  if (typeof when === 'string') return null;
+  try {
+    const than = newestUpdated(vaultRoot, when.than);
+    if (than === null) return true;
+    const fresh = newestUpdated(vaultRoot, when.fresh);
+    if (fresh === null) return false;
+    return fresh >= than;
+  } catch {
+    return null;
+  }
+}
+
+function newestUpdated(vaultRoot: string, globs: string[]): string | null {
+  const regexes = globs.map(globToRegExp);
+  let newest: string | null = null;
+  for (const entry of readdirSync(vaultRoot, { recursive: true }) as string[]) {
+    const rel = entry.split(sep).join('/');
+    if (!rel.endsWith('.md')) continue;
+    if (rel.startsWith('.') || rel.includes('/.')) continue;
+    if (!regexes.some((regex) => regex.test(rel))) continue;
+    const updated = readUpdated(join(vaultRoot, entry));
+    if (updated !== null && (newest === null || updated > newest)) {
+      newest = updated;
+    }
+  }
+  return newest;
+}
+
+function readUpdated(path: string): string | null {
+  try {
+    const { data } = parseFrontmatter(readFileSync(path, 'utf8'));
+    const updated = data.updated;
+    if (typeof updated === 'string') return updated;
+    if (updated instanceof Date) return updated.toISOString().slice(0, 10);
+  } catch {
+    // a malformed page is validate's problem, not the gate's
+  }
+  return null;
 }
 
 export function renderPretool(
@@ -381,17 +448,18 @@ export async function runHookPretool(): Promise<void> {
       return;
     }
     const config = await loadVaultConfig(vaultRoot);
-    const { matches, skipped } = matchPretoolTriggers(
+    const matches = matchPretoolTriggers(
       event.tool_name,
       event.tool_input,
       effectiveTriggers(config, scope),
       event.cwd
     );
+    const { fired, skipped } = evaluateMatches(matches, vaultRoot);
     for (const id of skipped) {
-      diag(`trigger "${id}" has a when predicate — skipped until state predicates ship`);
+      diag(`trigger "${id}": unknown or unevaluable predicate — skipped`);
     }
     const rendered = renderPretool(
-      dedupePretoolMatches(hookStateDir(), event.session_id, matches),
+      dedupePretoolMatches(hookStateDir(), event.session_id, fired),
       format
     );
     for (const line of rendered.stderr) {

@@ -1,13 +1,15 @@
-import { mkdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Trigger, VaultConfig } from './config.js';
+import type { PretoolMatch } from './hook.js';
 import {
   dedupeMatches,
   dedupePretoolMatches,
   effectiveTriggers,
+  evaluateMatches,
   matchPretoolTriggers,
   matchPromptTriggers,
   parsePretoolEvent,
@@ -192,7 +194,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
   };
 
   it('denies a matched tool call with the authored reason (claude format)', () => {
-    const { matches } = matchPretoolTriggers('Bash', { command: 'git tag v0.6.0' }, [gate]);
+    const matches = matchPretoolTriggers('Bash', { command: 'git tag v0.6.0' }, [gate]);
     const rendered = renderPretool(matches, 'claude');
 
     expect(rendered.stdout).not.toBeNull();
@@ -209,7 +211,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
   });
 
   it('stays silent when the tool name does not match', () => {
-    const { matches } = matchPretoolTriggers('Write', { file_path: 'git tag.md' }, [gate]);
+    const matches = matchPretoolTriggers('Write', { file_path: 'git tag.md' }, [gate]);
 
     expect(matches).toEqual([]);
     expect(renderPretool(matches, 'claude').stdout).toBeNull();
@@ -217,7 +219,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
 
   it('matches args_match anywhere in the serialized tool input', () => {
     const compound = matchPretoolTriggers('Bash', { command: 'cd /repo && git tag v2' }, [gate]);
-    expect(compound.matches).toHaveLength(1);
+    expect(compound).toHaveLength(1);
 
     const anyTool: Trigger = { ...gate, id: 'any-tool-gate' };
     delete (anyTool as { tool?: string }).tool;
@@ -226,7 +228,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       { file_path: '/notes.md', content: 'run git tag v3 tomorrow' },
       [anyTool]
     );
-    expect(otherField.matches).toHaveLength(1);
+    expect(otherField).toHaveLength(1);
   });
 
   describe('with session state', () => {
@@ -250,7 +252,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
     };
 
     it('injects context without a permission decision, once per session', () => {
-      const { matches } = matchPretoolTriggers('Bash', { command: 'git tag v1' }, [orient]);
+      const matches = matchPretoolTriggers('Bash', { command: 'git tag v1' }, [orient]);
       const rendered = renderPretool(dedupeMatches(stateDir, 's1', matches), 'claude');
 
       const output = JSON.parse(rendered.stdout as string) as {
@@ -260,16 +262,16 @@ describe('matchPretoolTriggers / renderPretool', () => {
       expect(output.hookSpecificOutput).not.toHaveProperty('permissionDecision');
 
       const again = matchPretoolTriggers('Bash', { command: 'git tag v2' }, [orient]);
-      expect(dedupeMatches(stateDir, 's1', again.matches)).toEqual([]);
+      expect(dedupeMatches(stateDir, 's1', again)).toEqual([]);
     });
 
     it('exempts block-class matches from dedup while inject-class dedups', () => {
       const event = () => matchPretoolTriggers('Bash', { command: 'git tag v1' }, [gate, orient]);
 
-      const first = dedupePretoolMatches(stateDir, 's1', event().matches);
+      const first = dedupePretoolMatches(stateDir, 's1', event());
       expect(first.map((m) => m.id).sort()).toEqual(['retro-gate', 'tag-orientation']);
 
-      const second = dedupePretoolMatches(stateDir, 's1', event().matches);
+      const second = dedupePretoolMatches(stateDir, 's1', event());
       expect(second.map((m) => m.id)).toEqual(['retro-gate']);
     });
   });
@@ -284,7 +286,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       text: 'Force push against a shared branch.'
     };
 
-    const { matches } = matchPretoolTriggers('Bash', { command: 'git push --force' }, [cautious]);
+    const matches = matchPretoolTriggers('Bash', { command: 'git push --force' }, [cautious]);
     const rendered = renderPretool(matches, 'claude');
 
     expect(rendered.stdout).toBeNull();
@@ -299,10 +301,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       args_match: 'git tag',
       text: 'Tag protocol: ops-publish-kmd.'
     };
-    const { matches } = matchPretoolTriggers('Bash', { command: 'git tag v9' }, [
-      gate,
-      orientation
-    ]);
+    const matches = matchPretoolTriggers('Bash', { command: 'git tag v9' }, [gate, orientation]);
 
     const claude = JSON.parse(renderPretool(matches, 'claude').stdout as string) as {
       hookSpecificOutput: Record<string, string>;
@@ -333,10 +332,10 @@ describe('matchPretoolTriggers / renderPretool', () => {
     };
 
     const hit = matchPretoolTriggers('Edit', { file_path: 'dist/kmd.mjs' }, [noDist]);
-    expect(hit.matches.map((m) => m.id)).toEqual(['no-dist']);
+    expect(hit.map((m) => m.id)).toEqual(['no-dist']);
 
     const miss = matchPretoolTriggers('Edit', { file_path: 'src/hook.ts' }, [noDist]);
-    expect(miss.matches).toEqual([]);
+    expect(miss).toEqual([]);
   });
 
   it('pins glob semantics: * stays in a segment, ** crosses, **/ can be empty', () => {
@@ -348,7 +347,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       reason: 'R.'
     });
     const matched = (globs: string[], path: string): boolean =>
-      matchPretoolTriggers('Edit', { file_path: path }, [trigger(globs)]).matches.length > 0;
+      matchPretoolTriggers('Edit', { file_path: path }, [trigger(globs)]).length > 0;
 
     expect(matched(['src/*.ts'], 'src/hook.ts')).toBe(true);
     expect(matched(['src/*.ts'], 'src/lib/fts.ts')).toBe(false);
@@ -375,7 +374,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       [noDist],
       '/repo'
     );
-    expect(hit.matches.map((m) => m.id)).toEqual(['no-dist']);
+    expect(hit.map((m) => m.id)).toEqual(['no-dist']);
 
     const otherCwd = matchPretoolTriggers(
       'Edit',
@@ -383,7 +382,7 @@ describe('matchPretoolTriggers / renderPretool', () => {
       [noDist],
       '/repo'
     );
-    expect(otherCwd.matches).toEqual([]);
+    expect(otherCwd).toEqual([]);
   });
 
   it('ANDs files with the tool matcher', () => {
@@ -396,23 +395,90 @@ describe('matchPretoolTriggers / renderPretool', () => {
       reason: 'R.'
     };
 
-    expect(
-      matchPretoolTriggers('Edit', { file_path: 'dist/a.js' }, [editOnly]).matches
-    ).toHaveLength(1);
-    expect(matchPretoolTriggers('Read', { file_path: 'dist/a.js' }, [editOnly]).matches).toEqual(
-      []
-    );
+    expect(matchPretoolTriggers('Edit', { file_path: 'dist/a.js' }, [editOnly])).toHaveLength(1);
+    expect(matchPretoolTriggers('Read', { file_path: 'dist/a.js' }, [editOnly])).toEqual([]);
   });
 
-  it('skips a when-bearing trigger and reports it instead of gating', () => {
-    const stateful: Trigger = { ...gate, id: 'stateful-gate', when: 'retro-fresh' };
+  describe('evaluateMatches (newer-than)', () => {
+    let vaultRoot: string;
 
-    const { matches, skipped } = matchPretoolTriggers('Bash', { command: 'git tag v1' }, [
-      stateful
-    ]);
+    beforeEach(async () => {
+      vaultRoot = await mkdtemp(join(tmpdir(), 'kmd-when-vault-'));
+    });
 
-    expect(matches).toEqual([]);
-    expect(skipped).toEqual(['stateful-gate']);
+    afterEach(async () => {
+      await rm(vaultRoot, { recursive: true, force: true });
+    });
+
+    function page(rel: string, updated: string): void {
+      const path = join(vaultRoot, rel);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `---\ntitle: p\nupdated: ${updated}\n---\nbody\n`);
+    }
+
+    function gated(): PretoolMatch {
+      return {
+        id: 'retro-gate',
+        enforce: 'block',
+        text: 'Retro gate.',
+        when: {
+          name: 'newer-than',
+          fresh: ['notes/demo-retro-*.md'],
+          than: ['projects/demo/ops/release-*.md']
+        }
+      };
+    }
+
+    it('suppresses the gate when the fresh side outdates the anchor', () => {
+      page('notes/demo-retro-1.md', '2026-07-26');
+      page('projects/demo/ops/release-1.md', '2026-07-20');
+
+      const { fired, skipped } = evaluateMatches([gated()], vaultRoot);
+
+      expect(fired).toEqual([]);
+      expect(skipped).toEqual([]);
+    });
+
+    it('fires the gate when the retro is older or missing', () => {
+      page('notes/demo-retro-1.md', '2026-07-10');
+      page('projects/demo/ops/release-1.md', '2026-07-20');
+      expect(evaluateMatches([gated()], vaultRoot).fired.map((m) => m.id)).toEqual(['retro-gate']);
+
+      rmSync(join(vaultRoot, 'notes/demo-retro-1.md'));
+      expect(evaluateMatches([gated()], vaultRoot).fired.map((m) => m.id)).toEqual(['retro-gate']);
+    });
+
+    it('passes vacuously when the anchor side matches nothing', () => {
+      page('notes/demo-retro-1.md', '2026-07-10');
+
+      expect(evaluateMatches([gated()], vaultRoot).fired).toEqual([]);
+    });
+
+    it('treats a same-day tie as fresh', () => {
+      page('notes/demo-retro-1.md', '2026-07-26');
+      page('projects/demo/ops/release-1.md', '2026-07-26');
+
+      expect(evaluateMatches([gated()], vaultRoot).fired).toEqual([]);
+    });
+
+    it('skips unknown predicates and passes through unconditional matches', () => {
+      const plain: PretoolMatch = { id: 'plain', enforce: 'block', text: 'R.' };
+      const named: PretoolMatch = { ...plain, id: 'legacy', when: 'retro-fresh' };
+
+      const { fired, skipped } = evaluateMatches([plain, named], vaultRoot);
+
+      expect(fired.map((m) => m.id)).toEqual(['plain']);
+      expect(skipped).toEqual(['legacy']);
+    });
+
+    it('ignores pages without a parseable updated date', () => {
+      const path = join(vaultRoot, 'notes/demo-retro-1.md');
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, 'no frontmatter at all\n');
+      page('projects/demo/ops/release-1.md', '2026-07-20');
+
+      expect(evaluateMatches([gated()], vaultRoot).fired.map((m) => m.id)).toEqual(['retro-gate']);
+    });
   });
 });
 
