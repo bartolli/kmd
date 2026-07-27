@@ -13,7 +13,7 @@ NO working tooling, so get this file right first.
 |---|---|---|---|
 | `scopes` | map: scope name → entry | yes | key = directory name under `projects/`; `prime(scope)` resolves here |
 | `scopes.*.status` | string | yes | free string at schema level; keep within `statuses` by convention |
-| `scopes.*.repo` | string | no | consumer repo path/URL, informational |
+| `scopes.*.repo` | string | no | consumer repo path — load-bearing for `kmd hook`: the engine resolves the active scope by matching the session's working directory against it (longest declared path wins, `~` expands) |
 | `scopes.*.methodology` | string | no | must appear in `methodologies` below — one list, one authority |
 | `kinds` | (string \| `{name, signal, where}`)[] | yes | page `kind` vocabulary; validate-enforced. Object form adds a kind-selector row to `wiki://authoring`: *signal* = when to pick the kind, *where* = its path pattern |
 | `statuses` | string[] | yes | page `status` vocabulary; validate-enforced. The canonical set below is served as a one-directional lifecycle; a custom set is served as a plain list |
@@ -24,6 +24,8 @@ NO working tooling, so get this file right first.
 | `sync_protocol_extra` | multiline string | no | appended after the served § Resync protocol |
 | `authoring_rules` | multiline string | no | replaces § Authoring rules entirely — escape hatch; every default rule not restated is gone |
 | `sync_protocol` | multiline string | no | replaces § Resync protocol entirely — same caveat |
+| `triggers_extra` | map: scope → trigger list | no | appended per scope after the engine defaults; the reserved `_all` key fires in every session regardless of scope |
+| `triggers` | map: scope → trigger list | no | full-replace of the trigger base for that scope — escape hatch, same semantics as the pedagogy fields |
 
 Kinds with built-in authoring pedagogy (kind-selector rows in
 `wiki://authoring`): `project`, `spec`, `adr`, `plan`, `story`, `ops`,
@@ -50,12 +52,65 @@ right then):
 3. Stamp the first real page from the template and run `kmd validate`
    to close the loop — validate checks pages, not template files.
 
+## Harness gate triggers
+
+`triggers_extra` / `triggers` declare the vault-owned rules that
+`kmd hook` evaluates at harness events — reminders injected when a
+prompt touches them, gates that warn on or deny a tool call. Trigger
+validation is part of vault.yaml loading and fail-loud: one invalid
+trigger breaks the whole file, and with it every tool.
+
+Each trigger entry:
+
+| Field | Applies to | Notes |
+|---|---|---|
+| `id` | all | unique; duplicate ids keep the first occurrence |
+| `on` | all | `prompt` or `pretool` |
+| `enforce` | all | `inject` (context line) \| `warn` (stderr) \| `block` (deny with reason) |
+| `keywords` | prompt | word-boundary, porter-stemmed match (`releasing` matches `release`, `prerelease` does not); prompt triggers need `keywords` or `intent` |
+| `intent` | prompt | regexes over the raw prompt, case-insensitive — the escape hatch for phrasings stemming can't reach |
+| `tool` | pretool | exact tool name; pretool triggers need `tool`, `args_match`, or `files`; matchers AND-compose |
+| `args_match` | pretool | regex over the serialized tool input |
+| `files` | pretool | globs against the paths the tool touches, relative to the session's working directory (`**` crosses directories, `*` stays within a segment); invalid on prompt triggers |
+| `when` | pretool | precondition — the gate fires only when it is UNMET. One predicate: `{name: newer-than, fresh: [globs], than: [globs]}` — the newest page matching `fresh` must carry frontmatter `updated` at or after the newest matching `than`; when `than` matches nothing the gate passes |
+| `text` | inject, warn | required — the line injected or warned |
+| `reason` | block | required — the denial the agent reads |
+
+```yaml
+triggers_extra:
+  _all:                        # reserved: every session, whatever the scope
+    - id: skill-notes
+      on: prompt
+      enforce: inject
+      keywords: [scratchpad, jot]
+      text: "Skill: /notes captures scratch thoughts into the vault."
+  {{scope}}:
+    - id: retro-before-tag
+      on: pretool
+      enforce: block
+      tool: Bash
+      args_match: "\\bgit tag\\b"
+      when:
+        name: newer-than
+        fresh: ["notes/{{scope}}-retro-*.md"]
+        than: ["projects/{{scope}}/ops/release-*.md"]
+      reason: "Retro gate: run the retro before tagging."
+```
+
+A fresh vault needs no triggers — grow them from observed failures,
+like the rest of the vocabulary. The auto validate + sync loop
+(`kmd hook posttool`) is fixed-function and needs no vault.yaml
+configuration at all; do not invent trigger entries for it. Hook
+*wiring* (which harness events invoke `kmd hook`) is plugin/adapter
+territory, not vault.yaml.
+
 ## Minimal starter (all required fields, one scope)
 
 ```yaml
 scopes:
   {{scope}}:
     status: active
+    repo: {{repo_path}}        # enables kmd hook scope resolution from the session cwd
 
 kinds: [project, spec, adr, plan, story, ops, topic, article, src, note]
 statuses: [draft, active, superseded, archived]
@@ -90,8 +145,9 @@ template presence — the gap only surfaces when an agent first fetches
    cp <skill-root>/assets/vault-templates/*.md <vault>/templates/
    ```
 
-   `<skill-root>` is the `wiki/` directory at the power root.
-   Filenames are the server's contract — never rename. Expected set
+   `<skill-root>` is this skill's root directory — the one containing
+   `references/` and `assets/`. Filenames are the server's contract —
+   never rename. Expected set
    (11 files): `project-index.md`, `project-primer.md`,
    `project-spec.md`, `project-adr.md`, `project-plan.md`,
    `project-ops.md`, `project-story.md`, `research-index.md`,
@@ -116,5 +172,5 @@ bootstrap that "renders" them breaks every future page.
 2. Register/start the wiki MCP server pointing at the vault root;
    verify `prime({{scope}})` answers and `wiki://templates` lists all
    11 entries.
-3. Continue the standard `wiki` bootstrap (scope, tracker, project
+3. Continue the standard wiki-skill bootstrap (scope, tracker, project
    instructions template).

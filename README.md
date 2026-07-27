@@ -249,6 +249,8 @@ scopes:
 
 **Failure mode: open, and loud.** A missing or invalid `vault.yaml`, an unreadable trigger file, or a broken predicate never blocks your prompt or denies unrelated tool calls — the engine emits one stderr diagnostic and stands down until the config is fixed.
 
+**Node warnings in agent context.** `kmd` filters its own `node:sqlite` ExperimentalWarning off stderr. Other Node tooling running inside the agent loop may still print `ExperimentalWarning` lines into hook and MCP stderr — noise the model reads. Suppress globally with `export NODE_OPTIONS="--disable-warning=ExperimentalWarning"`, or scope it to the agent process only via your harness's env settings (Claude Code: `settings.json` → `"env"`), leaving your shell sessions untouched.
+
 ## Pages
 
 Every page has YAML frontmatter validated against `vault.yaml`. Use the templates in `templates/` (or `wiki://template/{domain}/{kind}` via MCP) — don't hand-roll.

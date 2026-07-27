@@ -25,12 +25,13 @@ Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) 
 
 ## Gate hooks
 
-Registers the `kmd hook` gate engine on two events — no manual wiring:
+Registers the `kmd hook` gate engine on three events — no manual wiring:
 
 - **UserPromptSubmit** — prompt-time reminders from your vault's `triggers_extra` (`vault.yaml`), injected once per session per trigger.
 - **PreToolUse** — vault-declared gates on tool calls: deny with a reason, warn, or inject context, including state-aware preconditions (`when: newer-than`). The frontmatter guard for vault writes rides the same event.
+- **PostToolUse** — auto validate + sync: after a write inside the vault, `kmd validate` runs; findings return into the session for the agent to fix and the index holds until they are; a clean write syncs silently. Writes outside the vault cost nothing.
 
-Scope resolves from the session's working directory when your `vault.yaml` scopes declare `repo:`; a project can override with `WIKI_SCOPE` in its settings `env`. The hooks run `@bartolli/kmd@latest` — the same registration shape as the MCP server. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
+Scope resolves from the session's working directory when your `vault.yaml` scopes declare `repo:`; a project can override with `WIKI_SCOPE` in its settings `env`. The hooks run through a resolver wrapper: a globally installed `kmd` at `0.6.0`+ runs in-process (fast path — `npm i -g @bartolli/kmd` recommended), else `npx @bartolli/kmd@latest`. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
 
 ## Recommended companion
 

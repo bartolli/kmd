@@ -71,6 +71,10 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 | MCP registration | `.mcp.json` at the project root, or user-level settings | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
 | Project instructions | `AGENTS.md` or equivalent (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
+### Gate hooks
+
+The plugin registers `kmd hook` on the harness's events — this bootstrap adds no wiring step. Three behaviors ride along: prompt-time reminders, tool gates, and auto validate + sync after every vault write (the resync protocol runs as an event; validation findings return as hook feedback and hold the sync until fixed). The bootstrap's only responsibilities toward them: declare `repo:` on each scope in vault.yaml so the engine resolves the active scope from the session's working directory, and leave the trigger sections empty — vault-owned triggers grow from observed failures (`references/vault-yaml.md` § Harness gate triggers), never from upfront speculation.
+
 ## Process
 
 ### 1. Explore
