@@ -43,6 +43,25 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "posttool",
+              "${user_config.vault_path}",
+              "--harness",
+              "claude"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

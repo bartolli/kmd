@@ -24,6 +24,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook posttool \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\" --harness claude",
+            "timeout": 60,
+            "statusMessage": "wiki validate + sync"
+          }
+        ]
+      }
     ]
   }
 }
