@@ -9,6 +9,8 @@ commands:
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
   config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
   db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
+  hook prompt [<vault-root>] [--scope <s>]
+                           prompt-event gate engine: JSON event on stdin, context lines on stdout
 
 options:
   --version   print version
@@ -66,6 +68,23 @@ async function run(): Promise<void> {
         await runDbReset();
       } else {
         console.error(sub ? `unknown db subcommand: ${sub}` : 'usage: kmd db reset [<vault-root>]');
+        process.exit(2);
+      }
+      break;
+    }
+    case 'hook': {
+      const sub = positionals[1];
+      if (sub === 'prompt') {
+        // Owns its errors and always exits 0 — never falls through to the
+        // global handler, whose stderr/exit(1) would fire on every prompt.
+        const { runHookPrompt } = await import('@llm-wiki/cli/hook');
+        await runHookPrompt();
+      } else {
+        console.error(
+          sub
+            ? `unknown hook event: ${sub}`
+            : 'usage: kmd hook prompt [<vault-root>] [--scope <scope>]'
+        );
         process.exit(2);
       }
       break;

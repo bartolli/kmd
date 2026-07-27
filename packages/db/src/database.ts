@@ -65,6 +65,11 @@ export function openDatabase(dbPath: string): DatabaseSync {
   return db;
 }
 
+/** Root of kmd's per-user state tree (default `~/.kmd`); `$KMD_HOME` relocates it. */
+export function kmdHome(): string {
+  return process.env.KMD_HOME ?? join(homedir(), '.kmd');
+}
+
 /**
  * Directory holding all per-vault indexes: `$KMD_HOME/db/{vault-key}/index.db`
  * (default `~/.kmd`). One directory per vault keyed by resolved path, so two
@@ -72,8 +77,7 @@ export function openDatabase(dbPath: string): DatabaseSync {
  * gets a fresh one.
  */
 export function indexRootDir(): string {
-  const home = process.env.KMD_HOME ?? join(homedir(), '.kmd');
-  return join(home, 'db');
+  return join(kmdHome(), 'db');
 }
 
 /**

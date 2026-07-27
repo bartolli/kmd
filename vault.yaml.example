@@ -85,3 +85,19 @@ sync_protocol_extra: |
   Session-closing primer resyncs run /retro first: answer the two retro
   questions, convert every answer into wiki artifacts, then author the
   primer from the corrected state.
+
+# --- harness gate triggers (optional) -----------------------------------
+# Per-scope triggers for `kmd hook` — declarative gates fired at harness
+# events. `triggers_extra` appends to the engine defaults; `triggers`
+# replaces them (same semantics as the pedagogy fields). Prompt triggers
+# match keywords word-boundary and stemmed (releasing/released match
+# "release"; prerelease does not) with `intent` regexes as escape hatch.
+#
+# triggers_extra:
+#   my-scope:
+#     - id: release-protocol
+#       on: prompt            # prompt | pretool (pretool: slice 2)
+#       enforce: inject       # inject | warn | block
+#       keywords: [release, tag, publish]
+#       intent: ["cut (a )?release"]
+#       text: "Release protocol: retro gates the tag."

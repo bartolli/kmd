@@ -8,7 +8,8 @@
     "wiki": "./bin/wiki.ts"
   },
   "exports": {
-    "./cli": "./src/cli.ts"
+    "./cli": "./src/cli.ts",
+    "./hook": "./src/hook.ts"
   },
   "scripts": {
     "start": "tsx bin/wiki.ts sync",

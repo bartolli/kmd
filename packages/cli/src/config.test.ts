@@ -145,6 +145,80 @@ describe('loadVaultConfig', () => {
     expect(config.sync_protocol_extra).toContain('Extra protocol line.');
   });
 
+  it('returns scoped trigger lists', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: release-protocol\n      on: prompt\n      enforce: inject\n      keywords: [release]\n      text: "Release protocol."\n'
+    );
+
+    const config = await loadVaultConfig(dir);
+
+    expect(config.triggers_extra?.sotto?.[0]?.id).toBe('release-protocol');
+  });
+
+  it('rejects duplicate trigger ids within a scope list', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n' +
+        '    - id: dup\n      on: prompt\n      enforce: inject\n      keywords: [a]\n      text: "A."\n' +
+        '    - id: dup\n      on: prompt\n      enforce: inject\n      keywords: [b]\n      text: "B."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/duplicate trigger id "dup"/);
+  });
+
+  it('rejects a prompt trigger with neither keywords nor intent', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: bare\n      on: prompt\n      enforce: inject\n      text: "T."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/needs keywords or intent/);
+  });
+
+  it('rejects a block trigger without a reason', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: gate\n      on: pretool\n      enforce: block\n      tool: Bash\n      args_match: "git tag"\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/needs a reason/);
+  });
+
+  it('rejects an invalid trigger regex', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: bad\n      on: prompt\n      enforce: inject\n      intent: ["cut (a release"]\n      text: "T."\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/invalid regex/);
+  });
+
   it('throws when a required vocabulary section is missing', async () => {
     // `tags` is required — an incomplete config is not a single source of truth.
     await writeFile(
