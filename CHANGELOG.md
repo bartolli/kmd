@@ -1,3 +1,18 @@
+## [v0.6.0] - 2026-07-27
+
+### Added
+
+- `kmd hook prompt` — prompt-time trigger engine: triggers declared in `vault.yaml` (`triggers` full-replace per scope, `triggers_extra` additive, reserved `_all` key fires vault-wide); `keywords` match on word boundaries with porter stemming, `intent` regexes as escape hatch; one context line per new match, once per session (dedup state at `~/.kmd/state/hook/`)
+- `kmd hook pretool` — deterministic tool gates: `tool`, `args_match` (regex over tool input), and `files` (globs against the paths the tool touches, relative to the event working directory) AND-compose; enforcement classes `inject` | `warn` | `block`; block-class gates exempt from session dedup
+- `when` state predicates on pretool gates — `newer-than {fresh, than}` compares frontmatter `updated` across vault pages; an unmet precondition fires the gate, an unevaluable predicate skips with a diagnostic
+- `kmd hook posttool` — auto validate + sync: a tool call that wrote inside the vault runs `kmd validate`; findings return as hook feedback and hold the sync; a clean write syncs the index silently; write detection covers `file_path`-style inputs and codex `apply_patch` envelopes
+- `--harness claude` codec — Claude Code decision JSON for tool events (deny with reason, context injection, decision block on validation findings); neutral JSON contract without the flag
+- `--harness kiro-ide` codec — prompt event read from Kiro IDE's `$USER_PROMPT` (Kiro writes nothing to stdin); session dedup keyed to a per-workspace 30-minute bucket (Kiro passes no session id)
+- `--triggers <file>` — compiled trigger list (YAML/JSON) as an additive source; file triggers fire without an active scope
+- scope resolution from the event working directory against `scopes.*.repo` (longest declared path wins, `~` expands); precedence: `--scope` > `$WIKI_SCOPE` > repo match
+- hook exit-code carve-out: hook events exit `0` on every path; a degraded engine (missing or invalid config, bad payload, unreadable trigger file) emits one stderr diagnostic and never blocks a prompt or denies unrelated tool calls
+- wiki-sdd plugins (claude, codex): prompt, pretool, and posttool events registered through a resolver wrapper that runs a `>= 0.6.0` global `kmd` in-process and falls back to `npx @bartolli/kmd@latest`
+
 ## [v0.5.1] - 2026-07-25
 
 ### Fixed

@@ -28,7 +28,8 @@ kmd sync                     vault → SQLite index (runs validate first)
 kmd mcp [<vault-root>]       stdio MCP server
 kmd config [<vault-root>]    print vault + index resolution; no vault → list known vaults
 kmd db reset [<vault-root>]  delete the vault's index
-kmd hook <prompt|pretool>    harness gate engine — see "Hook gates" below
+kmd hook <prompt|pretool|posttool>
+                             harness gate engine — see "Hook gates" below
 ```
 
 The index is **per-vault**: `~/.kmd/db/{vault-key}/index.db`, keyed by the resolved vault root — multiple vaults never share or clobber an index, and re-pointing a server at a different vault can't serve stale rows from the old one. `kmd config` prints the resolution (or lists every known vault), and agents get `vault_root` in every `prime` response — that's the base for resolving `search`'s vault-relative paths.
@@ -178,10 +179,11 @@ A scope methodology missing from the list fails the whole file at load — fail-
 
 A rule written in prose loses the agent's attention a hundred thousand tokens in. A trigger fires at the exact moment the rule matters — as a reminder injected into context, or as a gate that stops the tool call. Triggers are declared in `vault.yaml`; `kmd hook` evaluates them when the agent harness fires an event.
 
-Two events:
+Three events:
 
 - **`kmd hook prompt`** — runs when the user submits a prompt. Matching triggers each inject one context line (a protocol pointer, a skill reminder). Each trigger fires **once per session** — a rule you've seen is a rule you've seen.
 - **`kmd hook pretool`** — runs before the agent executes a tool. A matching gate can inject context, warn, or **deny the call with a reason the agent reads**. Deny-class gates fire every time; only reminders spend the once-per-session budget.
+- **`kmd hook posttool`** — runs after the agent writes a file. When the file is inside the vault, `kmd validate` runs on the spot: findings come back into the session for the agent to fix, and the index doesn't sync until they are. A clean write syncs silently. The edit-validate-sync loop stops being something the agent has to remember. Writes outside the vault exit without touching anything.
 
 ```yaml
 triggers_extra:
@@ -224,12 +226,17 @@ npm i -g @bartolli/kmd
     "PreToolUse": [
       { "hooks": [{ "type": "command",
         "command": "kmd hook pretool /absolute/path/to/vault --scope my-app --harness claude" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit",
+        "hooks": [{ "type": "command",
+        "command": "kmd hook posttool /absolute/path/to/vault --harness claude" }] }
     ]
   }
 }
 ```
 
-`--harness claude` emits Claude Code's PreToolUse decision JSON — deny with reason, context injection, never a silent auto-approve. Without the flag the output is a neutral JSON contract for other integrations. Plugins that ship skills can compile their activation triggers into a file and pass `--triggers <file>` — those fire even when no scope is active.
+`--harness claude` emits Claude Code's decision JSON for tool events — deny with reason, context injection, never a silent auto-approve. Without the flag the output is a neutral JSON contract for other integrations. Kiro IDE users wire the prompt event with `--harness kiro-ide`: the prompt arrives via Kiro's `$USER_PROMPT` (Kiro writes nothing to stdin), and because Kiro passes no session id, reminders dedup per 30-minute window per workspace instead of per session. Plugins that ship skills can compile their activation triggers into a file and pass `--triggers <file>` — those fire even when no scope is active.
 
 Declare `repo:` on your scopes and you can drop `--scope` entirely — the engine resolves the scope from the session's working directory (longest declared path wins, `~` expands):
 
