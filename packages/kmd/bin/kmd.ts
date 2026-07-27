@@ -19,8 +19,9 @@ commands:
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
   config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
   db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
-  hook <prompt|pretool> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
-                           harness gate engine: JSON event on stdin, decision/context on stdout
+  hook <prompt|pretool|posttool> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
+                           harness gate engine: JSON event on stdin, decision/context on stdout;
+                           posttool auto-runs validate + sync after a vault write
 
 options:
   --version   print version
@@ -93,11 +94,14 @@ async function run(): Promise<void> {
       } else if (sub === 'pretool') {
         const { runHookPretool } = await import('@llm-wiki/cli/hook');
         await runHookPretool();
+      } else if (sub === 'posttool') {
+        const { runHookPosttool } = await import('@llm-wiki/cli/hook');
+        await runHookPosttool();
       } else {
         console.error(
           sub
             ? `unknown hook event: ${sub}`
-            : 'usage: kmd hook <prompt|pretool> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
+            : 'usage: kmd hook <prompt|pretool|posttool> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
         );
         process.exit(2);
       }

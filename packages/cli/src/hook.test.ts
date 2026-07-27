@@ -16,9 +16,12 @@ import {
   matchPromptTriggers,
   parsePretoolEvent,
   parsePromptEvent,
+  renderPosttool,
   renderPretool,
-  resolveScope
+  resolveScope,
+  vaultPathTouched
 } from './hook.js';
+import type { Finding } from './validate.js';
 
 function injectTrigger(overrides: Partial<Trigger> = {}): Trigger {
   return {
@@ -658,6 +661,103 @@ describe('parsePretoolEvent', () => {
     );
 
     expect(event?.cwd).toBe('/repo');
+  });
+});
+
+describe('vaultPathTouched', () => {
+  it('matches absolute paths under the vault root, including the root itself', () => {
+    expect(vaultPathTouched({ file_path: '/v/notes/x.md' }, '/v')).toBe(true);
+    expect(vaultPathTouched({ file_path: '/v' }, '/v')).toBe(true);
+    expect(vaultPathTouched({ file_path: '/elsewhere/notes/x.md' }, '/v')).toBe(false);
+  });
+
+  it('does not treat a sibling directory prefix as inside the vault', () => {
+    expect(vaultPathTouched({ file_path: '/v-other/x.md' }, '/v')).toBe(false);
+  });
+
+  it('resolves relative candidates against the event cwd', () => {
+    expect(vaultPathTouched({ file_path: 'notes/x.md' }, '/v', '/v')).toBe(true);
+    expect(vaultPathTouched({ file_path: 'notes/x.md' }, '/v', '/repo')).toBe(false);
+  });
+
+  it('ignores tool input without path fields', () => {
+    expect(vaultPathTouched({ command: 'echo /v/notes/x.md' }, '/v')).toBe(false);
+    expect(vaultPathTouched(undefined, '/v')).toBe(false);
+  });
+
+  it('reads paths out of an apply_patch envelope', () => {
+    const patch = '*** Begin Patch\n*** Update File: /v/notes/x.md\n@@\n-a\n+b\n*** End Patch';
+
+    expect(vaultPathTouched({ patch }, '/v')).toBe(true);
+    expect(vaultPathTouched(patch, '/v')).toBe(true);
+    expect(vaultPathTouched({ input: patch.replace('/v/', '/elsewhere/') }, '/v')).toBe(false);
+  });
+
+  it('resolves relative apply_patch paths against the event cwd', () => {
+    const patch = '*** Begin Patch\n*** Add File: notes/new.md\n+body\n*** End Patch';
+
+    expect(vaultPathTouched({ patch }, '/v', '/v')).toBe(true);
+    expect(vaultPathTouched({ patch }, '/v', '/repo')).toBe(false);
+  });
+});
+
+describe('renderPosttool', () => {
+  const error: Finding = {
+    path: 'notes/x.md',
+    rule: 'kind-vocabulary',
+    severity: 'error',
+    message: 'unknown kind "bogus"'
+  };
+  const warning: Finding = {
+    path: 'notes/y.md',
+    rule: 'tag-alias',
+    severity: 'warning',
+    message: 'alias tag'
+  };
+
+  it('renders nothing on the quiet path', () => {
+    expect(renderPosttool([], true, 'claude')).toBeNull();
+    expect(renderPosttool([], true, 'neutral')).toBeNull();
+  });
+
+  it('maps errors to a decision block carrying the fix list (claude)', () => {
+    const out = JSON.parse(renderPosttool([error, warning], false, 'claude') as string) as {
+      decision: string;
+      reason: string;
+    };
+
+    expect(out.decision).toBe('block');
+    expect(out.reason).toContain('kind-vocabulary');
+    expect(out.reason).toContain('tag-alias');
+  });
+
+  it('surfaces warnings as context without a decision (claude)', () => {
+    const out = JSON.parse(renderPosttool([warning], true, 'claude') as string) as {
+      decision?: string;
+      hookSpecificOutput: Record<string, string>;
+    };
+
+    expect(out.decision).toBeUndefined();
+    expect(out.hookSpecificOutput.hookEventName).toBe('PostToolUse');
+    expect(out.hookSpecificOutput.additionalContext).toContain('tag-alias');
+  });
+
+  it('reports a failed sync on an otherwise clean vault (claude)', () => {
+    const out = JSON.parse(renderPosttool([], false, 'claude') as string) as {
+      hookSpecificOutput: Record<string, string>;
+    };
+
+    expect(out.hookSpecificOutput.additionalContext).toContain('kmd sync failed');
+  });
+
+  it('emits findings and sync status as JSON (neutral)', () => {
+    const out = JSON.parse(renderPosttool([error], false, 'neutral') as string) as {
+      findings: Finding[];
+      synced: boolean;
+    };
+
+    expect(out.findings).toEqual([error]);
+    expect(out.synced).toBe(false);
   });
 });
 

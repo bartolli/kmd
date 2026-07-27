@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -257,6 +258,68 @@ describe('kmd hook prompt (end-to-end)', () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toBe('Skill: /triage moves stories through the state machine.\n');
+  }, 30_000);
+
+  it('posttool: validates and syncs quietly after a clean vault write', async () => {
+    const page = join(vaultRoot, 'notes', 'demo-note.md');
+    await mkdir(join(vaultRoot, 'notes'), { recursive: true });
+    await writeFile(
+      page,
+      '---\ntitle: Demo note\ntags: [governance]\nupdated: 2026-07-27\n---\nBody.\n'
+    );
+
+    const result = await runKmd(
+      ['hook', 'posttool', vaultRoot, '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-post-1',
+        tool_name: 'Write',
+        tool_input: { file_path: page }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(existsSync(join(kmdHome, 'db'))).toBe(true);
+  }, 30_000);
+
+  it('posttool: blocks with the fix list and holds sync on validation errors', async () => {
+    const page = join(vaultRoot, 'notes', 'bad-note.md');
+    await mkdir(join(vaultRoot, 'notes'), { recursive: true });
+    await writeFile(page, '---\ntitle: Bad\nkind: bogus\ntags: [governance]\n---\nBody.\n');
+
+    const result = await runKmd(
+      ['hook', 'posttool', vaultRoot, '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-post-2',
+        tool_name: 'Write',
+        tool_input: { file_path: page }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { decision: string; reason: string };
+    expect(parsed.decision).toBe('block');
+    expect(parsed.reason).toContain('kind-vocabulary');
+    expect(existsSync(join(kmdHome, 'db'))).toBe(false);
+  }, 30_000);
+
+  it('posttool: ignores writes outside the vault root', async () => {
+    const result = await runKmd(
+      ['hook', 'posttool', vaultRoot, '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-post-3',
+        tool_name: 'Write',
+        tool_input: { file_path: join(base, 'elsewhere', 'code.ts') }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
+    expect(existsSync(join(kmdHome, 'db'))).toBe(false);
   }, 30_000);
 
   it('fails open on a pretool event when vault.yaml is missing', async () => {

@@ -262,12 +262,22 @@ export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
   return 'changed';
 }
 
-export async function runSync(): Promise<void> {
-  const env = loadEnv();
-  const dbPath = resolveIndexPath(env.WIKI_VAULT);
-  console.log(`sync: ${env.WIKI_VAULT} → ${dbPath}`);
+export interface SyncStats {
+  changed: number;
+  unchanged: number;
+  skipped: number;
+  pagesDeleted: number;
+  linksDeleted: number;
+  noPages: boolean;
+}
 
-  const vaultConfig = await loadVaultConfig(env.WIKI_VAULT);
+/**
+ * The sync pipeline without operator output — the seam the posttool hook
+ * calls in-process, where stdout belongs to the harness protocol.
+ */
+export async function syncVault(vaultRoot: string): Promise<SyncStats> {
+  const dbPath = resolveIndexPath(vaultRoot);
+  const vaultConfig = await loadVaultConfig(vaultRoot);
   const scopes = new Set(Object.keys(vaultConfig.scopes));
 
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -276,7 +286,7 @@ export async function runSync(): Promise<void> {
   try {
     const files: string[] = [];
     for (const domain of SCAN_DOMAINS) {
-      files.push(...(await walkMarkdown(env.WIKI_VAULT, domain)));
+      files.push(...(await walkMarkdown(vaultRoot, domain)));
     }
 
     const indexedPaths: string[] = [];
@@ -285,7 +295,7 @@ export async function runSync(): Promise<void> {
     let skipped = 0;
 
     for (const file of files) {
-      const path = toRelativePath(env.WIKI_VAULT, file);
+      const path = toRelativePath(vaultRoot, file);
       const raw = await readFile(file, 'utf8');
       const parsed = parseFrontmatter(raw);
       const fields = buildPageFields(path, raw, parsed, scopes);
@@ -315,19 +325,34 @@ export async function runSync(): Promise<void> {
         .prepare('DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)')
         .run();
       linksDeleted = Number(linkResult.changes);
-    } else {
-      console.warn('no indexable pages found; skipping orphan deletion (safety)');
     }
 
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
 
-    setMeta(db, 'vault_root', canonicalVaultRoot(env.WIKI_VAULT));
+    setMeta(db, 'vault_root', canonicalVaultRoot(vaultRoot));
     setMeta(db, 'last_synced', new Date().toISOString());
 
-    console.log(
-      `done: ${changed} changed, ${unchanged} unchanged, ${skipped} skipped, ${pagesDeleted} pages deleted, ${linksDeleted} link orphans cleared`
-    );
+    return {
+      changed,
+      unchanged,
+      skipped,
+      pagesDeleted,
+      linksDeleted,
+      noPages: indexedPaths.length === 0
+    };
   } finally {
     db.close();
   }
+}
+
+export async function runSync(): Promise<void> {
+  const env = loadEnv();
+  console.log(`sync: ${env.WIKI_VAULT} → ${resolveIndexPath(env.WIKI_VAULT)}`);
+  const stats = await syncVault(env.WIKI_VAULT);
+  if (stats.noPages) {
+    console.warn('no indexable pages found; skipping orphan deletion (safety)');
+  }
+  console.log(
+    `done: ${stats.changed} changed, ${stats.unchanged} unchanged, ${stats.skipped} skipped, ${stats.pagesDeleted} pages deleted, ${stats.linksDeleted} link orphans cleared`
+  );
 }

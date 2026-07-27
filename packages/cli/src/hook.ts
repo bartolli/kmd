@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, sep } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { kmdHome } from '@llm-wiki/db/database';
@@ -9,6 +9,8 @@ import { z } from 'zod';
 import type { Trigger, VaultConfig } from './config.js';
 import { loadVaultConfig, TriggerSchema } from './config.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { syncVault } from './sync.js';
+import { type Finding, hasErrors, validateVault } from './validate.js';
 
 export interface PromptEvent {
   session_id: string;
@@ -398,6 +400,68 @@ export function renderPretool(
   };
 }
 
+// Codex apply_patch envelope: paths live in the patch text, not input fields.
+const PATCH_FILE_RE = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
+
+function patchPaths(toolInput: unknown): string[] {
+  const fields =
+    typeof toolInput === 'object' && toolInput !== null
+      ? (toolInput as Record<string, unknown>)
+      : {};
+  const sources = [toolInput, fields.patch, fields.input, fields.command].filter(
+    (value): value is string => typeof value === 'string'
+  );
+  const paths: string[] = [];
+  for (const source of sources) {
+    for (const match of source.matchAll(PATCH_FILE_RE)) {
+      paths.push((match[1] as string).trim());
+    }
+  }
+  return paths;
+}
+
+/**
+ * Path guard for the posttool event: did this tool call touch a file inside
+ * the vault? Relative candidates resolve against the event cwd. A miss is the
+ * hot path — every non-vault edit in a session flows through here.
+ */
+export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: string): boolean {
+  const root = resolve(vaultRoot);
+  const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
+  return candidates.some((candidate) => {
+    const absolute = resolve(cwd ?? '.', candidate);
+    return absolute === root || absolute.startsWith(`${root}/`);
+  });
+}
+
+/**
+ * Posttool outcome codec. Errors read as the fix list (sync did not run);
+ * warnings pass the sync gate but still surface once. The quiet path — no
+ * findings, sync clean — renders nothing: zero per-edit noise.
+ */
+export function renderPosttool(
+  findings: Finding[],
+  synced: boolean,
+  format: 'neutral' | 'claude'
+): string | null {
+  if (findings.length === 0 && synced) return null;
+  const lines = findings.map((f) => `${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
+  if (format === 'claude') {
+    if (hasErrors(findings)) {
+      return JSON.stringify({
+        decision: 'block',
+        reason: `kmd validate failed — fix before the index syncs:\n${lines.join('\n')}`
+      });
+    }
+    const hookSpecificOutput: Record<string, string> = { hookEventName: 'PostToolUse' };
+    const notes = [...lines];
+    if (!synced) notes.push('kmd sync failed — index not updated; see hook stderr');
+    hookSpecificOutput.additionalContext = notes.join('\n');
+    return JSON.stringify({ hookSpecificOutput });
+  }
+  return JSON.stringify({ findings, synced });
+}
+
 /** Block-class gates fire on every event; only inject/warn spend the noise budget. */
 export function dedupePretoolMatches(
   stateDir: string,
@@ -594,6 +658,48 @@ export async function runHookPretool(): Promise<void> {
     }
     if (rendered.stdout !== null) {
       console.log(rendered.stdout);
+    }
+  } catch (err) {
+    diag(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * `kmd hook posttool [<vault-root>] [--harness claude]`. Fixed-function, not
+ * trigger-driven: a tool call that wrote inside the vault runs validate
+ * in-process; errors render as feedback and hold the sync, otherwise the
+ * index syncs quietly. The resync protocol as an event instead of prose.
+ * Fails open and exits 0 on every path, like the other hook events.
+ */
+export async function runHookPosttool(): Promise<void> {
+  try {
+    const invocation = hookInvocation();
+    if (invocation === null) return;
+    let format: 'neutral' | 'claude' = 'neutral';
+    if (invocation.harness === 'claude') {
+      format = 'claude';
+    } else if (invocation.harness !== undefined) {
+      diag(`unknown harness "${String(invocation.harness)}" — emitting the neutral contract`);
+    }
+    const event = parsePretoolEvent(await readStdin());
+    if (event === null) {
+      diag('stdin is not a posttool event ({session_id, tool_name})');
+      return;
+    }
+    if (!vaultPathTouched(event.tool_input, invocation.vaultRoot, event.cwd)) return;
+    const findings = await validateVault(invocation.vaultRoot);
+    let synced = false;
+    if (!hasErrors(findings)) {
+      try {
+        await syncVault(invocation.vaultRoot);
+        synced = true;
+      } catch (err) {
+        diag(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const rendered = renderPosttool(findings, synced, format);
+    if (rendered !== null) {
+      console.log(rendered);
     }
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
