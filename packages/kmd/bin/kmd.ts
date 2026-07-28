@@ -97,11 +97,15 @@ async function run(): Promise<void> {
       } else if (sub === 'posttool') {
         const { runHookPosttool } = await import('@llm-wiki/cli/hook');
         await runHookPosttool();
+      } else if (sub) {
+        // A typo'd event name is the degraded-engine state the fail-open
+        // contract covers, and exit 2 on UserPromptSubmit erases the prompt.
+        // Bare `kmd hook` keeps the loud usage error — harness wiring always
+        // passes an event, so a missing one is operator misuse.
+        console.error(`kmd hook: unknown event: ${sub}`);
       } else {
         console.error(
-          sub
-            ? `unknown hook event: ${sub}`
-            : 'usage: kmd hook <prompt|pretool|posttool> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
+          'usage: kmd hook <prompt|pretool|posttool> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
         );
         process.exit(2);
       }
@@ -127,6 +131,15 @@ async function run(): Promise<void> {
       break;
     }
     default: {
+      // Same fail-open contract as `kmd hook <bad-event>`: a known event
+      // name in the tail marks the invocation as harness wiring, where
+      // exit 2 blocks every prompt. Operator typos (`kmd valdate`) carry
+      // no event token and keep the loud usage error.
+      const tail = positionals[1];
+      if (tail === 'prompt' || tail === 'pretool' || tail === 'posttool') {
+        console.error(`kmd: unknown command: ${command}`);
+        break;
+      }
       console.error(`unknown command: ${command}\n\n${USAGE}`);
       process.exit(2);
     }

@@ -165,11 +165,49 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(result.stderr).toContain('kmd hook:');
   }, 30_000);
 
-  it('rejects an unknown hook event loudly', async () => {
-    const result = await runKmd(['hook', 'nope'], '', kmdHome);
+  it('degrades open on an unknown hook event', async () => {
+    const result = await runKmd(
+      ['hook', 'pretol', vaultRoot, '--scope', 'demo'],
+      promptEvent('s1', "let's cut the release"),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(result.stderr).toContain('kmd hook:');
+    expect(result.stderr).toContain('pretol');
+  }, 30_000);
+
+  it('keeps a missing hook event a loud usage error', async () => {
+    const result = await runKmd(['hook'], '', kmdHome);
 
     expect(result.code).toBe(2);
-    expect(result.stderr).toContain('unknown hook event: nope');
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('usage: kmd hook <prompt|pretool|posttool>');
+    expect(result.stderr).not.toContain('unknown event');
+  }, 30_000);
+
+  it('degrades open on a command-position typo carrying a hook event', async () => {
+    const result = await runKmd(
+      ['hok', 'prompt', vaultRoot, '--scope', 'demo'],
+      promptEvent('s1', "let's cut the release"),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(result.stderr).toContain('unknown command: hok');
+  }, 30_000);
+
+  it('keeps a plain command typo a loud usage error', async () => {
+    const result = await runKmd(['valdate'], '', kmdHome);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('unknown command: valdate');
+    expect(result.stderr).toContain('usage: kmd <command>');
   }, 30_000);
 
   it('denies a gated tool call through the binary (claude format)', async () => {
