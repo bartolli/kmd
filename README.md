@@ -179,6 +179,8 @@ A scope methodology missing from the list fails the whole file at load — fail-
 
 A rule written in prose loses the agent's attention a hundred thousand tokens in. A trigger fires at the exact moment the rule matters — as a reminder injected into context, or as a gate that stops the tool call. Triggers are declared in `vault.yaml`; `kmd hook` evaluates them when the agent harness fires an event.
 
+This inverts where pedagogy lives. Instructions files (`CLAUDE.md`, `AGENTS.md`), memory files, and playbooks pay their token cost on every request and compete with the task for attention — yet most of their rules are conditional: they bind only at specific moments (a release, a vault write, a force push). Hooks move those rules out of the standing context into an event layer — zero tokens while silent, the full rule at the moment it binds, deterministically. Keep the static layers for what is genuinely unconditional (identity, architecture, conventions in every file you touch); compile the rest into triggers and delete the prose. The auto validate + sync loop is the pattern at its endpoint: a protocol that used to be instructions is now machinery, and the model never spends attention on it.
+
 Three events:
 
 - **`kmd hook prompt`** — runs when the user submits a prompt. Matching triggers each inject one context line (a protocol pointer, a skill reminder). Each trigger fires **once per session** — a rule you've seen is a rule you've seen.
