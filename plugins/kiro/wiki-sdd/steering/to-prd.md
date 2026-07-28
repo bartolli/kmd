@@ -191,11 +191,7 @@ updated: <today>
 
 ### 6. Sync the wiki
 
-After writing, sync the index:
-
-```bash
-kmd sync
-```
+After writing, confirm the resync: the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
 This makes the new plan and stories searchable via `prime` and `search`.
 

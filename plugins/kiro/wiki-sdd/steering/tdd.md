@@ -120,10 +120,7 @@ Once the slice is green and refactored:
 4. If ALL slices in the story are now ticked:
    - Note this in the parent plan's Story Index — the story is "done" but its `triage_state` stays as-is until user-promotion.
    - Suggest the user mark `status: archived` on the story when they're satisfied.
-5. Sync the wiki:
-   ```bash
-   kmd sync
-   ```
+5. Confirm the resync: the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
 ### 7. Done — report
 
@@ -173,6 +170,6 @@ If during implementation you discover the spec is wrong (code reality differs fr
 - **Minimum code to pass.** No speculative features.
 - **Refactor only when green.**
 - **Tick the checkbox when done** — that's the resync protocol's signal that the slice shipped.
-- **Sync the wiki** (`kmd sync`) so the index reflects the new slice state.
+- **Confirm the resync** — the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 - **Update spec inline** if reality diverges; don't queue corrections.
 - **Quote prose-bearing frontmatter scalars** to avoid breaking the sync walker.

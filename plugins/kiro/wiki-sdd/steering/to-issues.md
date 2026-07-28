@@ -148,11 +148,9 @@ This issue mirrors slice N of [story-N-<slug>](<vault-path>). The wiki story fil
 
 If new ADRs/specs were created during slice refinement, add them to the parent plan's `## References` section.
 
-### 9. Sync the wiki
+### 9. Confirm the resync
 
-```bash
-kmd sync
-```
+Harnesses with the posttool hook validate and sync automatically. Check `kmd config`: if the `synced` line did not advance past your edits, the hook is not wired — run `kmd validate`, fix findings, then `kmd sync`.
 
 ### 10. Done
 
@@ -178,6 +176,6 @@ If you can't break a story into 1-5 vertical slices, the story is too coarse —
 - **Prefer AFK over HITL.** Push back if the user marks something HITL without a clear reason.
 - **In remote mode, the wiki story file remains canonical.** GH/GitLab issues mirror slice work but state lives in story frontmatter.
 - **Blocked-by lives at story level, not slice level** — for indexability and to avoid stale references when slices re-cut.
-- **Always sync the wiki** (`kmd sync`) after edits to refresh the index.
+- **Confirm the resync after edits** — the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 - **Lead remote comments with the AI disclaimer** in GH/GitLab mode.
 - **Quote prose-bearing frontmatter scalars** to avoid breaking the sync walker.

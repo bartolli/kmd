@@ -126,8 +126,9 @@ const DEFAULT_SYNC_PROTOCOL = [
   'Edit the smallest set of files that reflects the change. ' +
     "A milestone tick is plan-only; don't cascade to index.md unless phase or status changed. " +
     'Controlled-vocabulary edits (`vault.yaml`) need explicit user approval.',
-  'After editing wiki pages, run `kmd validate` and fix findings before `kmd sync` — ' +
-    'it checks frontmatter shape, vocabulary membership, and link integrity.'
+  'Harnesses with the posttool hook validate and sync automatically on every vault ' +
+    'write. Check `kmd config`: if the `synced` line did not advance past your edits, ' +
+    'the hook is not wired — run `kmd validate`, fix findings, then `kmd sync`.'
 ].join('\n');
 
 function buildSyncProtocol(config: VaultConfig): string {

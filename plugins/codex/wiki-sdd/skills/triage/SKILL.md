@@ -162,11 +162,9 @@ Update the Story Index table in `plan/plan-{name}.md` to reflect the new state c
 
 Bump the `updated:` field in the story's frontmatter.
 
-### Step 8 — Sync the wiki
+### Step 8 — Confirm the resync
 
-```bash
-kmd sync
-```
+Harnesses with the posttool hook validate and sync automatically. Check `kmd config`: if the `synced` line did not advance past your edits, the hook is not wired — run `kmd validate`, fix findings, then `kmd sync`.
 
 ## Pattern C — Quick state override
 
@@ -283,7 +281,7 @@ If prior triage notes exist in a story body, read them, check whether the user h
 - **Always show your recommendation with reasoning before transitioning.** Don't move state silently.
 - **For `wontfix-enhancement`, always write `adr-no-{slug}.md`.** Rejection without rationale loses institutional memory.
 - **Always update the parent plan's Story Index table** when state changes.
-- **Always sync the wiki** (`kmd sync`) after frontmatter changes.
+- **Confirm the resync after frontmatter changes** — the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 - **In GH/GitLab mode, always lead remote comments with the AI disclaimer.**
 - **Never grill within `$triage`** — chain to `$grill-with-docs` if needed.
 - **Quote prose-bearing frontmatter scalars** to avoid breaking the sync walker.

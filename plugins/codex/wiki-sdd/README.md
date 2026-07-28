@@ -30,11 +30,14 @@ Registers the `kmd hook` gate engine — no manual wiring:
 - **UserPromptSubmit** — prompt-time reminders from your vault's `triggers_extra` (`vault.yaml`), injected once per session per trigger.
 - **PostToolUse** — auto validate + sync: after a write inside the vault (`Edit`, `Write`, or `apply_patch`), `kmd validate` runs; findings return into the session for the agent to fix and the index holds until they are; a clean write syncs silently. Writes outside the vault cost nothing.
 
-The hooks run through a resolver wrapper: a globally installed `kmd` at `0.6.0`+ runs in-process (fast path — `npm i -g @bartolli/kmd` recommended), else `npx @bartolli/kmd@latest`. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
+The hooks run through a resolver wrapper: a globally installed `kmd` at `0.7.0`+ runs in-process (fast path — `npm i -g @bartolli/kmd` recommended), else `npx @bartolli/kmd@latest`. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work. Review and trust the hooks with `/hooks` after installing the plugin.
 
-## Frontmatter hook
+**Sandbox setup for vault writes.** Codex's workspace-write sandbox scopes to the session's git repo root, so a session in your project repo cannot write the vault (a sibling repo) — the write is rejected before any hook fires. Add the vault to your `~/.codex/config.toml`:
 
-Ships a `PreToolUse` hook that validates YAML frontmatter for Markdown edits under the vault's `projects/`, `research/`, and `notes/` directories. Review and trust the hooks with `/hooks` after installing the plugin.
+```toml
+[sandbox_workspace_write]
+writable_roots = ["/path/to/your/vault"]
+```
 
 ## Recommended companion
 
