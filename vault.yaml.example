@@ -1,10 +1,15 @@
+# yaml-language-server: $schema=./vault.schema.json
 # vault.yaml — your vault's controlled vocabulary and served pedagogy.
 # Lives at the vault root. Everything the tooling enforces and everything
 # the agent is taught about your vault starts here.
 #
+# The modeline above binds this file to vault.schema.json (written by
+# `kmd init`, kept current by `kmd sync`) — any modern IDE validates the
+# file and shows field docs as you type.
+#
 # Loading is fail-loud: a broken vault.yaml means no working tooling —
 # the MCP server refuses to start and `kmd sync` / `kmd validate` refuse
-# to run. Run `kmd validate` after editing this file.
+# to run; unknown keys are rejected. Run `kmd validate` after editing.
 
 # --- scopes (required) -------------------------------------------------
 # One entry per project. Key = the directory name under projects/.

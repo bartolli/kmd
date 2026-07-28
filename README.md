@@ -23,6 +23,7 @@ npx @bartolli/kmd --help
 ## Commands
 
 ```
+kmd init [<dir>] [-y]        scaffold a fresh vault (starter vault.yaml + IDE schema, templates, domain dirs)
 kmd validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
 kmd sync                     vault → SQLite index (runs validate first)
 kmd mcp [<vault-root>]       stdio MCP server
@@ -33,6 +34,14 @@ kmd hook <prompt|pretool|posttool>
 ```
 
 The index is **per-vault**: `~/.kmd/db/{vault-key}/index.db`, keyed by the resolved vault root — multiple vaults never share or clobber an index, and re-pointing a server at a different vault can't serve stale rows from the old one. `kmd config` prints the resolution (or lists every known vault), and agents get `vault_root` in every `prime` response — that's the base for resolving `search`'s vault-relative paths.
+
+## Bootstrap a vault
+
+```bash
+kmd init my-vault    # or bare `kmd init` — asks [y/N] before using the current directory
+```
+
+One command scaffolds a working vault: a starter `vault.yaml` (canonical kinds, statuses, and methodologies; empty `scopes` — the first scope is yours to name), the 11 built-in templates, the `projects/` / `research/` / `notes/` domain dirs, and `vault.schema.json` — a draft-07 JSON Schema emitted from the same module that validates at runtime, bound to `vault.yaml` by a yaml-language-server modeline on line 1, so any modern IDE validates the file and shows field docs with no extension setup. The starter is serialized from the runtime schema itself, never a text snapshot, and `vault.yaml` is written last — an interrupted scaffold is never a loadable vault. A non-empty target is refused with its entries listed; a target already holding a `vault.yaml` is refused as `already a vault`. The result passes `kmd validate` as-is: add your first scope under `scopes:` and go. In scripts, `-y` skips the current-directory prompt; piped stdin without `-y` is a usage error, never a hang.
 
 ## MCP registration
 
@@ -65,7 +74,7 @@ vault/
 └── notes/                   # low-ceremony capture
 ```
 
-`vault.yaml` is the controlled vocabulary and the served pedagogy for one vault. Loading is fail-loud: an invalid file stops the MCP server from starting and blocks `kmd sync` / `kmd validate`. The schema lives byte-identically in `packages/cli/src/config.ts` and `packages/mcp/src/vault-config.ts` — edit both or neither. A complete annotated example: [`vault.yaml.example`](vault.yaml.example).
+`vault.yaml` is the controlled vocabulary and the served pedagogy for one vault. Loading is fail-loud: an invalid file stops the MCP server from starting and blocks `kmd sync` / `kmd validate`, and unknown keys are rejected loud — a typo'd field never silently does nothing. The schema lives in one module (`packages/db/src/vault-config.ts`) shared by sync, validate, the MCP server, and `kmd init`; `kmd sync` keeps `vault.schema.json` at the vault root matched to the running engine, and the modeline on `vault.yaml` line 1 gives any modern IDE live validation against it. A complete annotated example: [`vault.yaml.example`](vault.yaml.example).
 
 | Field | Type | Required | Enforced by |
 |---|---|---|---|
