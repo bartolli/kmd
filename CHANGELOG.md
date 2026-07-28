@@ -1,3 +1,22 @@
+## [v0.7.0] - 2026-07-28
+
+### Added
+
+- `kmd init [<dir>] [--yes|-y]` — scaffolds a fresh vault: starter `vault.yaml` (canonical kinds/statuses/methodologies, empty scopes), the 11 built-in templates, and the `projects/`/`research/`/`notes/` domain dirs; the starter is a schema-typed constant serialized through the loader's own `yaml` stack, and `vault.yaml` is written last so an interrupted scaffold is never a loadable vault; a non-empty target is refused with its entries listed, an existing vault with `already a vault`; without `<dir>`, a `[y/N]` stderr prompt offers the current directory on a TTY, piped stdin keeps the usage error, `--yes` bypasses the prompt
+- `vault.schema.json` — draft-07 JSON Schema emitted from the vault-spec module, written by `kmd init` beside `vault.yaml`; the generated `vault.yaml` opens with the yaml-language-server modeline for in-IDE validation and hover docs
+- `kmd sync` refreshes `vault.schema.json` at the vault root when the running engine's emission differs (one stderr diagnostic)
+
+### Changed
+
+- the vault spec lives in one module — `@llm-wiki/db/vault-config` (schema, inferred types, `kindName`, `BUILT_IN_KINDS`, `loadVaultConfig`); the cli and mcp copies are removed
+- **BREAKING** — `vault.yaml` parsing is strict: an unknown key at any level (root, scope entries, tags, triggers) fails the load loud; keys 0.6.0 silently ignored now refuse `sync`, `validate`, and MCP startup with the key named
+- wiki-sdd adapters scaffold new vaults via `kmd init`; the bundled `assets/vault-templates/` snapshot is removed from all three
+
+### Fixed
+
+- `kmd hook <unknown-event>` degrades open — one stderr diagnostic, empty stdout, exit `0` — instead of exit `2`, which blocked and erased every prompt on Claude Code's UserPromptSubmit; bare `kmd hook` keeps the loud usage error
+- `kmd <unknown-command>` with a hook event name in the argument tail degrades open the same way; a command typo with no event tail keeps the loud usage error
+
 ## [v0.6.0] - 2026-07-27
 
 ### Added
