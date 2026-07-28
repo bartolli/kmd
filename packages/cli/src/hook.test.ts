@@ -2,8 +2,8 @@ import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import type { Trigger, VaultConfig } from '@llm-wiki/db/vault-config';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Trigger, VaultConfig } from './config.js';
 import type { PretoolMatch } from './hook.js';
 import {
   dedupeMatches,

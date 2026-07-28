@@ -1,10 +1,10 @@
+import { loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { loadConfig } from './config.js';
 import { createDatabase } from './db.js';
 import { diag } from './lib/diag.js';
 import { createLogger } from './lib/logger.js';
 import { buildServer } from './server.js';
-import { loadVaultConfig } from './vault-config.js';
 
 export async function startMcpServer(): Promise<void> {
   diag('main entered');

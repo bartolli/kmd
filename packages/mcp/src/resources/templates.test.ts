@@ -1,9 +1,9 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VaultConfig } from '../vault-config.js';
 import { registerTemplateResources, TEMPLATES } from './templates.js';
 
 const CONFIG: VaultConfig = {

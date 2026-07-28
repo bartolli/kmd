@@ -5,7 +5,12 @@ root. Authority is the `kmd` tooling — when this reference and
 `kmd validate` disagree, the tool wins. Loading is fail-loud: an
 invalid vault.yaml stops the MCP server from starting and blocks
 `kmd sync` / `kmd validate` — a new vault with a broken vault.yaml has
-NO working tooling, so get this file right first.
+NO working tooling, so get this file right first. Unknown keys are
+rejected loud at every level — a typo'd field never silently does
+nothing. The engine emits this schema as `vault.schema.json`
+(draft-07 JSON Schema, refreshed by `kmd sync`); the
+yaml-language-server modeline on `vault.yaml` line 1 binds any modern
+IDE to it for live validation and hover docs.
 
 ## Fields
 
@@ -134,35 +139,23 @@ object form so the agent learns when and where to use them.
 11 built-in templates from `templates/` at the vault root — the
 URI→filename mapping is fixed in the server, files are re-read on
 every `resources/read`, and a missing file errors at read time.
-`kmd validate` checks pages and custom-kind templates, NOT built-in
-template presence — the gap only surfaces when an agent first fetches
-`wiki://template/...`. Scaffold the structure now, not lazily.
 
-1. Copy the bundled template set verbatim into the vault:
+The engine owns the scaffold — never assemble it by hand:
 
-   ```sh
-   mkdir -p <vault>/templates
-   cp <skill-root>/assets/vault-templates/*.md <vault>/templates/
-   ```
+```sh
+kmd init <vault-dir>
+```
 
-   `<skill-root>` is this skill's root directory — the one containing
-   `references/` and `assets/`. Filenames are the server's contract —
-   never rename. Expected set
-   (11 files): `project-index.md`, `project-primer.md`,
-   `project-spec.md`, `project-adr.md`, `project-plan.md`,
-   `project-ops.md`, `project-story.md`, `research-index.md`,
-   `research-article.md`, `research-src.md`, `note.md`.
-
-2. Create the domain dirs — `prime(scope)` resolves
-   `projects/{scope}/index.md` and `primer.md`; search indexes all
-   three:
-
-   ```sh
-   mkdir -p <vault>/projects <vault>/research <vault>/notes
-   ```
+`kmd init` refuses a non-empty target, then writes the starter
+`vault.yaml` (empty `scopes`, IDE modeline on line 1),
+`vault.schema.json`, the 11 built-in templates into `templates/`,
+and the `projects/`, `research/`, `notes/` domain dirs, and prints
+the `WIKI_VAULT` value to export. Add the user's
+first scope to the generated `vault.yaml` — § Minimal starter above
+shows the shape — and run `kmd validate` before continuing.
 
 The `{{placeholder}}` tokens inside the templates are for the
-authoring agent to fill when stamping a page — copy them as-is; a
+authoring agent to fill when stamping a page — leave them as-is; a
 bootstrap that "renders" them breaks every future page.
 
 ## After scaffolding

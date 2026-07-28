@@ -4,9 +4,10 @@ import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { canonicalVaultRoot, openDatabase, resolveIndexPath, setMeta } from '@llm-wiki/db/database';
+import { loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { z } from 'zod';
-import { loadVaultConfig } from './config.js';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
+import { refreshSchemaFile } from './init.js';
 
 const EnvSchema = z.object({
   WIKI_VAULT: z.string().min(1)
@@ -331,6 +332,13 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
 
     setMeta(db, 'vault_root', canonicalVaultRoot(vaultRoot));
     setMeta(db, 'last_synced', new Date().toISOString());
+
+    // Derived artifact like the index: refreshed so engine upgrades surface
+    // as a git diff, not silent IDE/runtime disagreement. stderr keeps every
+    // hook codec's stdout clean.
+    if (await refreshSchemaFile(vaultRoot)) {
+      console.error('sync: vault.schema.json refreshed to the running engine');
+    }
 
     return {
       changed,

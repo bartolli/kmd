@@ -5,10 +5,15 @@
   "type": "module",
   "description": "SQLite FTS5 index for llm-wiki. Disposable — rebuilt from the canonical vault via sync.",
   "exports": {
-    "./database": "./src/database.ts"
+    "./database": "./src/database.ts",
+    "./vault-config": "./src/vault-config.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.3.6"
   }
 }

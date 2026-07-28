@@ -1,6 +1,11 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { BUILT_IN_KINDS, kindName, loadVaultConfig, type VaultConfig } from './config.js';
+import {
+  BUILT_IN_KINDS,
+  kindName,
+  loadVaultConfig,
+  type VaultConfig
+} from '@llm-wiki/db/vault-config';
 import { parseFrontmatter } from './frontmatter.js';
 import {
   deriveLocation,

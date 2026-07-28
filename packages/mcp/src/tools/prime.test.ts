@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import { describe, expect, it, vi } from 'vitest';
-import type { VaultConfig } from '../vault-config.js';
 import { handlePrime, type PrimeData, renderMarkdown } from './prime.js';
 
 const CONFIG: VaultConfig = {

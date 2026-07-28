@@ -3,23 +3,23 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 
-// Verbatim mirror of @llm-wiki/cli's src/config.ts — the single definition of a
-// valid vault.yaml. Kept byte-identical (schema + error strings) so mcp and
-// sync/validate never disagree on what is valid. Collapse both into a shared
-// package only when a third separate consumer appears (CLAUDE.md YAGNI rule).
-
-const ScopeSchema = z.object({
-  repo: z.string().optional(),
-  methodology: z.string().optional(),
-  status: z.string()
+const ScopeSchema = z.strictObject({
+  repo: z
+    .string()
+    .optional()
+    .describe(
+      'Consumer repo path (~ expands). Load-bearing for kmd hook: the active scope resolves by matching the session cwd against it.'
+    ),
+  methodology: z.string().optional().describe('Must appear in the methodologies list.'),
+  status: z.string().describe('Free string; keep within statuses by convention.')
 });
 
 const KindEntrySchema = z.union([
   z.string(),
-  z.object({
+  z.strictObject({
     name: z.string(),
-    signal: z.string(),
-    where: z.string()
+    signal: z.string().describe('When to pick this kind.'),
+    where: z.string().describe('Path pattern pages of this kind follow.')
   })
 ]);
 
@@ -33,28 +33,40 @@ function isValidRegex(pattern: string): boolean {
 
 const WhenSchema = z.union([
   z.string(),
-  z.object({
+  z.strictObject({
     name: z.enum(['newer-than']),
     fresh: z.array(z.string().min(1)).min(1),
     than: z.array(z.string().min(1)).min(1)
   })
 ]);
 
-// Exported for parity with the cli twin, which feeds it to
-// `kmd hook --triggers` file validation.
+// Exported: `kmd hook --triggers` validates standalone trigger files with it.
 export const TriggerSchema = z
-  .object({
-    id: z.string().min(1),
+  .strictObject({
+    id: z.string().min(1).describe('Unique per scope list; duplicates keep the first occurrence.'),
     on: z.enum(['prompt', 'pretool']),
-    enforce: z.enum(['inject', 'warn', 'block']),
-    keywords: z.array(z.string().min(1)).optional(),
-    intent: z.array(z.string()).optional(),
-    tool: z.string().optional(),
-    args_match: z.string().optional(),
-    files: z.array(z.string().min(1)).optional(),
-    when: WhenSchema.optional(),
-    text: z.string().optional(),
-    reason: z.string().optional()
+    enforce: z
+      .enum(['inject', 'warn', 'block'])
+      .describe('inject: context line · warn: stderr · block: deny with reason.'),
+    keywords: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('Word-boundary, porter-stemmed match. Prompt triggers need keywords or intent.'),
+    intent: z
+      .array(z.string())
+      .optional()
+      .describe('Case-insensitive regexes over the raw prompt — the stemming escape hatch.'),
+    tool: z.string().optional().describe('Exact tool name; pretool matchers AND-compose.'),
+    args_match: z.string().optional().describe('Regex over the serialized tool input.'),
+    files: z
+      .array(z.string().min(1))
+      .optional()
+      .describe('Globs against the paths the tool touches; pretool triggers only.'),
+    when: WhenSchema.optional().describe(
+      'Precondition — the gate fires only when it is UNMET. newer-than: the newest page matching fresh must carry frontmatter updated at or after the newest matching than.'
+    ),
+    text: z.string().optional().describe('Required for inject and warn — the line emitted.'),
+    reason: z.string().optional().describe('Required for block — the denial the agent reads.')
   })
   .superRefine((trigger, ctx) => {
     if (trigger.on === 'prompt' && !trigger.keywords?.length && !trigger.intent?.length) {
@@ -104,22 +116,49 @@ export const TriggerSchema = z
 const TriggersSchema = z.record(z.string(), z.array(TriggerSchema));
 
 const VaultConfigSchema = z
-  .object({
-    scopes: z.record(z.string(), ScopeSchema),
-    kinds: z.array(KindEntrySchema),
-    statuses: z.array(z.string()),
-    methodologies: z.array(z.string()),
-    tags: z.object({
-      canonical: z.array(z.string()),
-      aliases: z.record(z.string(), z.string())
+  .strictObject({
+    scopes: z
+      .record(z.string(), ScopeSchema)
+      .describe('Scope name → entry; key = directory name under projects/.'),
+    kinds: z
+      .array(KindEntrySchema)
+      .describe(
+        'Page kind vocabulary; validate-enforced. Object form adds a kind-selector row to wiki://authoring.'
+      ),
+    statuses: z.array(z.string()).describe('Page status vocabulary; validate-enforced.'),
+    methodologies: z
+      .array(z.string())
+      .describe('Methodology vocabulary for pages and scope entries.'),
+    tags: z.strictObject({
+      canonical: z.array(z.string()).describe('Approved tags.'),
+      aliases: z
+        .record(z.string(), z.string())
+        .describe('Alias → canonical; validate warns on alias use.')
     }),
-    authoring_rules: z.string().optional(),
-    authoring_rules_extra: z.string().optional(),
-    sync_protocol: z.string().optional(),
-    sync_protocol_extra: z.string().optional(),
-    triggers: TriggersSchema.optional(),
-    triggers_extra: TriggersSchema.optional()
+    authoring_rules: z
+      .string()
+      .optional()
+      .describe('Replaces the served § Authoring rules entirely — escape hatch.'),
+    authoring_rules_extra: z
+      .string()
+      .optional()
+      .describe('Appended after the served § Authoring rules.'),
+    sync_protocol: z
+      .string()
+      .optional()
+      .describe('Replaces the served § Resync protocol entirely — escape hatch.'),
+    sync_protocol_extra: z
+      .string()
+      .optional()
+      .describe('Appended after the served § Resync protocol.'),
+    triggers: TriggersSchema.optional().describe(
+      'Full-replace of the trigger base per scope — escape hatch. "_all" is reserved for triggers_extra.'
+    ),
+    triggers_extra: TriggersSchema.optional().describe(
+      'Appended per scope after the engine defaults; the reserved "_all" key fires in every session.'
+    )
   })
+  .describe('kmd vault.yaml — controlled vocabulary and gate triggers.')
   .superRefine((config, ctx) => {
     for (const [name, scope] of Object.entries(config.scopes)) {
       if (scope.methodology !== undefined && !config.methodologies.includes(scope.methodology)) {
@@ -184,10 +223,21 @@ export const BUILT_IN_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * JSON Schema (draft-07) emission of the vault.yaml contract, consumed by the
+ * yaml-language-server modeline for in-IDE validation and hover docs.
+ * Structural only — refinements (trigger conditionals, methodology
+ * membership, duplicate ids) stay runtime checks in this module.
+ */
+export function configJsonSchema(): Record<string, unknown> {
+  return z.toJSONSchema(VaultConfigSchema, { target: 'draft-7' }) as Record<string, unknown>;
+}
+
+/**
  * Load and validate `$vaultRoot/vault.yaml` — the single source of truth for
  * the controlled vocabulary. Throws (fail-loud) when the file is missing or
- * the contents don't satisfy the schema; the server must not start on partial
- * vocabulary.
+ * the contents don't satisfy the schema — unknown keys included, so a typo'd
+ * field never silently does nothing. Nothing runs on partial vocabulary:
+ * sync aborts and the MCP server refuses to start.
  */
 export async function loadVaultConfig(vaultRoot: string): Promise<VaultConfig> {
   const path = join(vaultRoot, 'vault.yaml');

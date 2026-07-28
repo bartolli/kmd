@@ -50,6 +50,8 @@ function reportFindings(findings: Finding[]): void {
   }
 }
 
+export { runInit } from './init.js';
+
 export async function runValidate(): Promise<void> {
   const findings = await validateVault(vaultRoot());
   reportFindings(findings);

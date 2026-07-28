@@ -2,11 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { canonicalVaultRoot } from '@llm-wiki/db/database';
+import { kindName, type VaultConfig } from '@llm-wiki/db/vault-config';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { sanitizeFtsQuery } from '../lib/fts.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
-import { kindName, type VaultConfig } from '../vault-config.js';
 import { FTS_RANK } from './search.js';
 
 export const PrimeInputSchema = z.object({

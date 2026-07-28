@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const execFileAsync = promisify(execFile);
 const KMD_ENTRY = fileURLToPath(new URL('./kmd.ts', import.meta.url));
+// Absolute tsx entry: `--import tsx` resolves from the child cwd, which
+// breaks tests that set cwd outside the workspace.
+const TSX_ENTRY = createRequire(import.meta.url).resolve('tsx');
 
 const VAULT_YAML = `scopes:
   demo:
@@ -55,16 +59,18 @@ async function runKmd(
   args: string[],
   stdin: string,
   kmdHome: string,
-  extraEnv: NodeJS.ProcessEnv = {}
+  extraEnv: NodeJS.ProcessEnv = {},
+  cwd?: string
 ): Promise<RunResult> {
   const env: NodeJS.ProcessEnv = { ...process.env, KMD_HOME: kmdHome };
   delete env.WIKI_VAULT;
   delete env.WIKI_SCOPE;
   delete env.USER_PROMPT;
   Object.assign(env, extraEnv);
-  const promise = execFileAsync('node', ['--import', 'tsx', KMD_ENTRY, ...args], {
+  const promise = execFileAsync('node', ['--import', TSX_ENTRY, KMD_ENTRY, ...args], {
     env,
-    timeout: 20_000
+    timeout: 20_000,
+    cwd
   });
   promise.child.stdin?.on('error', () => {});
   promise.child.stdin?.write(stdin);
@@ -82,6 +88,62 @@ async function runKmd(
 function promptEvent(sessionId: string, prompt: string): string {
   return JSON.stringify({ session_id: sessionId, prompt, cwd: '/tmp' });
 }
+
+describe('kmd init (end-to-end)', () => {
+  let base: string;
+  let kmdHome: string;
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-init-e2e-'));
+    kmdHome = join(base, 'kmd-home');
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('scaffolds a vault that kmd validate accepts', async () => {
+    const target = join(base, 'fresh-vault');
+
+    const init = await runKmd(['init', target], '', kmdHome);
+    expect(init.code).toBe(0);
+    expect(init.stdout).toContain(`WIKI_VAULT=${target}`);
+    expect(init.stdout).toContain('kmd mcp');
+
+    const validate = await runKmd(['validate', target], '', kmdHome);
+    expect(validate.code).toBe(0);
+  }, 30_000);
+
+  it('refuses to scaffold over an existing vault, distinguished from generic non-empty', async () => {
+    const target = join(base, 'fresh-vault');
+    const first = await runKmd(['init', target], '', kmdHome);
+    expect(first.code).toBe(0);
+
+    const second = await runKmd(['init', target], '', kmdHome);
+    expect(second.code).toBe(1);
+    expect(second.stderr).toContain('already a vault');
+    expect(second.stderr).toContain('vault.yaml exists');
+  }, 30_000);
+
+  it('scaffolds the current directory with -y when no dir is given', async () => {
+    const target = join(base, 'cwd-vault');
+    await mkdir(target, { recursive: true });
+
+    const result = await runKmd(['init', '-y'], '', kmdHome, {}, target);
+    expect(result.code).toBe(0);
+
+    const validate = await runKmd(['validate', target], '', kmdHome);
+    expect(validate.code).toBe(0);
+  }, 30_000);
+
+  it('keeps a missing target a loud usage error when stdin is not a TTY', async () => {
+    const result = await runKmd(['init'], '', kmdHome);
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('usage: kmd init <dir>');
+  }, 30_000);
+});
 
 describe('kmd hook prompt (end-to-end)', () => {
   let base: string;

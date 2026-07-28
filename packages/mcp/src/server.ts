@@ -1,11 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
+import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Logger } from './lib/logger.js';
 import { registerAuthoringResource } from './resources/authoring.js';
 import { registerTemplateResources } from './resources/templates.js';
 import { handlePrime, PrimeInputSchema } from './tools/prime.js';
 import { handleSearch, SearchInputSchema } from './tools/search.js';
-import type { VaultConfig } from './vault-config.js';
 
 export interface BuildServerArgs {
   readonly name: string;

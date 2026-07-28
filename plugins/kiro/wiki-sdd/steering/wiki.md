@@ -21,7 +21,7 @@ Both are idempotent — if a section/entry already exists, update in place rathe
 
 In the vault, only when no vault exists yet (new-vault bootstrap):
 
-3. **Barebone vault structure** the MCP server requires — `vault.yaml` from the starter in `wiki/references/vault-yaml.md`, `templates/` populated verbatim from the bundled `wiki/assets/vault-templates/`, and the `projects/`, `research/`, `notes/` domain dirs.
+3. **Barebone vault structure** the MCP server requires — scaffolded by `kmd init <vault-dir>` (starter `vault.yaml` with empty `scopes`, the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs), the user's first scope then added to `vault.yaml` per `wiki/references/vault-yaml.md` § Minimal starter.
 
 ## Mental model
 
@@ -90,7 +90,7 @@ Read the current state. Don't assume.
 
 ### 2. Determine scope
 
-**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Load `wiki/references/vault-yaml.md` (full field reference + minimal starter + structure scaffold) and follow its § Vault structure scaffold: write `vault.yaml` from the starter with the user's first scope, copy the bundled template files from `wiki/assets/vault-templates/` into `<vault>/templates/`, and create the `projects/`, `research/`, `notes/` domain dirs. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing.
+**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Run `kmd init <vault-dir>` — the engine scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `wiki/references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing.
 
 **If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `wiki/references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
 
@@ -204,5 +204,5 @@ Suggest the next step:
 - **Use `npx @bartolli/kmd mcp <vault-path>`** for standalone registration — don't construct `pnpm`/`tsx` dev paths. Let the user choose where to place the `.mcp.json`.
 - **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
 - **Use the bundled `wiki/templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
-- **Copy `wiki/assets/vault-templates/` verbatim** when scaffolding a new vault — filenames are the server's URI→file contract and the content is served to future agents as-is; never author replacements inline or rename files. The bundle mirrors the kmd server's fixed template registry; refresh it from the canonical vault when kmd's registry changes.
+- **Scaffold new vaults with `kmd init <vault-dir>`** — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
 - **Don't run `grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.

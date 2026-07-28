@@ -14,6 +14,7 @@ process.on('warning', (warning) => {
 const USAGE = `usage: kmd <command> [options]
 
 commands:
+  init [<dir>] [-y]        scaffold a fresh vault (no dir: current directory — TTY prompt, or -y)
   sync                     vault → index sync (runs validate first)
   validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
@@ -33,7 +34,8 @@ const { positionals, values } = parseArgs({
   strict: false,
   options: {
     version: { type: 'boolean', short: 'v' },
-    help: { type: 'boolean', short: 'h' }
+    help: { type: 'boolean', short: 'h' },
+    yes: { type: 'boolean', short: 'y' }
   }
 });
 
@@ -48,6 +50,11 @@ function applyVaultRoot(positionalIndex: number): void {
 
 async function run(): Promise<void> {
   switch (command) {
+    case 'init': {
+      const { runInit } = await import('@llm-wiki/cli/cli');
+      await runInit(positionals[1], Boolean(values.yes));
+      break;
+    }
     case 'sync': {
       const { runSyncCommand } = await import('@llm-wiki/cli/cli');
       await runSyncCommand();

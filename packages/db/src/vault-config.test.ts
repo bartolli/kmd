@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { kindName, loadVaultConfig } from './config.js';
+import { configJsonSchema, kindName, loadVaultConfig } from './vault-config.js';
 
 describe('loadVaultConfig', () => {
   let dir: string;
@@ -350,5 +350,106 @@ describe('loadVaultConfig', () => {
 
   it('throws when vault.yaml is absent', async () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/not found/);
+  });
+
+  it('is vault-agnostic — one loader yields each vault its own vocabulary', async () => {
+    const other = await mkdtemp(join(tmpdir(), 'wiki-config-other-'));
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes:\n  sotto:\n    status: active\n' +
+          'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+          'tags:\n  canonical: []\n  aliases: {}\n'
+      );
+      await writeFile(
+        join(other, 'vault.yaml'),
+        'scopes:\n  elsewhere:\n    status: active\n' +
+          'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+          'tags:\n  canonical: []\n  aliases: {}\n'
+      );
+
+      const a = await loadVaultConfig(dir);
+      const b = await loadVaultConfig(other);
+
+      expect(Object.keys(a.scopes)).toEqual(['sotto']);
+      expect(Object.keys(b.scopes)).toEqual(['elsewhere']);
+    } finally {
+      await rm(other, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an unknown top-level key loud — a typo never silently does nothing', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'authoring_rules_xtra: "typo"\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/authoring_rules_xtra/);
+  });
+
+  it('rejects an unknown key inside a scope entry', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n    repos: /x\n' +
+        'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/repos/);
+  });
+
+  it('rejects an unknown key inside a trigger', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\nstatuses: [active]\nmethodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: t\n      on: prompt\n      enforce: inject\n' +
+        '      keywords: [x]\n      text: "T."\n      keyword: [oops]\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/keyword/);
+  });
+});
+
+describe('configJsonSchema', () => {
+  it('emits the draft-07 structural contract', () => {
+    const schema = configJsonSchema() as {
+      $schema: string;
+      additionalProperties: boolean;
+      required: string[];
+      properties: Record<string, { description?: string }>;
+    };
+
+    expect(schema.$schema).toBe('http://json-schema.org/draft-07/schema#');
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(['scopes', 'kinds', 'statuses', 'methodologies', 'tags']);
+    expect(Object.keys(schema.properties).sort()).toEqual([
+      'authoring_rules',
+      'authoring_rules_extra',
+      'kinds',
+      'methodologies',
+      'scopes',
+      'statuses',
+      'sync_protocol',
+      'sync_protocol_extra',
+      'tags',
+      'triggers',
+      'triggers_extra'
+    ]);
+    expect(schema.properties.scopes?.description).toContain('projects/');
+  });
+
+  it('keeps the when-predicate union including the string shorthand', () => {
+    // biome-ignore lint/suspicious/noExplicitAny: structural walk of emitted JSON
+    const schema = configJsonSchema() as any;
+    const trigger = schema.properties.triggers_extra.additionalProperties.items;
+    const whenForms = trigger.properties.when.anyOf.map((v: { type: string }) => v.type).sort();
+
+    expect(whenForms).toEqual(['object', 'string']);
+    expect(trigger.additionalProperties).toBe(false);
   });
 });

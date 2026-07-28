@@ -1,6 +1,6 @@
+import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
-import type { VaultConfig } from '../vault-config.js';
 import { registerAuthoringResource } from './authoring.js';
 
 const CONFIG: VaultConfig = {

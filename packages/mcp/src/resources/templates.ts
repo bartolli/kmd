@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { BUILT_IN_KINDS, type VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { BUILT_IN_KINDS, type VaultConfig } from '../vault-config.js';
 
 interface TemplateSpec {
   /** wiki://template/{domain}/{kind} — `note` collapses to single segment. */

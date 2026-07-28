@@ -38,6 +38,6 @@ Typical arc for new work: grill-with-docs → to-prd → triage → to-issues �
 
 ## Bundled support files
 
-Each workflow's support files sit in a sibling directory named after it, at the power root: `wiki/references/` (vault.yaml schema and the new-vault structure scaffold), `wiki/templates/` (project-instructions and MCP-entry templates), `wiki/assets/vault-templates/` (the 11 template files a new vault serves), `grill-with-docs/questions-cookbook.md` (interview question bank).
+Each workflow's support files sit in a sibling directory named after it, at the power root: `wiki/references/` (vault.yaml schema and the new-vault structure scaffold), `wiki/templates/` (project-instructions and MCP-entry templates), `grill-with-docs/questions-cookbook.md` (interview question bank).
 
 The steering files and support directories are generated from the canonical skill sources — edit upstream, not here.

@@ -1,6 +1,6 @@
 import { canonicalVaultRoot } from '@llm-wiki/db/database';
+import { type KindEntry, kindName, type VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { type KindEntry, kindName, type VaultConfig } from '../vault-config.js';
 
 interface KindPedagogy {
   readonly signal: string;
