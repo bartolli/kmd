@@ -13,11 +13,12 @@ Wiki-native spec-driven development loop for the `~/llm-wiki` agent wiki.
 | `to-issues` | Slice stories into tracker issues. |
 | `tdd` | Implement a ready-for-agent slice via red-green-refactor. |
 | `retro` | Two-question retrospective gate before primer resync; answers become wiki artifacts. |
+| `to-triggers` | Author vault gate triggers from stated intent; dry-run tested, approval-gated. |
 | `signal-dense` | Canonical-vocabulary response register for long agentic threads. |
 
 Arc: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` → `/retro`.
 
-`signal-dense` sits outside the arc: invoke it before authoring specs, ADRs, and blueprints so wiki artifacts are written in canonical vocabulary rather than drafted loose from memory.
+`signal-dense` and `/to-triggers` sit outside the arc: invoke `signal-dense` before authoring specs, ADRs, and blueprints so wiki artifacts are written in canonical vocabulary rather than drafted loose from memory; invoke `/to-triggers` whenever a rule should become a gate — it interviews intent, authors the matching, and writes `vault.yaml` only after a dry-run proves fire and near-miss behavior.
 
 ## MCP server
 

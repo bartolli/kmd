@@ -1,6 +1,8 @@
 ---
 name: wiki
 description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to `AGENTS.md` or equivalent project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides harness-aware MCP registration and file placement (Claude Code, Kiro IDE/CLI) when not already available. Also serves as the central mental-model hub for the wiki-aware skill constellation (`$grill-with-docs`, `$to-prd`, `$triage`, `$to-issues`, `$tdd`, `$retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+metadata:
+  version: "0.10.0"
 ---
 
 # Wiki — Project Bootstrap
@@ -35,7 +37,7 @@ A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its 
 
 ### Wiki-aware skill constellation
 
-`$wiki` is the on-ramp. The other six wiki-aware skills form a workflow loop, each consuming what the previous produced:
+`$wiki` is the on-ramp. The other wiki-aware skills form a workflow loop, each consuming what the previous produced:
 
 | Skill | Reads | Writes |
 |---|---|---|
@@ -45,8 +47,9 @@ A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its 
 | `$to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
 | `$tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
 | `$retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
+| `$to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
 
-Typical session arc for new work: `$grill-with-docs` → `$to-prd` → `$triage` → `$to-issues` → `$tdd` (per slice) → repeat triage when stories complete or new ones surface → `$retro` before the closing primer resync.
+Typical session arc for new work: `$grill-with-docs` → `$to-prd` → `$triage` → `$to-issues` → `$tdd` (per slice) → repeat triage when stories complete or new ones surface → `$retro` before the closing primer resync. `$to-triggers` joins whenever a rule proves it needs to become a gate.
 
 ### Companion skills (vault file editing)
 
@@ -69,11 +72,11 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 |---|---|---|
 | Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
 | MCP registration | `.mcp.json` at the project root, or user-level settings | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
-| Project instructions | `AGENTS.md` or equivalent (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
+| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
 ### Gate hooks
 
-The plugin registers `kmd hook` on the harness's events — this bootstrap adds no wiring step. Three behaviors ride along: prompt-time reminders, tool gates, and auto validate + sync after every vault write (the resync protocol runs as an event; validation findings return as hook feedback and hold the sync until fixed). The bootstrap's only responsibilities toward them: declare `repo:` on each scope in vault.yaml so the engine resolves the active scope from the session's working directory, and leave the trigger sections empty — vault-owned triggers grow from observed failures (`references/vault-yaml.md` § Harness gate triggers), never from upfront speculation.
+The plugin registers `kmd hook` on the harness's events — this bootstrap adds no wiring step. Three behaviors ride along: prompt-time reminders, tool gates, and auto validate + sync after every vault write (the resync protocol runs as an event; validation findings return as hook feedback and hold the sync until fixed). The bootstrap's only responsibilities toward them: declare `repo:` on each scope in vault.yaml so the engine resolves the active scope from the session's working directory, and leave the trigger sections empty — vault-owned triggers grow from observed failures (`references/vault-yaml.md` § Harness gate triggers), never from upfront speculation. When that moment arrives — the user says "add a rule/hook/trigger for…", or a prose rule just failed to fire — route to `$to-triggers`: it interviews the intent, authors the matching mechanics, dry-runs fire and near-miss cases, and writes `vault.yaml` only on approval.
 
 ## Process
 
@@ -89,7 +92,7 @@ Read the current state. Don't assume.
 
 ### 2. Determine scope
 
-**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Run `kmd init <vault-dir>` — the engine scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing.
+**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Run `kmd init <vault-dir>` — the engine scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing. Trigger sections start empty and stay empty at bootstrap; when the first rule earns a gate, `$to-triggers` authors it.
 
 **If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
 

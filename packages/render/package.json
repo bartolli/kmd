@@ -1,0 +1,21 @@
+{
+  "name": "@llm-wiki/render",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Renders the shared wiki-sdd plugin source into the per-harness adapter copies. Byte-identity is structural: adapters are build output.",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "render": "tsx bin/render.ts",
+    "check": "tsx bin/render.ts --check"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.9"
+  }
+}

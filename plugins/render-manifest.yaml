@@ -1,0 +1,136 @@
+# Render manifest for the wiki-sdd adapters.
+# Classifies every adapter file as shared (rendered from one source into
+# every flavor) or chrome (per-flavor passthrough). Consumed by
+# @llm-wiki/render; the release-time shasum identity check is the
+# renderer's check mode. Shared paths are relative to sourceRoot and each
+# flavor dest. Replacement pairs are ordered and run before the
+# invocation-token and bare-Claude rules; a pair whose from-string leaves
+# the source stops firing — the CLAUDE.md-survival lint catches the
+# harmful class at render time.
+
+sourceRoot: plugins/src/wiki-sdd
+
+# Stamps metadata.version (Agent Skills standard: the metadata field) into
+# every rendered SKILL.md — skills travel standalone, provenance rides the
+# folder. The renderer owns the field; sources must not declare metadata.
+versionSource: plugins/claude/wiki-sdd/.claude-plugin/plugin.json
+
+flavors:
+  claude:
+    dest: plugins/claude/wiki-sdd
+    # source text is claude-flavored; claude renders as identity
+    dialect: identity
+  codex:
+    dest: plugins/codex/wiki-sdd
+    dialect:
+      kind: codex # /name -> $name over skill folder names + slashAliases; bare Claude -> Codex
+      slashAliases: [dense]
+      replacements:
+        - [
+            "Writes three sections to the project instructions from a bundled template",
+            "Writes three sections to `AGENTS.md` or equivalent project instructions from a bundled template"
+          ]
+        - ["(`CLAUDE.md`, `AGENTS.md`, or equivalent)", "(`AGENTS.md` or equivalent)"]
+        - [
+            "- Read `CLAUDE.md` or `AGENTS.md` at the project root (whichever exists). Is there already a `## Wiki` block?",
+            "- Read `AGENTS.md` at the project root, or identify the equivalent project-instructions file. Is there already a `## Wiki` block?"
+          ]
+        - [
+            "### 6. Confirm and write the project CLAUDE.md / AGENTS.md",
+            "### 6. Confirm and write the project AGENTS.md"
+          ]
+        - [
+            "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
+            "- If `AGENTS.md` exists at the project root, edit it.\n- Else if an equivalent Codex project-instructions file exists, edit it.\n- If neither exists, ask whether to create `AGENTS.md`."
+          ]
+        - [
+            "- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`**",
+            "- **Never overwrite a non-empty `AGENTS.md` or equivalent project-instructions file**"
+          ]
+  kiro:
+    dest: plugins/kiro/wiki-sdd
+    dialect:
+      kind: kiro # kiro skills are slash commands — the invocation token survives; bare Claude -> Kiro
+      replacements:
+        - ["(`CLAUDE.md`, `AGENTS.md`, or equivalent)", "(`AGENTS.md` or equivalent)"]
+        - [
+            "- Read `CLAUDE.md` or `AGENTS.md` at the project root (whichever exists). Is there already a `## Wiki` block?",
+            "- Read `AGENTS.md` at the project root (Kiro picks it up automatically). Is there already a `## Wiki` block?"
+          ]
+        - [
+            "### 6. Confirm and write the project CLAUDE.md / AGENTS.md",
+            "### 6. Confirm and write the project AGENTS.md"
+          ]
+        - [
+            "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
+            "- If `AGENTS.md` exists at the project root, edit it.\n- Else if a `.kiro/steering/` project-instructions file exists, edit it.\n- If neither exists, ask whether to create `AGENTS.md`."
+          ]
+        - [
+            "- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`**",
+            "- **Never overwrite a non-empty `AGENTS.md` or `.kiro/steering/` file**"
+          ]
+        - [
+            "**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration. Nothing to do — skip to step 6.",
+            "**If the `wiki` MCP server is already registered** (workspace or user `.kiro/settings/mcp.json`): nothing to do — skip to step 6."
+          ]
+        - [
+            "If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.",
+            "On Kiro, registration lives in `.kiro/settings/mcp.json` (workspace or user) — see `templates/mcp-entry-kiro.json.template`."
+          ]
+
+shared:
+  exact: # byte-copied to every listed flavor (all flavors when unrestricted)
+    - skills/grill-with-docs/questions-cookbook.md
+    - skills/wiki/references/vault-yaml.md
+    - skills/wiki/templates/mcp-entry.json.template
+    - skills/wiki/templates/mcp-entry-kiro.json.template
+    - path: hooks/run-kmd-hook.mjs
+      flavors: [claude, codex] # kiro pending hook pairing
+  rendered: # one source; per-flavor dialect
+    - skills/grill-with-docs/SKILL.md
+    - skills/retro/SKILL.md
+    - skills/signal-dense/SKILL.md
+    - skills/tdd/SKILL.md
+    - skills/to-issues/SKILL.md
+    - skills/to-prd/SKILL.md
+    - skills/to-triggers/SKILL.md
+    - skills/triage/SKILL.md
+    - skills/wiki/SKILL.md
+    - skills/wiki/templates/project-agents.md.template
+
+# Harness-neutral literals allowed to survive dialect transforms — the wiki
+# skill's harness-placement table names Claude Code's convention in its own
+# column. A stale entry goes loud: the CLAUDE.md lint fires again.
+lintAllow:
+  - "`CLAUDE.md` or `AGENTS.md` (step 6)"
+
+# ── documentation: classification record (not consumed by the loader) ──
+
+chrome:
+  claude:
+    - .claude-plugin/plugin.json
+    - .mcp.json
+    - README.md
+    - hooks/hooks.json
+  codex:
+    - .codex-plugin/plugin.json
+    - .mcp.json
+    - README.md
+    - hooks/hooks.json
+    - scripts/start-wiki-mcp.mjs
+  kiro:
+    - path: README.md
+      status: to-author
+    - path: hooks/
+      status: pending-hook-pairing
+
+retired:
+  # kiro power layout, deleted at the skills-layout repackage
+  - plugins/kiro/wiki-sdd/POWER.md
+  - plugins/kiro/wiki-sdd/mcp.json
+  - plugins/kiro/wiki-sdd/steering/
+  - plugins/kiro/wiki-sdd/grill-with-docs/
+  - plugins/kiro/wiki-sdd/wiki/
+
+excluded:
+  - plugins/codex/wiki-sdd/.DS_Store

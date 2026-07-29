@@ -9,6 +9,8 @@ description: >
   $signal-dense. Activate proactively in long technical threads,
   architecture reviews, ontology and KG work, and extended implementation
   sessions.
+metadata:
+  version: "0.10.0"
 ---
 
 Respond declaratively in **canonical vocabulary**. Preserve grammar. Remove **self-narration**. Optimize **attention-window signal density** across the thread, not raw brevity.
