@@ -80,6 +80,7 @@ Each trigger entry:
 | `when` | pretool | precondition — the gate fires only when it is UNMET. One predicate: `{name: newer-than, fresh: [globs], than: [globs]}` — the newest page matching `fresh` must carry frontmatter `updated` at or after the newest matching `than`; when `than` matches nothing the gate passes |
 | `text` | inject, warn | required — the line injected or warned |
 | `reason` | block | required — the denial the agent reads |
+| `dedup` | inject, warn | re-fire policy: `session` (default, once per session), `never` (every match), or `{minutes: N}` (once per bucket within a session); invalid on block triggers — blocks fire on every matching event |
 
 ```yaml
 triggers_extra:

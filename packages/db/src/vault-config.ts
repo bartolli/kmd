@@ -40,6 +40,11 @@ const WhenSchema = z.union([
   })
 ]);
 
+const DedupSchema = z.union([
+  z.enum(['session', 'never']),
+  z.strictObject({ minutes: z.number().int().positive() })
+]);
+
 // Exported: `kmd hook --triggers` validates standalone trigger files with it.
 export const TriggerSchema = z
   .strictObject({
@@ -66,7 +71,10 @@ export const TriggerSchema = z
       'Precondition — the gate fires only when it is UNMET. newer-than: the newest page matching fresh must carry frontmatter updated at or after the newest matching than.'
     ),
     text: z.string().optional().describe('Required for inject and warn — the line emitted.'),
-    reason: z.string().optional().describe('Required for block — the denial the agent reads.')
+    reason: z.string().optional().describe('Required for block — the denial the agent reads.'),
+    dedup: DedupSchema.optional().describe(
+      'Re-fire policy: session (default, once per session), never, or {minutes: N} for at most once per bucket. Rejected on block triggers — blocks are dedup-exempt.'
+    )
   })
   .superRefine((trigger, ctx) => {
     if (trigger.on === 'prompt' && !trigger.keywords?.length && !trigger.intent?.length) {
@@ -90,6 +98,12 @@ export const TriggerSchema = z
       ctx.addIssue({
         code: 'custom',
         message: `trigger "${trigger.id}": files applies to pretool triggers only`
+      });
+    }
+    if (trigger.enforce === 'block' && trigger.dedup !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `block trigger "${trigger.id}" may not set dedup — blocks fire on every matching event`
       });
     }
     if (trigger.enforce === 'block' ? trigger.reason === undefined : trigger.text === undefined) {

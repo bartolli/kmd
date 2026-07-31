@@ -83,10 +83,18 @@ word-boundary FTS5 porter table. Consequences:
   match empty), `*` stays within a segment, `?` is one character.
 
 **Noise budget.** Name the cost of a broad draft before accepting it:
-inject-class dedup is once per session per trigger, so a broad keyword still
-fires in every session; block-class is exempt from dedup and fires on every
-matching event. Propose the narrower match first, with the broad one as the
-explicit fallback.
+inject-class dedup defaults to once per session per trigger, so a broad
+keyword still fires in every session; block-class is exempt from dedup and
+fires on every matching event. Propose the narrower match first, with the
+broad one as the explicit fallback. Two consequences worth designing for:
+
+- One id sharing broad keywords and a sharp intent regex shares one dedup
+  budget — an early keyword hit silences the sharp moment. Split into two
+  triggers when the sharp match must survive keyword noise.
+- The `dedup` field overrides the default per trigger: `never` (every
+  match — pair only with sharp matchers), `{minutes: N}` (re-fires each
+  bucket within a session — for long sessions that outlive their context).
+  The schema rejects `dedup` on block triggers.
 
 ## Test before write — the dry-run loop
 

@@ -52,6 +52,22 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "stop",
+              "${user_config.vault_path}"
+            ]
+          }
+        ]
+      }
     ]
   }
 }

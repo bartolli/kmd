@@ -21,6 +21,7 @@ export interface PromptEvent {
 export interface InjectMatch {
   id: string;
   text: string;
+  dedup?: Trigger['dedup'];
 }
 
 /**
@@ -187,7 +188,11 @@ export function matchPromptTriggers(prompt: string, triggers: Trigger[]): Inject
         hit = trigger.intent.some((pattern) => new RegExp(pattern, 'i').test(prompt));
       }
       if (hit) {
-        matches.push({ id: trigger.id, text: trigger.text });
+        matches.push({
+          id: trigger.id,
+          text: trigger.text,
+          ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
+        });
       }
     }
   } finally {
@@ -208,6 +213,7 @@ export interface PretoolMatch {
   enforce: 'inject' | 'warn' | 'block';
   text: string;
   when?: Trigger['when'];
+  dedup?: Trigger['dedup'];
 }
 
 export function parsePretoolEvent(raw: string): PretoolEvent | null {
@@ -295,7 +301,8 @@ export function matchPretoolTriggers(
       id: trigger.id,
       enforce: trigger.enforce,
       text,
-      ...(trigger.when !== undefined && { when: trigger.when })
+      ...(trigger.when !== undefined && { when: trigger.when }),
+      ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
     });
   }
   return matches;
@@ -462,6 +469,40 @@ export function renderPosttool(
   return JSON.stringify({ findings, synced });
 }
 
+export interface StopEvent {
+  session_id: string;
+  cwd?: string;
+  stop_hook_active?: boolean;
+}
+
+export function parseStopEvent(raw: string): StopEvent | null {
+  const fields = eventFields(raw);
+  if (fields === null) return null;
+  const { session_id, cwd, stop_hook_active } = fields;
+  if (typeof session_id !== 'string') return null;
+  return {
+    session_id,
+    ...(typeof cwd === 'string' && { cwd }),
+    ...(typeof stop_hook_active === 'boolean' && { stop_hook_active })
+  };
+}
+
+/**
+ * Stop gate codec. Claude, codex, and kiro-cli all read the same
+ * `{decision: "block", reason}` stdout contract for Stop, so there is no
+ * per-harness format. Warnings never block a handoff — only the errors that
+ * hold the index sync.
+ */
+export function renderStop(findings: Finding[]): string | null {
+  const errors = findings.filter((finding) => finding.severity === 'error');
+  if (errors.length === 0) return null;
+  const lines = errors.map((f) => `${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
+  return JSON.stringify({
+    decision: 'block',
+    reason: `kmd validate: ${errors.length} error(s) outstanding — the index sync is held. Fix them, let the posttool hook sync, then finish:\n${lines.join('\n')}`
+  });
+}
+
 /** Block-class gates fire on every event; only inject/warn spend the noise budget. */
 export function dedupePretoolMatches(
   stateDir: string,
@@ -480,22 +521,40 @@ export function hookStateDir(): string {
 }
 
 /**
- * Drops matches whose trigger id already fired for this session, records the
- * survivors. Stale session files are pruned opportunistically on write.
+ * Drops matches whose dedup key already fired for this session, records the
+ * survivors. The per-trigger `dedup` policy selects the key: `session`
+ * (default) keys on the trigger id, `{minutes: N}` appends the time bucket so
+ * a new bucket re-fires within the session, `never` skips the state entirely.
+ * Stale session files are pruned opportunistically on write.
  */
-export function dedupeMatches<T extends { id: string }>(
+export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }>(
   stateDir: string,
   sessionId: string,
-  matches: T[]
+  matches: T[],
+  now = Date.now()
 ): T[] {
   if (matches.length === 0) return [];
   const file = join(stateDir, `${sessionId.replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
   const fired = readFired(file);
-  const fresh = matches.filter((match) => !fired.has(match.id));
-  if (fresh.length > 0) {
+  const fresh: T[] = [];
+  const record: string[] = [];
+  for (const match of matches) {
+    if (match.dedup === 'never') {
+      fresh.push(match);
+      continue;
+    }
+    const key =
+      typeof match.dedup === 'object'
+        ? `${match.id}@${Math.floor(now / (match.dedup.minutes * 60_000))}`
+        : match.id;
+    if (fired.has(key)) continue;
+    fresh.push(match);
+    record.push(key);
+  }
+  if (record.length > 0) {
     mkdirSync(stateDir, { recursive: true });
-    for (const match of fresh) {
-      fired.add(match.id);
+    for (const key of record) {
+      fired.add(key);
     }
     writeFileSync(file, JSON.stringify([...fired]));
     pruneStale(stateDir, file);
@@ -701,6 +760,38 @@ export async function runHookPosttool(): Promise<void> {
     if (rendered !== null) {
       console.log(rendered);
     }
+  } catch (err) {
+    diag(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * `kmd hook stop [<vault-root>] [--scope <s>]`. Fixed-function handoff gate:
+ * a session ending inside a scope repo while the vault has validate errors is
+ * sent back once with the fix list. Two loop guards run on every harness —
+ * claude's `stop_hook_active` flag, and session-state dedup for harnesses
+ * whose stop payload has no such flag (kiro-cli fires stop at every turn
+ * end). The dedup token is spent only when a block actually renders, so a
+ * clean handoff never consumes it. Fails open and exits 0 on every path.
+ */
+export async function runHookStop(): Promise<void> {
+  try {
+    const invocation = hookInvocation();
+    if (invocation === null) return;
+    const event = parseStopEvent(await readStdin());
+    if (event === null) {
+      diag('stdin is not a stop event ({session_id})');
+      return;
+    }
+    if (event.stop_hook_active === true) return;
+    const config = await loadVaultConfig(invocation.vaultRoot);
+    const scope = invocation.scope ?? resolveScope(config, event.cwd);
+    if (scope === undefined) return;
+    const rendered = renderStop(await validateVault(invocation.vaultRoot));
+    if (rendered === null) return;
+    const fired = dedupeMatches(hookStateDir(), event.session_id, [{ id: 'stop-validate-gate' }]);
+    if (fired.length === 0) return;
+    console.log(rendered);
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }

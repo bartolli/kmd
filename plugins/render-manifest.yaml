@@ -119,8 +119,7 @@ chrome:
     - hooks/hooks.json
     - scripts/start-wiki-mcp.mjs
   kiro:
-    - path: README.md
-      status: to-author
+    - README.md
     - path: hooks/
       status: pending-hook-pairing
 

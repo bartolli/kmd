@@ -16,8 +16,10 @@ import {
   matchPromptTriggers,
   parsePretoolEvent,
   parsePromptEvent,
+  parseStopEvent,
   renderPosttool,
   renderPretool,
+  renderStop,
   resolveScope,
   vaultPathTouched
 } from './hook.js';
@@ -795,5 +797,107 @@ describe('kiroIdePromptEvent', () => {
 
     expect(keyAt(start)).toBe(keyAt(start + bucket - 1));
     expect(keyAt(start)).not.toBe(keyAt(start + bucket));
+  });
+});
+
+describe('parseStopEvent', () => {
+  it('accepts the minimal event and carries the optional fields', () => {
+    expect(parseStopEvent('{"session_id":"s1"}')).toEqual({ session_id: 's1' });
+    expect(
+      parseStopEvent('{"session_id":"s1","cwd":"/repo","stop_hook_active":true,"extra":1}')
+    ).toEqual({ session_id: 's1', cwd: '/repo', stop_hook_active: true });
+  });
+
+  it('rejects malformed payloads', () => {
+    expect(parseStopEvent('not json')).toBeNull();
+    expect(parseStopEvent('{"cwd":"/repo"}')).toBeNull();
+    expect(parseStopEvent('{"session_id":42}')).toBeNull();
+  });
+});
+
+describe('renderStop', () => {
+  const error: Finding = {
+    path: 'notes/x.md',
+    rule: 'kind-vocabulary',
+    severity: 'error',
+    message: 'unknown kind "bogus"'
+  };
+  const warning: Finding = {
+    path: 'notes/y.md',
+    rule: 'tag-alias',
+    severity: 'warning',
+    message: 'alias tag'
+  };
+
+  it('renders nothing without errors — warnings never block a handoff', () => {
+    expect(renderStop([])).toBeNull();
+    expect(renderStop([warning])).toBeNull();
+  });
+
+  it('blocks with the error lines only', () => {
+    const out = JSON.parse(renderStop([error, warning]) as string) as {
+      decision: string;
+      reason: string;
+    };
+
+    expect(out.decision).toBe('block');
+    expect(out.reason).toContain('kind-vocabulary');
+    expect(out.reason).not.toContain('tag-alias');
+  });
+});
+
+describe('dedup policy', () => {
+  let stateDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), 'kmd-dedup-'));
+  });
+
+  afterEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  it('never-policy fires on every match and spends no state', () => {
+    const match = [{ id: 'nudge', dedup: 'never' as const }];
+
+    expect(dedupeMatches(stateDir, 's1', match)).toHaveLength(1);
+    expect(dedupeMatches(stateDir, 's1', match)).toHaveLength(1);
+    expect(dedupeMatches(stateDir, 's1', [{ id: 'nudge' }])).toHaveLength(1);
+  });
+
+  it('bucket-policy holds within a bucket and re-fires across the boundary', () => {
+    const match = [{ id: 'nudge', dedup: { minutes: 30 } }];
+    const bucket = 30 * 60_000;
+
+    expect(dedupeMatches(stateDir, 's1', match, 0)).toHaveLength(1);
+    expect(dedupeMatches(stateDir, 's1', match, bucket - 1)).toHaveLength(0);
+    expect(dedupeMatches(stateDir, 's1', match, bucket)).toHaveLength(1);
+  });
+
+  it('absent policy keeps once-per-session', () => {
+    const match = [{ id: 'nudge' }];
+
+    expect(dedupeMatches(stateDir, 's1', match)).toHaveLength(1);
+    expect(dedupeMatches(stateDir, 's1', match)).toHaveLength(0);
+  });
+});
+
+describe('stop gate dedup', () => {
+  let stateDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), 'kmd-stop-'));
+  });
+
+  afterEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  it('blocks once per session, then passes silently', () => {
+    const gate = [{ id: 'stop-validate-gate' }];
+
+    expect(dedupeMatches(stateDir, 'stop-s1', gate)).toHaveLength(1);
+    expect(dedupeMatches(stateDir, 'stop-s1', gate)).toHaveLength(0);
+    expect(dedupeMatches(stateDir, 'stop-s2', gate)).toHaveLength(1);
   });
 });

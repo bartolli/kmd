@@ -269,6 +269,36 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/"_all" is reserved for triggers_extra/);
   });
 
+  it('accepts every dedup policy form on an inject trigger', async () => {
+    const body =
+      'scopes:\n  sotto:\n    status: active\n' +
+      'kinds: [spec]\n' +
+      'statuses: [active]\n' +
+      'methodologies: [sdd]\n' +
+      'tags:\n  canonical: []\n  aliases: {}\n';
+    for (const dedup of ['session', 'never', '{minutes: 30}']) {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        `${body}triggers_extra:\n  sotto:\n    - id: nudge\n      on: prompt\n      enforce: inject\n      keywords: [release]\n      text: "x"\n      dedup: ${dedup}\n`
+      );
+      await expect(loadVaultConfig(dir)).resolves.toBeDefined();
+    }
+  });
+
+  it('rejects dedup on a block trigger', async () => {
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      'scopes:\n  sotto:\n    status: active\n' +
+        'kinds: [spec]\n' +
+        'statuses: [active]\n' +
+        'methodologies: [sdd]\n' +
+        'tags:\n  canonical: []\n  aliases: {}\n' +
+        'triggers_extra:\n  sotto:\n    - id: gate\n      on: pretool\n      enforce: block\n      tool: Bash\n      args_match: "git tag"\n      reason: "no"\n      dedup: session\n'
+    );
+
+    await expect(loadVaultConfig(dir)).rejects.toThrow(/may not set dedup/);
+  });
+
   it('accepts an object-form when predicate with fresh and than globs', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),
