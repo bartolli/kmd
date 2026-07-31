@@ -1,3 +1,16 @@
+## [v0.8.0] - 2026-07-30
+
+### Added
+
+- `kmd hook stop` — handoff gate: a stop event whose `cwd` resolves to a declared scope repo, while the vault holds validate errors, returns `{"decision": "block", "reason": <error lines>}` on stdout and sends the agent back; warnings never block. Guards: `stop_hook_active: true` short-circuits; engine dedup blocks at most once per `session_id`, the token spent only when a block renders; no resolved scope → no output. One output codec serves Claude Code, Codex, and kiro-cli Stop hooks. Fails open and exits `0` on every path like the other hook events
+- trigger `dedup` field — per-trigger re-fire policy for inject/warn: `session` (default, once per session), `never` (every match, no state spent), `{minutes: N}` (once per bucket within a session, fired record keyed `id@bucket`); `dedup` on a block trigger fails the `vault.yaml` load — blocks fire on every matching event
+
+### Changed
+
+- claude and codex adapters register a `Stop` hook invoking `kmd hook stop`; the resolver wrapper's `MIN_HOOK_VERSION` floor is `[0, 8, 0]` — globals below it take the `npx @latest` fallback on every hook event until upgraded
+- kiro adapter ships a README: install path for the nine skills (repo clone + copy, or per-folder IDE import), MCP registration from the bundled template, and stop-hook wiring via agent-config `hooks.stop` — the first kiro-wirable hook; pretool and posttool stay unwired on kiro
+- `/to-triggers` noise-budget pedagogy covers the `dedup` policy field and the shared-budget hazard: broad keywords and a sharp intent regex on one trigger id share one dedup budget
+
 ## [v0.7.0] - 2026-07-28
 
 ### Added
