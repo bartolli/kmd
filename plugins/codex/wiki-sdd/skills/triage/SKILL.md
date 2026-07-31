@@ -2,7 +2,7 @@
 name: triage
 description: Move user-story files in the wiki through a triage state machine (`needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`). Reads and writes `triage_state` and `category` in story frontmatter. Recommends transitions, grills (chains to `$grill-with-docs`) when story bodies are too thin, posts agent briefs for `ready-for-agent`, and writes `adr-no-{slug}.md` when rejecting an enhancement. In `github`/`gitlab` mode also mirrors state to remote labels. Use when the user says "$triage", "what needs my attention", "triage the new stories", "move story X to ready-for-agent", "evaluate the cart story", or similar.
 metadata:
-  version: "0.10.0"
+  version: "0.11.0"
 ---
 
 # Triage — Move Stories Through the State Machine
