@@ -800,6 +800,31 @@ describe('kiroIdePromptEvent', () => {
   });
 });
 
+describe('pretool files matching over apply_patch envelopes', () => {
+  it('files globs match the envelope paths, as at posttool', () => {
+    const trigger: Trigger = {
+      id: 'tag-script',
+      on: 'pretool',
+      enforce: 'block',
+      files: ['.logs/commits/*.md'],
+      args_match: 'git tag',
+      reason: 'no'
+    };
+    const envelope = {
+      command: '*** Begin Patch\n*** Add File: .logs/commits/2026.md\n+git tag v1\n*** End Patch'
+    };
+
+    expect(matchPretoolTriggers('apply_patch', envelope, [trigger])).toHaveLength(1);
+    expect(
+      matchPretoolTriggers(
+        'apply_patch',
+        { command: '*** Begin Patch\n*** Add File: src/x.ts\n+git tag\n*** End Patch' },
+        [trigger]
+      )
+    ).toHaveLength(0);
+  });
+});
+
 describe('parseStopEvent', () => {
   it('accepts the minimal event and carries the optional fields', () => {
     expect(parseStopEvent('{"session_id":"s1"}')).toEqual({ session_id: 's1' });
@@ -843,6 +868,49 @@ describe('renderStop', () => {
     expect(out.decision).toBe('block');
     expect(out.reason).toContain('kind-vocabulary');
     expect(out.reason).not.toContain('tag-alias');
+  });
+
+  it('a configured reason replaces the preamble, never the error lines', () => {
+    const out = JSON.parse(renderStop([error], 'not done yet') as string) as { reason: string };
+
+    expect(out.reason).toMatch(/^not done yet:/);
+    expect(out.reason).toContain('kind-vocabulary');
+  });
+});
+
+describe('builtin_hooks message overrides (resync)', () => {
+  const error: Finding = {
+    path: 'notes/x.md',
+    rule: 'kind-vocabulary',
+    severity: 'error',
+    message: 'unknown kind "bogus"'
+  };
+
+  it('a configured reason replaces the errors preamble only', () => {
+    const out = JSON.parse(
+      renderPosttool([error], false, 'claude', { reason: 'Edit landed; sync held' }) as string
+    ) as { reason: string };
+
+    expect(out.reason).toMatch(/^Edit landed; sync held:/);
+    expect(out.reason).toContain('kind-vocabulary');
+  });
+
+  it('a configured text replaces the sync-failed note', () => {
+    const out = JSON.parse(
+      renderPosttool([], false, 'claude', { text: 'index stale' }) as string
+    ) as {
+      hookSpecificOutput: Record<string, string>;
+    };
+
+    expect(out.hookSpecificOutput.additionalContext).toContain('index stale');
+  });
+
+  it('defaults state the gate model when unconfigured', () => {
+    const out = JSON.parse(renderPosttool([error], false, 'claude') as string) as {
+      reason: string;
+    };
+
+    expect(out.reason).toMatch(/^Edit landed; the index sync is held/);
   });
 });
 
@@ -894,7 +962,7 @@ describe('stop gate dedup', () => {
   });
 
   it('blocks once per session, then passes silently', () => {
-    const gate = [{ id: 'stop-validate-gate' }];
+    const gate = [{ id: 'handoff-gate' }];
 
     expect(dedupeMatches(stateDir, 'stop-s1', gate)).toHaveLength(1);
     expect(dedupeMatches(stateDir, 'stop-s1', gate)).toHaveLength(0);

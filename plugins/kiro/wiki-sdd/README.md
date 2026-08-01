@@ -83,31 +83,47 @@ template resources are out of reach from this seat. The same templates live on t
 vault filesystem (scaffolded by `kmd init`); skill bodies name that route alongside
 the resource route.
 
-## Hooks — one wirable today
+## Hooks — two wirable today
 
 The claude and codex adapters register the full `kmd hook` gate engine: prompt-time
 reminders, tool gates, auto validate + sync after vault writes, and a stop-time
-handoff gate. On kiro, most of that surface cannot yet carry the engine's
-contract — the CLI cannot deliver a pretool deny or posttool feedback inside the
-gates-fail-open rule, and the IDE has no equivalent mechanical channel.
+handoff gate. On kiro, two of those fit the engine's exit-0 contract today —
+**prompt reminders** and the **handoff gate** — while pretool deny and posttool
+feedback cannot yet carry it (the CLI's deny is exit 2 + stderr, posttool stdout
+is swallowed, and the IDE has no equivalent channel for either).
 
-The exception is the **handoff gate**: kiro CLI's `stop` hook blocks via exit 0 +
-stdout JSON, exactly the engine's contract. If the vault has outstanding
-`kmd validate` errors when the agent finishes responding, the gate sends it back
-once with the fix list. Wire it in an agent configuration (`.kiro/agents/` or
+**Kiro CLI** — wire both in an agent configuration (`.kiro/agents/` or
 `~/.kiro/agents/`):
 
 ```json
 "hooks": {
+  "userPromptSubmit": [
+    { "command": "npx -y @bartolli/kmd hook prompt /absolute/path/to/vault" }
+  ],
   "stop": [
     { "command": "npx -y @bartolli/kmd hook stop /absolute/path/to/vault" }
   ]
 }
 ```
 
-A globally installed `kmd` (`npm i -g @bartolli/kmd`) can replace the `npx` form
-with `kmd hook stop /absolute/path/to/vault`. Everything else stays manual for
-now — close the loop after editing vault pages:
+`userPromptSubmit` adds the hook's stdout to context on exit 0 — prompt-matched
+reminders from your vault's `triggers_extra` land exactly as on the other
+harnesses. `stop` blocks via exit 0 + stdout JSON: outstanding `kmd validate`
+errors send the agent back once with the fix list when it finishes responding.
+
+**Kiro IDE** — create an Agent Hook on prompt submit whose command runs the
+prompt event with the IDE input codec:
+
+```
+kmd hook prompt /absolute/path/to/vault --harness kiro-ide
+```
+
+The codec reads `$USER_PROMPT` (the IDE does not write stdin) and dedups on a
+per-workspace 30-minute bucket, since no session id reaches the hook.
+
+A globally installed `kmd` (`npm i -g @bartolli/kmd`) can replace the `npx`
+forms with `kmd hook …`. Everything else stays manual for now — close the loop
+after editing vault pages:
 
 ```bash
 kmd validate /path/to/vault && kmd sync

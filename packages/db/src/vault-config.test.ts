@@ -299,6 +299,32 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow(/may not set dedup/);
   });
 
+  it('accepts builtin_hooks overrides and rejects unknown ids and fields', async () => {
+    const body =
+      'scopes:\n  sotto:\n    status: active\n' +
+      'kinds: [spec]\n' +
+      'statuses: [active]\n' +
+      'methodologies: [sdd]\n' +
+      'tags:\n  canonical: []\n  aliases: {}\n';
+
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      `${body}builtin_hooks:\n  resync:\n    reason: "Edit landed; sync held"\n    text: "sync failed"\n  handoff-gate:\n    reason: "not done yet"\n`
+    );
+    const config = await loadVaultConfig(dir);
+    expect(config.builtin_hooks?.resync?.reason).toBe('Edit landed; sync held');
+    expect(config.builtin_hooks?.['handoff-gate']?.reason).toBe('not done yet');
+
+    await writeFile(join(dir, 'vault.yaml'), `${body}builtin_hooks:\n  bogus:\n    reason: "x"\n`);
+    await expect(loadVaultConfig(dir)).rejects.toThrow();
+
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      `${body}builtin_hooks:\n  handoff-gate:\n    text: "x"\n`
+    );
+    await expect(loadVaultConfig(dir)).rejects.toThrow();
+  });
+
   it('accepts an object-form when predicate with fresh and than globs', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),
@@ -460,6 +486,7 @@ describe('configJsonSchema', () => {
     expect(Object.keys(schema.properties).sort()).toEqual([
       'authoring_rules',
       'authoring_rules_extra',
+      'builtin_hooks',
       'kinds',
       'methodologies',
       'scopes',

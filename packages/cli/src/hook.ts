@@ -288,7 +288,7 @@ export function matchPretoolTriggers(
       if (!new RegExp(trigger.args_match).test(serialized)) continue;
     }
     if (trigger.files !== undefined && trigger.files.length > 0) {
-      const candidates = pathCandidates(toolInput, cwd);
+      const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
       const hit = trigger.files.some((glob) => {
         const regex = globToRegExp(glob);
         return candidates.some((candidate) => regex.test(candidate));
@@ -441,15 +441,24 @@ export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: st
   });
 }
 
+/** Engine defaults for the fixed-function hook prose ([[adr-builtin-hook-identity]]). */
+const RESYNC_REASON = 'Edit landed; the index sync is held until these validate errors are fixed';
+const RESYNC_TEXT = 'kmd sync failed — index not updated; see hook stderr';
+const HANDOFF_GATE_REASON =
+  'Validate errors are outstanding and the index sync is held — fix them, let the resync run, then finish';
+
 /**
- * Posttool outcome codec. Errors read as the fix list (sync did not run);
- * warnings pass the sync gate but still surface once. The quiet path — no
- * findings, sync clean — renders nothing: zero per-edit noise.
+ * Posttool outcome codec — public id `resync`. Errors read as the fix list
+ * (sync did not run); warnings pass the sync gate but still surface once. The
+ * quiet path — no findings, sync clean — renders nothing: zero per-edit
+ * noise. `messages` overrides the preamble prose only; the error lines are
+ * always engine-appended.
  */
 export function renderPosttool(
   findings: Finding[],
   synced: boolean,
-  format: 'neutral' | 'claude'
+  format: 'neutral' | 'claude',
+  messages: { reason?: string | undefined; text?: string | undefined } = {}
 ): string | null {
   if (findings.length === 0 && synced) return null;
   const lines = findings.map((f) => `${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
@@ -457,12 +466,12 @@ export function renderPosttool(
     if (hasErrors(findings)) {
       return JSON.stringify({
         decision: 'block',
-        reason: `kmd validate failed — fix before the index syncs:\n${lines.join('\n')}`
+        reason: `${messages.reason ?? RESYNC_REASON}:\n${lines.join('\n')}`
       });
     }
     const hookSpecificOutput: Record<string, string> = { hookEventName: 'PostToolUse' };
     const notes = [...lines];
-    if (!synced) notes.push('kmd sync failed — index not updated; see hook stderr');
+    if (!synced) notes.push(messages.text ?? RESYNC_TEXT);
     hookSpecificOutput.additionalContext = notes.join('\n');
     return JSON.stringify({ hookSpecificOutput });
   }
@@ -488,18 +497,19 @@ export function parseStopEvent(raw: string): StopEvent | null {
 }
 
 /**
- * Stop gate codec. Claude, codex, and kiro-cli all read the same
- * `{decision: "block", reason}` stdout contract for Stop, so there is no
- * per-harness format. Warnings never block a handoff — only the errors that
- * hold the index sync.
+ * Stop gate codec — public id `handoff-gate`. Claude, codex, and kiro-cli
+ * all read the same `{decision: "block", reason}` stdout contract for Stop,
+ * so there is no per-harness format. Warnings never block a handoff — only
+ * the errors that hold the index sync. `reason` overrides the preamble; the
+ * error lines are always engine-appended.
  */
-export function renderStop(findings: Finding[]): string | null {
+export function renderStop(findings: Finding[], reason?: string): string | null {
   const errors = findings.filter((finding) => finding.severity === 'error');
   if (errors.length === 0) return null;
   const lines = errors.map((f) => `${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
   return JSON.stringify({
     decision: 'block',
-    reason: `kmd validate: ${errors.length} error(s) outstanding — the index sync is held. Fix them, let the posttool hook sync, then finish:\n${lines.join('\n')}`
+    reason: `${reason ?? HANDOFF_GATE_REASON}:\n${lines.join('\n')}`
   });
 }
 
@@ -746,6 +756,7 @@ export async function runHookPosttool(): Promise<void> {
       return;
     }
     if (!vaultPathTouched(event.tool_input, invocation.vaultRoot, event.cwd)) return;
+    const config = await loadVaultConfig(invocation.vaultRoot);
     const findings = await validateVault(invocation.vaultRoot);
     let synced = false;
     if (!hasErrors(findings)) {
@@ -756,7 +767,7 @@ export async function runHookPosttool(): Promise<void> {
         diag(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    const rendered = renderPosttool(findings, synced, format);
+    const rendered = renderPosttool(findings, synced, format, config.builtin_hooks?.resync ?? {});
     if (rendered !== null) {
       console.log(rendered);
     }
@@ -787,9 +798,12 @@ export async function runHookStop(): Promise<void> {
     const config = await loadVaultConfig(invocation.vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     if (scope === undefined) return;
-    const rendered = renderStop(await validateVault(invocation.vaultRoot));
+    const rendered = renderStop(
+      await validateVault(invocation.vaultRoot),
+      config.builtin_hooks?.['handoff-gate']?.reason
+    );
     if (rendered === null) return;
-    const fired = dedupeMatches(hookStateDir(), event.session_id, [{ id: 'stop-validate-gate' }]);
+    const fired = dedupeMatches(hookStateDir(), event.session_id, [{ id: 'handoff-gate' }]);
     if (fired.length === 0) return;
     console.log(rendered);
   } catch (err) {

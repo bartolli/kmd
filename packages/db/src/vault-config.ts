@@ -129,6 +129,34 @@ export const TriggerSchema = z
 
 const TriggersSchema = z.record(z.string(), z.array(TriggerSchema));
 
+/**
+ * Message overrides for the fixed-function hooks, addressed by their public
+ * ids. Reuses the trigger message vocabulary (`reason` enforcement prose,
+ * `text` informational prose) and nothing else — the firing conditions are
+ * the protocol, not config. Absent entries fall back to engine defaults.
+ */
+const BuiltinHooksSchema = z.strictObject({
+  resync: z
+    .strictObject({
+      reason: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Validate-errors preamble; the engine appends the error lines.'),
+      text: z.string().min(1).optional().describe('Sync-failed note.')
+    })
+    .optional(),
+  'handoff-gate': z
+    .strictObject({
+      reason: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Stop-block preamble; the engine appends the error lines.')
+    })
+    .optional()
+});
+
 const VaultConfigSchema = z
   .strictObject({
     scopes: z
@@ -167,6 +195,9 @@ const VaultConfigSchema = z
       .describe('Appended after the served § Resync protocol.'),
     triggers: TriggersSchema.optional().describe(
       'Full-replace of the trigger base per scope — escape hatch. "_all" is reserved for triggers_extra.'
+    ),
+    builtin_hooks: BuiltinHooksSchema.optional().describe(
+      'Message overrides for the fixed-function hooks (resync, handoff-gate) by public id.'
     ),
     triggers_extra: TriggersSchema.optional().describe(
       'Appended per scope after the engine defaults; the reserved "_all" key fires in every session.'

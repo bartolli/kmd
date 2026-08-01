@@ -103,6 +103,20 @@ triggers_extra:
       reason: "Retro gate: run the retro before tagging."
 ```
 
+Separate from triggers, `builtin_hooks` overrides the prose of the two
+fixed-function hooks by their public id — the behaviors stay in the
+engine and cannot be disabled; the configurable string is a preamble
+and the engine appends the error lines:
+
+```yaml
+builtin_hooks:
+  resync:                # posttool validate + sync
+    reason: "Edit landed; the index sync is held until these validate errors are fixed"
+    text: "kmd sync failed — index not updated; see hook stderr"
+  handoff-gate:          # stop handoff gate
+    reason: "Validate errors are outstanding and the index sync is held — fix them, then finish"
+```
+
 A fresh vault needs no triggers — grow them from observed failures,
 like the rest of the vocabulary. The auto validate + sync loop
 (`kmd hook posttool`) is fixed-function and needs no vault.yaml
