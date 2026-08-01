@@ -1,3 +1,18 @@
+## [v0.9.0] - 2026-08-01
+
+### Added
+
+- `builtin_hooks` — `vault.yaml` section addressing the fixed-function hooks' prose by public id: `resync` (posttool validate + sync) takes `reason` (validate-errors preamble) and `text` (sync-failed note); `handoff-gate` (stop) takes `reason`. Strict per id — an unknown id or a field an id does not take fails the load. Absent entries fall back to the engine defaults; the configurable string is a preamble and the engine appends the error lines itself
+- fixed-function hooks carry public ids: `resync` and `handoff-gate`; the stop gate's session-state dedup key is `handoff-gate`
+
+### Changed
+
+- posttool errors preamble default: `Edit landed; the index sync is held until these validate errors are fixed` — the write lands, the sync is what is held; the stop preamble is count-free
+- pretool `files` globs match `*** Add|Update|Delete File:` paths inside apply_patch envelopes, as the posttool vault-write guard already did
+- codex adapter registers PreToolUse with `--harness claude` — codex emits claude-canonical pretool payloads (verified live on 0.146.0: the shell tool arrives as `tool_name: "Bash"` with a string `command`; edits as `apply_patch` envelopes), so `tool: Bash` gates and their `args_match` regexes fire unmodified
+- wrapper `MIN_HOOK_VERSION` floor: `[0, 9, 0]` — globals below it take the `npx @latest` fallback on every hook event until upgraded
+- kiro README documents both wirable kiro hooks: CLI `userPromptSubmit` + `stop` in agent configuration; IDE prompt via `--harness kiro-ide`
+
 ## [v0.8.0] - 2026-07-30
 
 ### Added
