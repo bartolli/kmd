@@ -1,7 +1,10 @@
-import { openDatabase } from '@llm-wiki/db/database';
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openDatabase, resolveIndexPath } from '@llm-wiki/db/database';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
-import { buildPageFields, syncPage } from './sync.js';
+import { buildPageFields, syncPage, syncVault } from './sync.js';
 
 const known = new Set(['sotto', 'codanna']);
 
@@ -134,5 +137,62 @@ describe('syncPage against SQLite', () => {
     });
 
     db.close();
+  });
+});
+
+describe('syncVault orphan sweep', () => {
+  let vaultRoot: string;
+  let kmdHomeBefore: string | undefined;
+
+  beforeEach(() => {
+    vaultRoot = mkdtempSync(join(tmpdir(), 'kmd-sync-vault-'));
+    kmdHomeBefore = process.env.KMD_HOME;
+    process.env.KMD_HOME = mkdtempSync(join(tmpdir(), 'kmd-sync-home-'));
+    writeFileSync(
+      join(vaultRoot, 'vault.yaml'),
+      [
+        'scopes: {}',
+        'kinds: [note]',
+        'statuses: [draft]',
+        'methodologies: [sdd]',
+        'tags:',
+        '  canonical: []',
+        '  aliases: {}',
+        ''
+      ].join('\n')
+    );
+    mkdirSync(join(vaultRoot, 'notes'));
+    writeFileSync(
+      join(vaultRoot, 'notes/only-page.md'),
+      '---\ntitle: Only Page\nkind: note\nstatus: draft\ntags: [x]\n---\nbody\n'
+    );
+  });
+
+  afterEach(() => {
+    const home = process.env.KMD_HOME as string;
+    if (kmdHomeBefore === undefined) delete process.env.KMD_HOME;
+    else process.env.KMD_HOME = kmdHomeBefore;
+    rmSync(home, { recursive: true, force: true });
+    rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  function indexedPaths(): string[] {
+    const db = openDatabase(resolveIndexPath(vaultRoot));
+    try {
+      return (db.prepare('SELECT path FROM pages').all() as { path: string }[]).map((r) => r.path);
+    } finally {
+      db.close();
+    }
+  }
+
+  it('sweeps the index when a valid vault holds no indexable pages', async () => {
+    await syncVault(vaultRoot);
+    expect(indexedPaths()).toEqual(['notes/only-page.md']);
+
+    rmSync(join(vaultRoot, 'notes/only-page.md'));
+    const stats = await syncVault(vaultRoot);
+
+    expect(stats.pagesDeleted).toBe(1);
+    expect(indexedPaths()).toEqual([]);
   });
 });

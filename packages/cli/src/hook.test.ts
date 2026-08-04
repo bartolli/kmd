@@ -21,6 +21,7 @@ import {
   parseStopEvent,
   renderPosttool,
   renderPretool,
+  renderPrompt,
   renderStop,
   resolveScope,
   vaultPathTouched
@@ -477,6 +478,50 @@ describe('matchPretoolTriggers / renderPretool', () => {
     });
   });
 
+  it('reports every unique block reason in match order', () => {
+    const matches: PretoolMatch[] = [
+      { id: 'gate-a', enforce: 'block', text: 'Reason A.' },
+      { id: 'gate-b', enforce: 'block', text: 'Reason B.' },
+      { id: 'gate-a-twin', enforce: 'block', text: 'Reason A.' }
+    ];
+
+    const claude = JSON.parse(renderPretool(matches, 'claude').stdout as string) as {
+      hookSpecificOutput: Record<string, string>;
+    };
+    expect(claude.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(claude.hookSpecificOutput.permissionDecisionReason).toBe('Reason A.\nReason B.');
+
+    const neutral = JSON.parse(renderPretool(matches, 'neutral').stdout as string) as {
+      decision: string;
+      reason: string;
+    };
+    expect(neutral.decision).toBe('deny');
+    expect(neutral.reason).toBe('Reason A.\nReason B.');
+  });
+
+  it('coalesces identical inject and warn text', () => {
+    const matches: PretoolMatch[] = [
+      { id: 'brief-a', enforce: 'inject', text: 'Same brief.' },
+      { id: 'brief-b', enforce: 'inject', text: 'Same brief.' },
+      { id: 'warn-a', enforce: 'warn', text: 'Same warning.' },
+      { id: 'warn-b', enforce: 'warn', text: 'Same warning.' }
+    ];
+
+    const claude = renderPretool(matches, 'claude');
+    const output = JSON.parse(claude.stdout as string) as {
+      hookSpecificOutput: Record<string, string>;
+    };
+    expect(output.hookSpecificOutput.additionalContext).toBe('Same brief.');
+    expect(claude.stderr).toEqual(['Same warning.']);
+
+    const neutral = JSON.parse(renderPretool(matches, 'neutral').stdout as string) as {
+      context: string[];
+      warnings: string[];
+    };
+    expect(neutral.context).toEqual(['Same brief.']);
+    expect(neutral.warnings).toEqual(['Same warning.']);
+  });
+
   it('maps warn-class matches to stderr with no stdout', () => {
     const cautious: Trigger = {
       id: 'force-push-caution',
@@ -898,6 +943,35 @@ describe('explainPretool', () => {
   });
 });
 
+describe('renderPrompt', () => {
+  it('coalesces identical payload text while each id spends its own dedup key', async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), 'kmd-render-prompt-'));
+    const twins = [
+      { id: 'release-protocol', text: 'Release protocol.' },
+      { id: 'release-tag-moment', text: 'Release protocol.' }
+    ];
+
+    const lines = renderPrompt(dedupeMatches(stateDir, 's1', twins));
+
+    expect(lines).toEqual(['Release protocol.']);
+    expect((await readdir(join(stateDir, 's1'))).sort()).toEqual([
+      'release-protocol',
+      'release-tag-moment'
+    ]);
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it('keeps distinct texts in match order', () => {
+    expect(
+      renderPrompt([
+        { id: 'a', text: 'First.' },
+        { id: 'b', text: 'Second.' },
+        { id: 'c', text: 'First.' }
+      ])
+    ).toEqual(['First.', 'Second.']);
+  });
+});
+
 describe('explainPrompt', () => {
   let stateDir: string;
 
@@ -968,6 +1042,23 @@ describe('explainPrompt', () => {
     expect(trace.output).toEqual(['Release protocol.']);
     expect(await readdir(join(stateDir, 's1'))).toEqual(['suppressed-brief']);
   });
+
+  it('coalesces identical payload text while tracing each id separately', () => {
+    const twin: Trigger = { ...brief, id: 'release-tag-moment' };
+
+    const trace = explainPrompt({
+      prompt: 'releasing today',
+      triggers: [brief, twin],
+      stateDir,
+      sessionId: 's1'
+    });
+
+    expect(trace.triggers.map((t) => ({ id: t.id, fired: t.fired }))).toEqual([
+      { id: 'release-protocol', fired: true },
+      { id: 'release-tag-moment', fired: true }
+    ]);
+    expect(trace.output).toEqual(['Release protocol.']);
+  });
 });
 
 describe('vaultPathTouched', () => {
@@ -1015,6 +1106,14 @@ describe('vaultPathTouched', () => {
 
     it('treats bare vault-content filenames as candidates', () => {
       expect(vaultPathTouched({ command: "sed -i '' vault.yaml" }, '/v', '/v')).toBe(true);
+    });
+
+    it('treats glob, dot, and variable tokens as candidates inside the vault', () => {
+      expect(vaultPathTouched({ command: 'rm *' }, '/v', '/v')).toBe(true);
+      expect(vaultPathTouched({ command: 'rm -rf .' }, '/v', '/v')).toBe(true);
+      expect(vaultPathTouched({ command: 'rm "$F"' }, '/v', '/v')).toBe(true);
+      expect(vaultPathTouched({ command: 'rm *' }, '/v', '/repo')).toBe(false);
+      expect(vaultPathTouched({ command: 'rm "$F"' }, '/v', '/repo')).toBe(false);
     });
 
     it('stays quiet for commands without path-like tokens, even inside the vault', () => {

@@ -222,6 +222,20 @@ export function matchPromptTriggers(prompt: string, triggers: Trigger[]): Inject
   return matches;
 }
 
+/** First-occurrence order; Set iteration pins the determinism. */
+function uniqueTexts(texts: string[]): string[] {
+  return [...new Set(texts)];
+}
+
+/**
+ * Prompt renderer boundary: trigger identity and rendered payload are
+ * separate concerns. Each matched id has already spent its own dedup key;
+ * byte-identical text renders once.
+ */
+export function renderPrompt(matches: { id: string; text: string }[]): string[] {
+  return uniqueTexts(matches.map((match) => match.text));
+}
+
 export interface PretoolEvent {
   session_id: string;
   tool_name: string;
@@ -436,28 +450,33 @@ export function renderPretool(
   matches: PretoolMatch[],
   format: 'neutral' | 'claude'
 ): { stdout: string | null; stderr: string[] } {
-  const block = matches.find((match) => match.enforce === 'block');
-  const context = matches.filter((match) => match.enforce === 'inject').map((match) => match.text);
-  const warnings = matches.filter((match) => match.enforce === 'warn').map((match) => match.text);
+  // Identity and payload are separate: every id spent its own dedup key
+  // upstream; here byte-identical text renders once and every unique block
+  // reason reports in match order.
+  const byClass = (enforce: PretoolMatch['enforce']): string[] =>
+    uniqueTexts(matches.filter((match) => match.enforce === enforce).map((match) => match.text));
+  const reasons = byClass('block');
+  const context = byClass('inject');
+  const warnings = byClass('warn');
   if (format === 'claude') {
     // "allow" would auto-approve the tool call; inject/warn must leave the
     // permission flow untouched, so the decision appears only on deny.
     const hookSpecificOutput: Record<string, string> = { hookEventName: 'PreToolUse' };
-    if (block !== undefined) {
+    if (reasons.length > 0) {
       hookSpecificOutput.permissionDecision = 'deny';
-      hookSpecificOutput.permissionDecisionReason = block.text;
+      hookSpecificOutput.permissionDecisionReason = reasons.join('\n');
     }
     if (context.length > 0) {
       hookSpecificOutput.additionalContext = context.join('\n');
     }
-    const decided = block !== undefined || context.length > 0;
+    const decided = reasons.length > 0 || context.length > 0;
     return { stdout: decided ? JSON.stringify({ hookSpecificOutput }) : null, stderr: warnings };
   }
   if (matches.length === 0) return { stdout: null, stderr: [] };
   return {
     stdout: JSON.stringify({
-      decision: block !== undefined ? 'deny' : 'none',
-      ...(block !== undefined && { reason: block.text }),
+      decision: reasons.length > 0 ? 'deny' : 'none',
+      ...(reasons.length > 0 && { reason: reasons.join('\n') }),
       context,
       warnings
     }),
@@ -487,14 +506,16 @@ function patchPaths(toolInput: unknown): string[] {
 
 /**
  * Shell command strings carry mutation targets no path field names — `rm`,
- * `mv`, `sed -i`, redirections. Tokens are quote-aware; one counts as a path
- * candidate when it contains a separator or ends in a vault content
- * extension. Over-matching is safe (validate + sync is idempotent); the
- * silent miss is the failure mode this closes. Paths built dynamically or
- * resolved behind an in-command `cd` stay out of reach.
+ * `mv`, `sed -i`, redirections, globs, variables. Tokens are quote-aware;
+ * one counts as a path candidate when it carries a separator, a glob or
+ * variable character, is a bare dot, or ends in a vault content extension.
+ * Glob and variable targets resolve against the event cwd, so they register
+ * only when the command runs inside the vault. Over-matching is safe
+ * (validate + sync is idempotent); the silent miss is the failure mode this
+ * closes. Paths built behind an in-command `cd` stay out of reach.
  */
 const COMMAND_TOKEN_RE = /"([^"]*)"|'([^']*)'|(\S+)/g;
-const PATHISH_RE = /\/|\.(?:md|base|canvas|ya?ml)$/i;
+const PATHISH_RE = /[/*$]|\.(?:md|base|canvas|ya?ml)$/i;
 
 function commandPaths(toolInput: unknown): string[] {
   if (typeof toolInput !== 'object' || toolInput === null) return [];
@@ -504,7 +525,8 @@ function commandPaths(toolInput: unknown): string[] {
   for (const match of command.matchAll(COMMAND_TOKEN_RE)) {
     const token = (match[1] ?? match[2] ?? match[3]) as string;
     for (const piece of token.split(/[;|&<>()]+/)) {
-      if (piece !== '' && PATHISH_RE.test(piece)) paths.push(piece);
+      if (piece === '') continue;
+      if (piece === '.' || piece === '..' || PATHISH_RE.test(piece)) paths.push(piece);
     }
   }
   return paths;
@@ -645,7 +667,7 @@ export function explainPrompt(options: {
   const now = options.now ?? Date.now();
   const fired = readFired(join(options.stateDir, safeName(options.sessionId)));
   const entries: PromptExplainEntry[] = [];
-  const output: string[] = [];
+  const rendered: { id: string; text: string }[] = [];
   const state: { db: DatabaseSync | null } = { db: null };
   const getDb = () => (state.db ??= openPromptIndex(options.prompt));
   try {
@@ -671,12 +693,12 @@ export function explainPrompt(options: {
       const key = dedupKey(trigger, now);
       entry.dedup = key === null ? 'never' : fired.has(key) ? 'suppressed' : 'fresh';
       entry.fired = entry.dedup !== 'suppressed';
-      if (entry.fired) output.push(trigger.text);
+      if (entry.fired) rendered.push({ id: trigger.id, text: trigger.text });
     }
   } finally {
     state.db?.close();
   }
-  return { triggers: entries, output };
+  return { triggers: entries, output: renderPrompt(rendered) };
 }
 
 export interface PretoolExplainEntry {
@@ -937,8 +959,8 @@ export async function runHookPrompt(): Promise<void> {
       Date.now(),
       !invocation.dryRun
     );
-    for (const match of fresh) {
-      console.log(match.text);
+    for (const line of renderPrompt(fresh)) {
+      console.log(line);
     }
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));

@@ -314,19 +314,19 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
       indexedPaths.push(path);
     }
 
-    let pagesDeleted = 0;
-    let linksDeleted = 0;
-    if (indexedPaths.length > 0) {
-      const placeholders = indexedPaths.map(() => '?').join(', ');
-      const pageResult = db
-        .prepare(`DELETE FROM pages WHERE path NOT IN (${placeholders})`)
-        .run(...indexedPaths);
-      pagesDeleted = Number(pageResult.changes);
-      const linkResult = db
-        .prepare('DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)')
-        .run();
-      linksDeleted = Number(linkResult.changes);
-    }
+    // The sweep runs even when the vault reads empty: loadVaultConfig already
+    // failed loud on a mis-mounted root, so zero pages means a legitimately
+    // emptied vault — retaining orphans would serve stale search results.
+    const placeholders = indexedPaths.map(() => '?').join(', ');
+    const pageResult =
+      indexedPaths.length > 0
+        ? db.prepare(`DELETE FROM pages WHERE path NOT IN (${placeholders})`).run(...indexedPaths)
+        : db.prepare('DELETE FROM pages').run();
+    const pagesDeleted = Number(pageResult.changes);
+    const linkResult = db
+      .prepare('DELETE FROM links WHERE source_path NOT IN (SELECT path FROM pages)')
+      .run();
+    const linksDeleted = Number(linkResult.changes);
 
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
 
@@ -358,7 +358,7 @@ export async function runSync(): Promise<void> {
   console.log(`sync: ${env.WIKI_VAULT} → ${resolveIndexPath(env.WIKI_VAULT)}`);
   const stats = await syncVault(env.WIKI_VAULT);
   if (stats.noPages) {
-    console.warn('no indexable pages found; skipping orphan deletion (safety)');
+    console.warn('no indexable pages found; index swept empty');
   }
   console.log(
     `done: ${stats.changed} changed, ${stats.unchanged} unchanged, ${stats.skipped} skipped, ${stats.pagesDeleted} pages deleted, ${stats.linksDeleted} link orphans cleared`
