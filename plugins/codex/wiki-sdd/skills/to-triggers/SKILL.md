@@ -114,28 +114,34 @@ cat > /tmp/triggers-draft.yaml <<'EOF'
 EOF
 ```
 
-**Synthetic events** — one JSON object on stdin per run:
+**Synthetic events** — one JSON object on stdin per run, always with
+`--explain`:
 
 ```bash
 # prompt event: {"session_id": "...", "prompt": "...", "cwd": "..."}
 printf '%s' '{"session_id":"dry-1","prompt":"thinking about releasing tomorrow","cwd":"/tmp"}' \
-  | kmd hook prompt <vault-root> --triggers /tmp/triggers-draft.yaml
+  | kmd hook prompt <vault-root> --explain --triggers /tmp/triggers-draft.yaml
 
 # pretool event: {"session_id": "...", "tool_name": "...", "tool_input": {...}, "cwd": "..."}
 printf '%s' '{"session_id":"dry-2","tool_name":"Bash","tool_input":{"command":"git push --force origin main"},"cwd":"/tmp"}' \
-  | kmd hook pretool <vault-root> --triggers /tmp/triggers-draft.yaml
+  | kmd hook pretool <vault-root> --explain --triggers /tmp/triggers-draft.yaml
 ```
 
-**Reading the results.** An inject match prints the `text` line to stdout; a
-block match prints neutral JSON (`{"decision":"deny","reason":…}`); no match
-prints nothing. Hook events always exit 0 — the exit code carries no fire
-signal, only the output does.
+**Reading the trace.** `--explain` prints one JSON object naming the
+resolved scope and, per trigger: the matcher verdict (`hit`, or which stage
+missed — `tool-miss`/`args-miss`/`files-miss`/`payload-miss`; prompt
+triggers carry `keywords`/`intent` evidence instead), the typed predicate
+verdict (`satisfied`/`unmet`/`vacuous`/`unknown`), the dedup verdict
+(`exempt`/`never`/`fresh`/`suppressed`), whether it fired, and the exact
+outcome the harness would receive. Diagnose a near-miss from the trace,
+never from empty output. Hook events always exit 0 — the trace is the only
+signal.
 
-**Fresh `session_id` per case.** Inject dedup keys on the session id: a
-reused id silences the second run, which reads exactly like a failed match.
-Use a throwaway id per case (`dry-1`, `dry-2`, …); reuse one deliberately
-only when the thing under test is the dedup itself. Block-class triggers are
-dedup-exempt, so they re-fire on every matching event.
+**No state spent.** `--explain` never writes dedup state: probes repeat
+stably, and a probe never silences the trigger for a live session. A
+`dedup: "suppressed"` verdict means existing session state already carries
+the key — retest under a throwaway `session_id` (`dry-1`, `dry-2`, …) to
+see the fresh path.
 
 **Fire + near-miss discipline.** Every matcher runs at least one
 intended-fire case and one near-miss counterexample, and the user sees both

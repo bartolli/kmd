@@ -158,45 +158,66 @@ function openPromptIndex(prompt: string): DatabaseSync {
   return db;
 }
 
+/** Per-stage evidence for one prompt trigger; `unset` means not authored. */
+interface PromptProbe {
+  keywords: 'hit' | 'miss' | 'unset';
+  intent: 'hit' | 'miss' | 'unset';
+}
+
+function promptProbe(
+  trigger: InjectTrigger,
+  prompt: string,
+  getDb: () => DatabaseSync
+): PromptProbe {
+  let keywords: PromptProbe['keywords'] = 'unset';
+  if (trigger.keywords !== undefined && trigger.keywords.length > 0) {
+    const row = getDb()
+      .prepare('SELECT count(*) AS n FROM prompt_doc WHERE prompt_doc MATCH ?')
+      .get(keywordQuery(trigger.keywords)) as { n: number };
+    keywords = row.n > 0 ? 'hit' : 'miss';
+  }
+  let intent: PromptProbe['intent'] = 'unset';
+  if (trigger.intent !== undefined) {
+    intent = trigger.intent.some((pattern) => new RegExp(pattern, 'i').test(prompt))
+      ? 'hit'
+      : 'miss';
+  }
+  return { keywords, intent };
+}
+
+function promptHit(probe: PromptProbe): boolean {
+  return probe.keywords === 'hit' || probe.intent === 'hit';
+}
+
+function isInjectTrigger(trigger: Trigger): trigger is InjectTrigger {
+  return trigger.on === 'prompt' && trigger.enforce === 'inject' && trigger.text !== undefined;
+}
+
 /**
  * Inject-class prompt triggers only (slice 1). Keywords match word-boundary
  * and porter-stemmed against an in-memory FTS5 table — the prompt is the
  * document, the author-controlled keywords are the query, so raw user text
  * never enters FTS5 query syntax. `intent` regexes run case-insensitive over
- * the raw prompt.
+ * the raw prompt. The probe walk is shared with explain mode.
  */
 export function matchPromptTriggers(prompt: string, triggers: Trigger[]): InjectMatch[] {
-  const candidates = triggers.filter(
-    (trigger): trigger is InjectTrigger =>
-      trigger.on === 'prompt' && trigger.enforce === 'inject' && trigger.text !== undefined
-  );
+  const candidates = triggers.filter(isInjectTrigger);
   if (candidates.length === 0) return [];
 
   const matches: InjectMatch[] = [];
-  let db: DatabaseSync | null = null;
+  const state: { db: DatabaseSync | null } = { db: null };
+  const getDb = () => (state.db ??= openPromptIndex(prompt));
   try {
     for (const trigger of candidates) {
-      let hit = false;
-      if (trigger.keywords !== undefined && trigger.keywords.length > 0) {
-        db ??= openPromptIndex(prompt);
-        const row = db
-          .prepare('SELECT count(*) AS n FROM prompt_doc WHERE prompt_doc MATCH ?')
-          .get(keywordQuery(trigger.keywords)) as { n: number };
-        hit = row.n > 0;
-      }
-      if (!hit && trigger.intent !== undefined) {
-        hit = trigger.intent.some((pattern) => new RegExp(pattern, 'i').test(prompt));
-      }
-      if (hit) {
-        matches.push({
-          id: trigger.id,
-          text: trigger.text,
-          ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
-        });
-      }
+      if (!promptHit(promptProbe(trigger, prompt, getDb))) continue;
+      matches.push({
+        id: trigger.id,
+        text: trigger.text,
+        ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
+      });
     }
   } finally {
-    db?.close();
+    state.db?.close();
   }
   return matches;
 }
@@ -273,6 +294,50 @@ function pathCandidates(toolInput: unknown, cwd: string | undefined): string[] {
   return candidates;
 }
 
+/**
+ * One matcher walk serves enforcement and explain: `matchPretoolTriggers`
+ * keeps the hits, the explain trace keeps every stage verdict — a second
+ * hand-rolled walk would drift from the deny path it claims to explain.
+ */
+type PretoolStage = 'tool' | 'args' | 'files' | 'payload' | 'hit';
+
+function pretoolStage(
+  trigger: Trigger,
+  toolName: string,
+  toolInput: unknown,
+  cwd?: string
+): PretoolStage {
+  if (trigger.tool !== undefined && trigger.tool !== toolName) return 'tool';
+  if (trigger.args_match !== undefined) {
+    const serialized = JSON.stringify(toolInput ?? {});
+    if (!new RegExp(trigger.args_match).test(serialized)) return 'args';
+  }
+  if (trigger.files !== undefined && trigger.files.length > 0) {
+    const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
+    const hit = trigger.files.some((glob) => {
+      const regex = globToRegExp(glob);
+      return candidates.some((candidate) => regex.test(candidate));
+    });
+    if (!hit) return 'files';
+  }
+  if (pretoolText(trigger) === undefined) return 'payload';
+  return 'hit';
+}
+
+function pretoolText(trigger: Trigger): string | undefined {
+  return trigger.enforce === 'block' ? trigger.reason : trigger.text;
+}
+
+function pretoolMatch(trigger: Trigger): PretoolMatch {
+  return {
+    id: trigger.id,
+    enforce: trigger.enforce,
+    text: pretoolText(trigger) as string,
+    ...(trigger.when !== undefined && { when: trigger.when }),
+    ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
+  };
+}
+
 export function matchPretoolTriggers(
   toolName: string,
   toolInput: unknown,
@@ -282,28 +347,8 @@ export function matchPretoolTriggers(
   const matches: PretoolMatch[] = [];
   for (const trigger of triggers) {
     if (trigger.on !== 'pretool') continue;
-    if (trigger.tool !== undefined && trigger.tool !== toolName) continue;
-    if (trigger.args_match !== undefined) {
-      const serialized = JSON.stringify(toolInput ?? {});
-      if (!new RegExp(trigger.args_match).test(serialized)) continue;
-    }
-    if (trigger.files !== undefined && trigger.files.length > 0) {
-      const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
-      const hit = trigger.files.some((glob) => {
-        const regex = globToRegExp(glob);
-        return candidates.some((candidate) => regex.test(candidate));
-      });
-      if (!hit) continue;
-    }
-    const text = trigger.enforce === 'block' ? trigger.reason : trigger.text;
-    if (text === undefined) continue;
-    matches.push({
-      id: trigger.id,
-      enforce: trigger.enforce,
-      text,
-      ...(trigger.when !== undefined && { when: trigger.when }),
-      ...(trigger.dedup !== undefined && { dedup: trigger.dedup })
-    });
+    if (pretoolStage(trigger, toolName, toolInput, cwd) !== 'hit') continue;
+    matches.push(pretoolMatch(trigger));
   }
   return matches;
 }
@@ -333,17 +378,30 @@ export function evaluateMatches(
   return { fired, skipped };
 }
 
-function evaluateWhen(when: NonNullable<Trigger['when']>, vaultRoot: string): boolean | null {
-  if (typeof when === 'string') return null;
+/**
+ * Typed predicate evidence for explain mode; `evaluateWhen` projects it onto
+ * the locked tri-state (satisfied/vacuous → allowed, unmet → fires,
+ * unknown → skipped) so enforcement semantics stay byte-identical.
+ */
+export type WhenVerdict = 'satisfied' | 'unmet' | 'vacuous' | 'unknown';
+
+function evaluateWhenVerdict(when: NonNullable<Trigger['when']>, vaultRoot: string): WhenVerdict {
+  if (typeof when === 'string') return 'unknown';
   try {
     const than = newestUpdated(vaultRoot, when.than);
-    if (than === null) return true;
+    if (than === null) return 'vacuous';
     const fresh = newestUpdated(vaultRoot, when.fresh);
-    if (fresh === null) return false;
-    return fresh >= than;
+    if (fresh === null) return 'unmet';
+    return fresh >= than ? 'satisfied' : 'unmet';
   } catch {
-    return null;
+    return 'unknown';
   }
+}
+
+function evaluateWhen(when: NonNullable<Trigger['when']>, vaultRoot: string): boolean | null {
+  const verdict = evaluateWhenVerdict(when, vaultRoot);
+  if (verdict === 'unknown') return null;
+  return verdict !== 'unmet';
 }
 
 function newestUpdated(vaultRoot: string, globs: string[]): string | null {
@@ -546,17 +604,149 @@ export function renderStop(findings: Finding[], reason?: string): string | null 
 export function dedupePretoolMatches(
   stateDir: string,
   sessionId: string,
-  matches: PretoolMatch[]
+  matches: PretoolMatch[],
+  persist = true
 ): PretoolMatch[] {
   const blocks = matches.filter((match) => match.enforce === 'block');
   const rest = matches.filter((match) => match.enforce !== 'block');
-  const fresh = dedupeMatches(stateDir, sessionId, rest);
+  const fresh = dedupeMatches(stateDir, sessionId, rest, Date.now(), persist);
   return matches.filter((match) => blocks.includes(match) || fresh.includes(match));
 }
 
 /** Session dedup state — deliberately outside `db/` so `kmd db reset` keeps it. */
 export function hookStateDir(): string {
   return join(kmdHome(), 'state', 'hook');
+}
+
+export type DedupVerdict = 'exempt' | 'never' | 'fresh' | 'suppressed';
+
+export interface PromptExplainEntry {
+  id: string;
+  considered: boolean;
+  keywords?: 'hit' | 'miss' | 'unset';
+  intent?: 'hit' | 'miss' | 'unset';
+  matched?: boolean;
+  dedup?: DedupVerdict;
+  fired?: boolean;
+}
+
+/**
+ * Explain trace for a synthetic prompt event: per-trigger keyword and intent
+ * evidence, dedup verdict, and the lines the harness would receive. Reads
+ * dedup state, never writes it.
+ */
+export function explainPrompt(options: {
+  prompt: string;
+  triggers: Trigger[];
+  stateDir: string;
+  sessionId: string;
+  now?: number;
+}): { triggers: PromptExplainEntry[]; output: string[] } {
+  const now = options.now ?? Date.now();
+  const fired = readFired(join(options.stateDir, safeName(options.sessionId)));
+  const entries: PromptExplainEntry[] = [];
+  const output: string[] = [];
+  const state: { db: DatabaseSync | null } = { db: null };
+  const getDb = () => (state.db ??= openPromptIndex(options.prompt));
+  try {
+    for (const trigger of options.triggers) {
+      if (!isInjectTrigger(trigger)) {
+        entries.push({ id: trigger.id, considered: false });
+        continue;
+      }
+      const probe = promptProbe(trigger, options.prompt, getDb);
+      const matched = promptHit(probe);
+      const entry: PromptExplainEntry = {
+        id: trigger.id,
+        considered: true,
+        keywords: probe.keywords,
+        intent: probe.intent,
+        matched
+      };
+      entries.push(entry);
+      if (!matched) {
+        entry.fired = false;
+        continue;
+      }
+      const key = dedupKey(trigger, now);
+      entry.dedup = key === null ? 'never' : fired.has(key) ? 'suppressed' : 'fresh';
+      entry.fired = entry.dedup !== 'suppressed';
+      if (entry.fired) output.push(trigger.text);
+    }
+  } finally {
+    state.db?.close();
+  }
+  return { triggers: entries, output };
+}
+
+export interface PretoolExplainEntry {
+  id: string;
+  enforce?: Trigger['enforce'];
+  considered: boolean;
+  matcher?: 'hit' | 'tool-miss' | 'args-miss' | 'files-miss' | 'payload-miss';
+  when?: WhenVerdict;
+  dedup?: DedupVerdict;
+  fired?: boolean;
+}
+
+/**
+ * Explain trace for a synthetic pretool event: every trigger's stage
+ * verdicts plus the outcome the harness would receive. Reads dedup state,
+ * never writes it — a probe must not spend the session's noise budget.
+ * Distinguishes the silent branches a live event conflates: matcher miss
+ * (and which stage), predicate satisfied/vacuous/unknown, dedup
+ * suppression.
+ */
+export function explainPretool(options: {
+  toolName: string;
+  toolInput: unknown;
+  triggers: Trigger[];
+  vaultRoot: string;
+  stateDir: string;
+  sessionId: string;
+  cwd?: string;
+  format?: 'neutral' | 'claude';
+  now?: number;
+}): { triggers: PretoolExplainEntry[]; outcome: { stdout: string | null; stderr: string[] } } {
+  const now = options.now ?? Date.now();
+  const fired = readFired(join(options.stateDir, safeName(options.sessionId)));
+  const entries: PretoolExplainEntry[] = [];
+  const rendered: PretoolMatch[] = [];
+  for (const trigger of options.triggers) {
+    if (trigger.on !== 'pretool') {
+      entries.push({ id: trigger.id, considered: false });
+      continue;
+    }
+    const stage = pretoolStage(trigger, options.toolName, options.toolInput, options.cwd);
+    const entry: PretoolExplainEntry = {
+      id: trigger.id,
+      enforce: trigger.enforce,
+      considered: true,
+      matcher: stage === 'hit' ? 'hit' : `${stage}-miss`
+    };
+    entries.push(entry);
+    if (stage !== 'hit') {
+      entry.fired = false;
+      continue;
+    }
+    if (trigger.when !== undefined) {
+      entry.when = evaluateWhenVerdict(trigger.when, options.vaultRoot);
+      if (entry.when !== 'unmet') {
+        entry.fired = false;
+        continue;
+      }
+    }
+    const match = pretoolMatch(trigger);
+    if (match.enforce === 'block') {
+      entry.dedup = 'exempt';
+    } else {
+      const key = dedupKey(match, now);
+      entry.dedup = key === null ? 'never' : fired.has(key) ? 'suppressed' : 'fresh';
+    }
+    entry.fired = entry.dedup !== 'suppressed';
+    if (entry.fired) rendered.push(match);
+  }
+  return { triggers: entries, outcome: renderPretool(rendered, options.format ?? 'neutral') };
 }
 
 /**
@@ -568,13 +758,15 @@ export function hookStateDir(): string {
  * are created atomically (`wx`), so concurrent events can add keys but never
  * erase each other's. Persistence is auxiliary state after the decision: a
  * failure repeats a reminder at worst and never changes the returned matches.
- * Stale sessions are pruned opportunistically on write.
+ * Stale sessions are pruned opportunistically on write. `persist: false`
+ * classifies against existing state without recording — the dry-run path.
  */
 export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }>(
   stateDir: string,
   sessionId: string,
   matches: T[],
-  now = Date.now()
+  now = Date.now(),
+  persist = true
 ): T[] {
   if (matches.length === 0) return [];
   const dir = join(stateDir, safeName(sessionId));
@@ -582,20 +774,16 @@ export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }
   const fresh: T[] = [];
   const record: string[] = [];
   for (const match of matches) {
-    if (match.dedup === 'never') {
+    const key = dedupKey(match, now);
+    if (key === null) {
       fresh.push(match);
       continue;
     }
-    const key = safeName(
-      typeof match.dedup === 'object'
-        ? `${match.id}@${Math.floor(now / (match.dedup.minutes * 60_000))}`
-        : match.id
-    );
     if (fired.has(key)) continue;
     fresh.push(match);
     record.push(key);
   }
-  if (record.length > 0) {
+  if (persist && record.length > 0) {
     try {
       mkdirSync(dir, { recursive: true });
       for (const key of record) {
@@ -615,6 +803,16 @@ export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }
 
 function safeName(part: string): string {
   return part.replace(/[^A-Za-z0-9._@-]/g, '_');
+}
+
+/** Null means dedup-exempt by policy (`never`): no key, no state spent. */
+function dedupKey(match: { id: string; dedup?: Trigger['dedup'] }, now: number): string | null {
+  if (match.dedup === 'never') return null;
+  return safeName(
+    typeof match.dedup === 'object'
+      ? `${match.id}@${Math.floor(now / (match.dedup.minutes * 60_000))}`
+      : match.id
+  );
 }
 
 function readFired(dir: string): Set<string> {
@@ -652,6 +850,9 @@ interface HookInvocation {
   scope: string | undefined;
   harness: unknown;
   triggersFile: unknown;
+  /** True under `--dry-run` or `--explain`: no state writes, no side effects. */
+  dryRun: boolean;
+  explain: boolean;
 }
 
 function hookInvocation(): HookInvocation | null {
@@ -662,7 +863,9 @@ function hookInvocation(): HookInvocation | null {
     options: {
       scope: { type: 'string' },
       harness: { type: 'string' },
-      triggers: { type: 'string' }
+      triggers: { type: 'string' },
+      'dry-run': { type: 'boolean' },
+      explain: { type: 'boolean' }
     }
   });
   const vaultRoot = positionals[2] ?? process.env.WIKI_VAULT;
@@ -674,7 +877,9 @@ function hookInvocation(): HookInvocation | null {
     vaultRoot,
     scope: typeof values.scope === 'string' ? values.scope : process.env.WIKI_SCOPE,
     harness: values.harness,
-    triggersFile: values.triggers
+    triggersFile: values.triggers,
+    dryRun: values['dry-run'] === true || values.explain === true,
+    explain: values.explain === true
   };
 }
 
@@ -714,8 +919,25 @@ export async function runHookPrompt(): Promise<void> {
     for (const id of duplicates) {
       diag(`duplicate trigger id "${id}" — later occurrence ignored`);
     }
+    if (invocation.explain) {
+      const trace = explainPrompt({
+        prompt: event.prompt,
+        triggers,
+        stateDir: hookStateDir(),
+        sessionId: event.session_id
+      });
+      console.log(JSON.stringify({ event: 'prompt', scope: scope ?? null, duplicates, ...trace }));
+      return;
+    }
     const matches = matchPromptTriggers(event.prompt, triggers);
-    for (const match of dedupeMatches(hookStateDir(), event.session_id, matches)) {
+    const fresh = dedupeMatches(
+      hookStateDir(),
+      event.session_id,
+      matches,
+      Date.now(),
+      !invocation.dryRun
+    );
+    for (const match of fresh) {
       console.log(match.text);
     }
   } catch (err) {
@@ -755,13 +977,27 @@ export async function runHookPretool(): Promise<void> {
     for (const id of duplicates) {
       diag(`duplicate trigger id "${id}" — later occurrence ignored`);
     }
+    if (invocation.explain) {
+      const trace = explainPretool({
+        toolName: event.tool_name,
+        toolInput: event.tool_input,
+        triggers,
+        vaultRoot,
+        stateDir: hookStateDir(),
+        sessionId: event.session_id,
+        ...(event.cwd !== undefined && { cwd: event.cwd }),
+        format
+      });
+      console.log(JSON.stringify({ event: 'pretool', scope: scope ?? null, duplicates, ...trace }));
+      return;
+    }
     const matches = matchPretoolTriggers(event.tool_name, event.tool_input, triggers, event.cwd);
     const { fired, skipped } = evaluateMatches(matches, vaultRoot);
     for (const id of skipped) {
       diag(`trigger "${id}": unknown or unevaluable predicate — skipped`);
     }
     const rendered = renderPretool(
-      dedupePretoolMatches(hookStateDir(), event.session_id, fired),
+      dedupePretoolMatches(hookStateDir(), event.session_id, fired, !invocation.dryRun),
       format
     );
     for (const line of rendered.stderr) {
@@ -786,6 +1022,10 @@ export async function runHookPosttool(): Promise<void> {
   try {
     const invocation = hookInvocation();
     if (invocation === null) return;
+    if (invocation.dryRun) {
+      diag('--dry-run/--explain support prompt and pretool events only');
+      return;
+    }
     let format: 'neutral' | 'claude' = 'neutral';
     if (invocation.harness === 'claude') {
       format = 'claude';
@@ -831,6 +1071,10 @@ export async function runHookStop(): Promise<void> {
   try {
     const invocation = hookInvocation();
     if (invocation === null) return;
+    if (invocation.dryRun) {
+      diag('--dry-run/--explain support prompt and pretool events only');
+      return;
+    }
     const event = parseStopEvent(await readStdin());
     if (event === null) {
       diag('stdin is not a stop event ({session_id})');

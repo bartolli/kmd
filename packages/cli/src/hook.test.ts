@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -10,6 +10,8 @@ import {
   dedupePretoolMatches,
   effectiveTriggers,
   evaluateMatches,
+  explainPretool,
+  explainPrompt,
   kiroIdePromptEvent,
   loadTriggerFile,
   matchPretoolTriggers,
@@ -347,6 +349,14 @@ describe('dedupeMatches', () => {
       'minute-brief@1',
       'release-protocol'
     ]);
+  });
+
+  it('filters without recording when persistence is off', async () => {
+    expect(dedupeMatches(stateDir, 's1', [match], Date.now(), false)).toEqual([match]);
+    expect(await readdir(stateDir)).toEqual([]);
+
+    dedupeMatches(stateDir, 's1', [match]);
+    expect(dedupeMatches(stateDir, 's1', [match], Date.now(), false)).toEqual([]);
   });
 
   it('lets the handoff-gate block through a state failure', () => {
@@ -707,6 +717,256 @@ describe('parsePretoolEvent', () => {
     );
 
     expect(event?.cwd).toBe('/repo');
+  });
+});
+
+describe('explainPretool', () => {
+  let stateDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), 'kmd-explain-state-'));
+  });
+
+  afterEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  const gate: Trigger = {
+    id: 'retro-gate',
+    on: 'pretool',
+    enforce: 'block',
+    tool: 'Bash',
+    args_match: 'git tag',
+    reason: 'Retro gate.'
+  };
+  const orient: Trigger = {
+    id: 'tag-orientation',
+    on: 'pretool',
+    enforce: 'inject',
+    tool: 'Bash',
+    args_match: 'git tag',
+    text: 'Tagging: ops-publish-kmd is the release chain.'
+  };
+
+  it('traces a matched deny end to end without touching state', async () => {
+    const trace = explainPretool({
+      toolName: 'Bash',
+      toolInput: { command: 'git tag v1' },
+      triggers: [gate, orient],
+      vaultRoot: '/nonexistent-vault',
+      stateDir,
+      sessionId: 's1',
+      format: 'claude'
+    });
+
+    expect(trace.triggers).toEqual([
+      {
+        id: 'retro-gate',
+        enforce: 'block',
+        considered: true,
+        matcher: 'hit',
+        dedup: 'exempt',
+        fired: true
+      },
+      {
+        id: 'tag-orientation',
+        enforce: 'inject',
+        considered: true,
+        matcher: 'hit',
+        dedup: 'fresh',
+        fired: true
+      }
+    ]);
+    const output = JSON.parse(trace.outcome.stdout as string) as {
+      hookSpecificOutput: Record<string, string>;
+    };
+    expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(output.hookSpecificOutput.additionalContext).toContain('release chain');
+    expect(await readdir(stateDir)).toEqual([]);
+  });
+
+  it('names the matcher stage that missed, per trigger', () => {
+    const filesGate: Trigger = {
+      id: 'dist-gate',
+      on: 'pretool',
+      enforce: 'block',
+      tool: 'Bash',
+      files: ['dist/**'],
+      reason: 'R.'
+    };
+    const promptTrigger: Trigger = {
+      id: 'release-protocol',
+      on: 'prompt',
+      enforce: 'inject',
+      text: 'T.'
+    };
+
+    const trace = explainPretool({
+      toolName: 'Bash',
+      toolInput: { command: 'git push', file_path: 'src/a.ts' },
+      triggers: [
+        gate,
+        orient,
+        filesGate,
+        promptTrigger,
+        { ...gate, id: 'wrong-tool', tool: 'Write' }
+      ],
+      vaultRoot: '/nonexistent-vault',
+      stateDir,
+      sessionId: 's1'
+    });
+
+    expect(trace.triggers).toEqual([
+      { id: 'retro-gate', enforce: 'block', considered: true, matcher: 'args-miss', fired: false },
+      {
+        id: 'tag-orientation',
+        enforce: 'inject',
+        considered: true,
+        matcher: 'args-miss',
+        fired: false
+      },
+      { id: 'dist-gate', enforce: 'block', considered: true, matcher: 'files-miss', fired: false },
+      { id: 'release-protocol', considered: false },
+      { id: 'wrong-tool', enforce: 'block', considered: true, matcher: 'tool-miss', fired: false }
+    ]);
+    expect(trace.outcome.stdout).toBeNull();
+  });
+
+  it('reports typed predicate evidence without changing enforcement', () => {
+    const vaultRoot = mkdtempSync(join(tmpdir(), 'kmd-explain-vault-'));
+    const page = (rel: string, updated: string): void => {
+      const path = join(vaultRoot, rel);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, `---\ntitle: p\nupdated: ${updated}\n---\nbody\n`);
+    };
+    const when = (id: string, fresh: string, than: string): Trigger => ({
+      ...gate,
+      id,
+      when: { name: 'newer-than', fresh: [fresh], than: [than] }
+    });
+    page('notes/retro-1.md', '2026-07-10');
+    page('ops/release-1.md', '2026-07-20');
+    page('notes/fresh-retro.md', '2026-07-26');
+
+    const trace = explainPretool({
+      toolName: 'Bash',
+      toolInput: { command: 'git tag v1' },
+      triggers: [
+        when('unmet-gate', 'notes/retro-*.md', 'ops/release-*.md'),
+        when('satisfied-gate', 'notes/fresh-*.md', 'ops/release-*.md'),
+        when('vacuous-gate', 'notes/retro-*.md', 'ops/absent-*.md'),
+        { ...gate, id: 'unknown-gate', when: 'legacy-name' as Trigger['when'] } as Trigger
+      ],
+      vaultRoot,
+      stateDir,
+      sessionId: 's1'
+    });
+
+    rmSync(vaultRoot, { recursive: true, force: true });
+    expect(trace.triggers.map((t) => ({ id: t.id, when: t.when, fired: t.fired }))).toEqual([
+      { id: 'unmet-gate', when: 'unmet', fired: true },
+      { id: 'satisfied-gate', when: 'satisfied', fired: false },
+      { id: 'vacuous-gate', when: 'vacuous', fired: false },
+      { id: 'unknown-gate', when: 'unknown', fired: false }
+    ]);
+  });
+
+  it('classifies dedup per trigger and never writes state', async () => {
+    dedupeMatches(stateDir, 's1', [{ id: 'tag-orientation' }]);
+    const never: Trigger = { ...orient, id: 'always-on', dedup: 'never' };
+
+    const probe = () =>
+      explainPretool({
+        toolName: 'Bash',
+        toolInput: { command: 'git tag v1' },
+        triggers: [gate, orient, never],
+        vaultRoot: '/nonexistent-vault',
+        stateDir,
+        sessionId: 's1'
+      });
+
+    const verdicts = (trace: ReturnType<typeof probe>) =>
+      trace.triggers.map((t) => ({ id: t.id, dedup: t.dedup, fired: t.fired }));
+    const expected = [
+      { id: 'retro-gate', dedup: 'exempt', fired: true },
+      { id: 'tag-orientation', dedup: 'suppressed', fired: false },
+      { id: 'always-on', dedup: 'never', fired: true }
+    ];
+    expect(verdicts(probe())).toEqual(expected);
+    expect(verdicts(probe())).toEqual(expected);
+    expect(await readdir(join(stateDir, 's1'))).toEqual(['tag-orientation']);
+  });
+});
+
+describe('explainPrompt', () => {
+  let stateDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), 'kmd-explain-prompt-'));
+  });
+
+  afterEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  const brief: Trigger = {
+    id: 'release-protocol',
+    on: 'prompt',
+    enforce: 'inject',
+    keywords: ['release'],
+    intent: ['\\btag\\b'],
+    text: 'Release protocol.'
+  };
+
+  it('traces keyword and intent evidence with dedup, without writing state', async () => {
+    dedupeMatches(stateDir, 's1', [{ id: 'suppressed-brief' }]);
+    const suppressed: Trigger = { ...brief, id: 'suppressed-brief' };
+    const missed: Trigger = {
+      ...brief,
+      id: 'missed-brief',
+      keywords: ['deploy'],
+      intent: ['\\bship\\b']
+    };
+    const pretool: Trigger = { id: 'retro-gate', on: 'pretool', enforce: 'block', reason: 'R.' };
+
+    const trace = explainPrompt({
+      prompt: 'releasing the train today',
+      triggers: [brief, suppressed, missed, pretool],
+      stateDir,
+      sessionId: 's1'
+    });
+
+    expect(trace.triggers).toEqual([
+      {
+        id: 'release-protocol',
+        considered: true,
+        keywords: 'hit',
+        intent: 'miss',
+        matched: true,
+        dedup: 'fresh',
+        fired: true
+      },
+      {
+        id: 'suppressed-brief',
+        considered: true,
+        keywords: 'hit',
+        intent: 'miss',
+        matched: true,
+        dedup: 'suppressed',
+        fired: false
+      },
+      {
+        id: 'missed-brief',
+        considered: true,
+        keywords: 'miss',
+        intent: 'miss',
+        matched: false,
+        fired: false
+      },
+      { id: 'retro-gate', considered: false }
+    ]);
+    expect(trace.output).toEqual(['Release protocol.']);
+    expect(await readdir(join(stateDir, 's1'))).toEqual(['suppressed-brief']);
   });
 });
 
