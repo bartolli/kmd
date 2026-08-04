@@ -428,13 +428,42 @@ function patchPaths(toolInput: unknown): string[] {
 }
 
 /**
+ * Shell command strings carry mutation targets no path field names — `rm`,
+ * `mv`, `sed -i`, redirections. Tokens are quote-aware; one counts as a path
+ * candidate when it contains a separator or ends in a vault content
+ * extension. Over-matching is safe (validate + sync is idempotent); the
+ * silent miss is the failure mode this closes. Paths built dynamically or
+ * resolved behind an in-command `cd` stay out of reach.
+ */
+const COMMAND_TOKEN_RE = /"([^"]*)"|'([^']*)'|(\S+)/g;
+const PATHISH_RE = /\/|\.(?:md|base|canvas|ya?ml)$/i;
+
+function commandPaths(toolInput: unknown): string[] {
+  if (typeof toolInput !== 'object' || toolInput === null) return [];
+  const command = (toolInput as Record<string, unknown>).command;
+  if (typeof command !== 'string') return [];
+  const paths: string[] = [];
+  for (const match of command.matchAll(COMMAND_TOKEN_RE)) {
+    const token = (match[1] ?? match[2] ?? match[3]) as string;
+    for (const piece of token.split(/[;|&<>()]+/)) {
+      if (piece !== '' && PATHISH_RE.test(piece)) paths.push(piece);
+    }
+  }
+  return paths;
+}
+
+/**
  * Path guard for the posttool event: did this tool call touch a file inside
  * the vault? Relative candidates resolve against the event cwd. A miss is the
  * hot path — every non-vault edit in a session flows through here.
  */
 export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: string): boolean {
   const root = resolve(vaultRoot);
-  const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
+  const candidates = [
+    ...pathCandidates(toolInput, cwd),
+    ...patchPaths(toolInput),
+    ...commandPaths(toolInput)
+  ];
   return candidates.some((candidate) => {
     const absolute = resolve(cwd ?? '.', candidate);
     return absolute === root || absolute.startsWith(`${root}/`);
@@ -535,7 +564,11 @@ export function hookStateDir(): string {
  * survivors. The per-trigger `dedup` policy selects the key: `session`
  * (default) keys on the trigger id, `{minutes: N}` appends the time bucket so
  * a new bucket re-fires within the session, `never` skips the state entirely.
- * Stale session files are pruned opportunistically on write.
+ * State is one marker file per key inside a per-session directory; markers
+ * are created atomically (`wx`), so concurrent events can add keys but never
+ * erase each other's. Persistence is auxiliary state after the decision: a
+ * failure repeats a reminder at worst and never changes the returned matches.
+ * Stale sessions are pruned opportunistically on write.
  */
 export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }>(
   stateDir: string,
@@ -544,8 +577,8 @@ export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }
   now = Date.now()
 ): T[] {
   if (matches.length === 0) return [];
-  const file = join(stateDir, `${sessionId.replace(/[^A-Za-z0-9._-]/g, '_')}.json`);
-  const fired = readFired(file);
+  const dir = join(stateDir, safeName(sessionId));
+  const fired = readFired(dir);
   const fresh: T[] = [];
   const record: string[] = [];
   for (const match of matches) {
@@ -553,35 +586,44 @@ export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }
       fresh.push(match);
       continue;
     }
-    const key =
+    const key = safeName(
       typeof match.dedup === 'object'
         ? `${match.id}@${Math.floor(now / (match.dedup.minutes * 60_000))}`
-        : match.id;
+        : match.id
+    );
     if (fired.has(key)) continue;
     fresh.push(match);
     record.push(key);
   }
   if (record.length > 0) {
-    mkdirSync(stateDir, { recursive: true });
-    for (const key of record) {
-      fired.add(key);
+    try {
+      mkdirSync(dir, { recursive: true });
+      for (const key of record) {
+        try {
+          writeFileSync(join(dir, key), '', { flag: 'wx' });
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+        }
+      }
+      pruneStale(stateDir, dir);
+    } catch (err) {
+      diag(`dedup state not persisted: ${err instanceof Error ? err.message : String(err)}`);
     }
-    writeFileSync(file, JSON.stringify([...fired]));
-    pruneStale(stateDir, file);
   }
   return fresh;
 }
 
-function readFired(file: string): Set<string> {
+function safeName(part: string): string {
+  return part.replace(/[^A-Za-z0-9._@-]/g, '_');
+}
+
+function readFired(dir: string): Set<string> {
   try {
-    const data: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    if (Array.isArray(data)) {
-      return new Set(data.filter((entry): entry is string => typeof entry === 'string'));
-    }
+    return new Set(readdirSync(dir));
   } catch {
-    // missing or corrupt state reads as "nothing fired" — worst case one repeated line
+    // no session state yet — nothing fired
+    return new Set();
   }
-  return new Set();
 }
 
 function pruneStale(stateDir: string, keep: string): void {
@@ -590,7 +632,7 @@ function pruneStale(stateDir: string, keep: string): void {
     for (const entry of readdirSync(stateDir)) {
       const path = join(stateDir, entry);
       if (path !== keep && statSync(path).mtimeMs < cutoff) {
-        rmSync(path, { force: true });
+        rmSync(path, { recursive: true, force: true });
       }
     }
   } catch {

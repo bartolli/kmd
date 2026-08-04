@@ -298,8 +298,8 @@ describe('dedupeMatches', () => {
     expect(dedupeMatches(stateDir, 's2', [match])).toEqual([match]);
   });
 
-  it('treats a corrupt state file as empty', () => {
-    writeFileSync(join(stateDir, 's1.json'), 'not json');
+  it('ignores legacy array-file session state', () => {
+    writeFileSync(join(stateDir, 's1.json'), '["release-protocol"]');
 
     expect(dedupeMatches(stateDir, 's1', [match])).toEqual([match]);
   });
@@ -309,16 +309,18 @@ describe('dedupeMatches', () => {
     expect(await readdir(stateDir)).toEqual([]);
   });
 
-  it('prunes stale session files on write, keeping the current one', async () => {
-    mkdirSync(stateDir, { recursive: true });
-    const stale = join(stateDir, 'old-session.json');
-    writeFileSync(stale, '["x"]');
+  it('prunes stale session state on write — legacy files and dirs — keeping the current one', async () => {
+    mkdirSync(join(stateDir, 'old-session'), { recursive: true });
+    writeFileSync(join(stateDir, 'old-session', 'x'), '');
+    const staleFile = join(stateDir, 'legacy-session.json');
+    writeFileSync(staleFile, '["x"]');
     const eightDaysAgo = (Date.now() - 8 * 24 * 60 * 60 * 1000) / 1000;
-    utimesSync(stale, eightDaysAgo, eightDaysAgo);
+    utimesSync(staleFile, eightDaysAgo, eightDaysAgo);
+    utimesSync(join(stateDir, 'old-session'), eightDaysAgo, eightDaysAgo);
 
     dedupeMatches(stateDir, 's1', [match]);
 
-    expect((await readdir(stateDir)).sort()).toEqual(['s1.json']);
+    expect((await readdir(stateDir)).sort()).toEqual(['s1']);
   });
 
   it('sanitizes session ids used as filenames', async () => {
@@ -327,6 +329,33 @@ describe('dedupeMatches', () => {
     const entries = await readdir(stateDir);
     expect(entries).toHaveLength(1);
     expect(entries[0]).not.toContain('/');
+  });
+
+  it('returns matches unchanged when the state dir is unwritable', () => {
+    const blocked = join(stateDir, 'occupied-by-file');
+    writeFileSync(blocked, 'not a directory');
+
+    expect(dedupeMatches(blocked, 's1', [match])).toEqual([match]);
+  });
+
+  it('records each dedup key as its own atomic marker inside a per-session dir', async () => {
+    const bucketed = { id: 'minute-brief', text: 'M.', dedup: { minutes: 10 } };
+
+    dedupeMatches(stateDir, 's1', [match, bucketed], 600_000);
+
+    expect((await readdir(join(stateDir, 's1'))).sort()).toEqual([
+      'minute-brief@1',
+      'release-protocol'
+    ]);
+  });
+
+  it('lets the handoff-gate block through a state failure', () => {
+    const blocked = join(stateDir, 'occupied-by-file');
+    writeFileSync(blocked, 'not a directory');
+
+    expect(dedupeMatches(blocked, 's1', [{ id: 'handoff-gate' }])).toEqual([
+      { id: 'handoff-gate' }
+    ]);
   });
 });
 
@@ -420,6 +449,21 @@ describe('matchPretoolTriggers / renderPretool', () => {
 
       const second = dedupePretoolMatches(stateDir, 's1', event());
       expect(second.map((m) => m.id)).toEqual(['retro-gate']);
+    });
+
+    it('preserves a mixed block + inject deny when the state dir is unwritable', () => {
+      const blocked = join(stateDir, 'occupied-by-file');
+      writeFileSync(blocked, 'not a directory');
+      const matches = matchPretoolTriggers('Bash', { command: 'git tag v1' }, [gate, orient]);
+
+      const rendered = renderPretool(dedupePretoolMatches(blocked, 's1', matches), 'claude');
+
+      const output = JSON.parse(rendered.stdout as string) as {
+        hookSpecificOutput: Record<string, string>;
+      };
+      expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(output.hookSpecificOutput.permissionDecisionReason).toContain('Retro gate');
+      expect(output.hookSpecificOutput.additionalContext).toContain('release chain');
     });
   });
 
@@ -682,9 +726,47 @@ describe('vaultPathTouched', () => {
     expect(vaultPathTouched({ file_path: 'notes/x.md' }, '/v', '/repo')).toBe(false);
   });
 
-  it('ignores tool input without path fields', () => {
-    expect(vaultPathTouched({ command: 'echo /v/notes/x.md' }, '/v')).toBe(false);
+  it('ignores tool input without path fields or path-bearing command', () => {
+    expect(vaultPathTouched({ description: 'mentions notes but no path' }, '/v')).toBe(false);
     expect(vaultPathTouched(undefined, '/v')).toBe(false);
+  });
+
+  describe('command strings', () => {
+    it('detects a shell deletion of a vault page', () => {
+      expect(vaultPathTouched({ command: 'rm notes/x.md' }, '/v', '/v')).toBe(true);
+    });
+
+    it('detects absolute vault paths regardless of cwd', () => {
+      expect(vaultPathTouched({ command: 'rm /v/notes/x.md' }, '/v')).toBe(true);
+      expect(vaultPathTouched({ command: 'mv /v/notes/a.md /elsewhere/' }, '/v', '/repo')).toBe(
+        true
+      );
+    });
+
+    it('keeps quoted paths with spaces as one candidate', () => {
+      expect(vaultPathTouched({ command: 'rm "notes/my note.md"' }, '/v', '/v')).toBe(true);
+      expect(vaultPathTouched({ command: "rm 'notes/my note.md'" }, '/v', '/v')).toBe(true);
+    });
+
+    it('splits candidates off attached shell separators', () => {
+      expect(vaultPathTouched({ command: 'echo hi >notes/x.md' }, '/v', '/v')).toBe(true);
+      expect(vaultPathTouched({ command: 'true;rm notes/x.md' }, '/v', '/v')).toBe(true);
+    });
+
+    it('treats bare vault-content filenames as candidates', () => {
+      expect(vaultPathTouched({ command: "sed -i '' vault.yaml" }, '/v', '/v')).toBe(true);
+    });
+
+    it('stays quiet for commands without path-like tokens, even inside the vault', () => {
+      expect(vaultPathTouched({ command: 'git status' }, '/v', '/v')).toBe(false);
+      expect(vaultPathTouched({ command: 'ls -la' }, '/v', '/v')).toBe(false);
+    });
+
+    it('stays quiet for paths outside the vault', () => {
+      expect(vaultPathTouched({ command: 'rm /elsewhere/x.md' }, '/v', '/repo')).toBe(false);
+      expect(vaultPathTouched({ command: 'rm notes/x.md' }, '/v', '/repo')).toBe(false);
+      expect(vaultPathTouched({ command: 'rm /v-other/x.md' }, '/v')).toBe(false);
+    });
   });
 
   it('reads paths out of an apply_patch envelope', () => {
