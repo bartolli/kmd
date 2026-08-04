@@ -1,3 +1,22 @@
+## [v0.10.0] - 2026-08-04
+
+### Added
+
+- `kmd hook <prompt|pretool> --explain` — one neutral JSON trace per synthetic event: resolved scope, duplicate ids, and per trigger the matcher verdict (`hit` or the missed stage — `tool-miss`/`args-miss`/`files-miss`/`payload-miss`; prompt triggers carry `keywords`/`intent` evidence instead), typed predicate evidence (`satisfied`/`unmet`/`vacuous`/`unknown` — explain-only vocabulary; enforcement keeps the locked tri-state), the dedup verdict (`exempt`/`never`/`fresh`/`suppressed`), `fired`, and the outcome the harness would receive under the selected codec. Explain reads dedup state and never writes it; `--dry-run` runs the live contract without state writes. Posttool and stop decline both flags with one diagnostic and do nothing — a probe never syncs the index or spends handoff state
+- posttool vault-touch detection reads shell `command` strings: quote-aware tokens count on a path separator, a glob or variable character, a bare dot, or a vault content extension; relative tokens resolve against the event `cwd`, so glob and variable targets register only inside the vault. `rm`, `mv`, `sed -i`, redirections, and `rm *`-class deletions reach the resync; the claude and codex adapters bind `Bash` in their PostToolUse matchers
+
+### Changed
+
+- dedup state is one atomic marker file per fired key under `$KMD_HOME/state/hook/{session_id}/` — concurrent events add keys, never erase each other's; persistence is best-effort: a state IO failure emits one stderr diagnostic and never suppresses a matched deny, inject, or handoff-gate block. Legacy `{session_id}.json` state is ignored, not migrated — an in-flight session re-fires each deduped reminder once after upgrade
+- renderers separate trigger identity from rendered payload: each matched id spends its own dedup key, byte-identical inject/warn text renders once, and every unique block reason reports in match order — on both codecs and the prompt event's stdout lines
+- `kmd sync` orphan sweep runs on a zero-page walk: with `vault.yaml` loaded, an empty vault sweeps the index empty instead of retaining orphans; the mis-mount case never reaches the sweep because config load fails loud first
+- `/to-triggers` dry-run loop runs `--explain` and reads the trace as the only fire signal
+
+### Fixed
+
+- shell mutations inside the vault no longer leave MCP retrieval stale — the PostToolUse surface was tool-name-bound to `Edit`/`Write`/`apply_patch`, so a shell `rm` never reached the resync
+- an unwritable dedup state directory no longer suppresses a matched pretool deny in mixed block+inject events, a prompt inject, or the stop handoff-gate — dedup persistence ran inside the decision path and its exception erased already-matched output
+
 ## [v0.9.0] - 2026-08-01
 
 ### Added
