@@ -2,7 +2,7 @@
 name: to-prd
 description: 'Synthesize the current conversation context into a wiki-native plan with child user-story files. Writes a thin `plan/plan-{name}.md` (Problem · Solution · Story Index · Out of Scope · References) plus one `plan/{name}/story-N-{slug}.md` per user story, each with Gherkin scenarios and an initial slice list. Default `triage_state: needs-triage`. Does NOT interview — assumes the conversation already established intent (typically via `$grill-with-docs`). Use when the user says "turn this into a plan", "draft a PRD", "$to-prd", "write up what we discussed", "synthesize this into stories", or similar synthesis requests after a working discussion. Reads `spec-context.md` and existing ADRs to use the project''s vocabulary correctly.'
 metadata:
-  version: "0.12.0"
+  version: "0.13.0"
 ---
 
 # To PRD — Synthesize Conversation into a Wiki-Native Plan

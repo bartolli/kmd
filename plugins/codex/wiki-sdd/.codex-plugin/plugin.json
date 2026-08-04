@@ -1,6 +1,6 @@
 {
   "name": "wiki-sdd",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Wiki-native spec-driven development loop for an Obsidian-based agent wiki.",
   "author": {
     "name": "Angel Bartolli"

@@ -2,7 +2,7 @@
 name: retro
 description: Formal end-of-session retrospective gate that runs BEFORE authoring or resyncing the wiki primer. Asks exactly two questions — 'What are you least confident about right now?' and 'What's the biggest thing we're missing about the situation right now? What don't I realize?' — then converts every answer into wiki artifacts (story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions) so the next cold session starts from corrected truth, never chat-only confessions. Use when the user says "/retro", "run the retro", "retro protocol", "session retro", "retro before we close", "prep the primer", "get the primer ready", "cold session prep", "what are we least confident about", "what are we missing", "what don't you realize", or before any primer rewrite at a session boundary.
 metadata:
-  version: "0.12.0"
+  version: "0.13.0"
 ---
 
 # Retro — Two Questions Before the Primer
