@@ -76,6 +76,37 @@ Nothing stays only in chat. Route each answer by shape:
 | Risk that shapes sequencing | Dated "Session-retro note" in the active plan (release-vs-more-work calls get recorded this way) |
 | Residual uncertainty worth carrying | Primer Open Questions entry |
 
+### Acting on a finding — file vs. fix now
+
+The retro authorizes artifacts, never fixes. But a conversion is not
+a resolution: a wiki where findings are filed and never revisited is
+this protocol failing in slow motion — scopes accumulate hundreds of
+filed-unsolved stories whose fixes were cheapest the day they were
+found, when the failing code, the evidence, and the falsification
+path were all live in context. When a finding's fix is that close,
+the right momentum may be now — under an explicit override, never by
+default.
+
+The hot-path override requires all four, or the finding files into
+triage like any other:
+
+1. **Shape locked before code.** The story carries the fix as
+   Gherkin scenarios (the test spec) and Decisions bounding the
+   change. Hot context implements against a contract it cannot
+   quietly reshape — without this, a hot fix is a hot hack.
+2. **Operator-explicit go, in-turn.** The agent recommends and cites
+   the story; the human authorizes. The override is never
+   agent-initiated — hot context is also biased context, and the
+   session that produced a blind spot does not rate the urgency of
+   its own fix.
+3. **Same-session capture.** Slice ticks, spec corrections, and the
+   closing retro ride the same session. The override reorders the
+   ceremony; it never skips artifacts.
+4. **Locked territory stays out.** Anything the story's Decisions
+   mark as ADR-gated routes to its amendment round, however hot the
+   context. When the fix shape IS an amendment, "acting now" means
+   holding that conversation now — not coding around it.
+
 ### Step 3 — Then, and only then, the primer
 
 Author the primer update with the retro's residue incorporated. The
@@ -99,3 +130,7 @@ No separate report document — the artifacts are the output.
 - Artifact-free retro: answers with zero Step 2 conversions mean the
   answers were vacuous or the conversion was skipped. Both fail the
   protocol.
+- Filing as resolution: a needs-triage story is a routed finding,
+  not a handled one. When the backlog only grows, re-run the
+  file-vs-fix-now call on findings whose fix is already in context
+  instead of filing the next one on top.
