@@ -154,6 +154,24 @@ const BuiltinHooksSchema = z.strictObject({
         .optional()
         .describe('Stop-block preamble; the engine appends the error lines.')
     })
+    .optional(),
+  orient: z
+    .strictObject({
+      text: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Session-start prime instruction; the engine prepends the resolved scope.')
+    })
+    .optional(),
+  reorient: z
+    .strictObject({
+      text: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('Post-compaction re-orientation; the engine prepends the resolved scope.')
+    })
     .optional()
 });
 
@@ -197,7 +215,7 @@ const VaultConfigSchema = z
       'Full-replace of the trigger base per scope — escape hatch. "_all" is reserved for triggers_extra.'
     ),
     builtin_hooks: BuiltinHooksSchema.optional().describe(
-      'Message overrides for the fixed-function hooks (resync, handoff-gate) by public id.'
+      'Message overrides for the fixed-function hooks (resync, handoff-gate, orient, reorient) by public id.'
     ),
     triggers_extra: TriggersSchema.optional().describe(
       'Appended per scope after the engine defaults; the reserved "_all" key fires in every session.'

@@ -20,7 +20,7 @@ commands:
   mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
   config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
   db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
-  hook <prompt|pretool|posttool|stop> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
+  hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout;
                            posttool auto-runs validate + sync after a vault write;
                            stop blocks the handoff once while validate errors hold the sync
@@ -108,6 +108,9 @@ async function run(): Promise<void> {
       } else if (sub === 'stop') {
         const { runHookStop } = await import('@llm-wiki/cli/hook');
         await runHookStop();
+      } else if (sub === 'session-start') {
+        const { runHookSessionStart } = await import('@llm-wiki/cli/hook');
+        await runHookSessionStart();
       } else if (sub) {
         // A typo'd event name is the degraded-engine state the fail-open
         // contract covers, and exit 2 on UserPromptSubmit erases the prompt.
@@ -116,7 +119,7 @@ async function run(): Promise<void> {
         console.error(`kmd hook: unknown event: ${sub}`);
       } else {
         console.error(
-          'usage: kmd hook <prompt|pretool|posttool|stop> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
+          'usage: kmd hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
         );
         process.exit(2);
       }

@@ -18,10 +18,12 @@ import {
   matchPromptTriggers,
   parsePretoolEvent,
   parsePromptEvent,
+  parseSessionStartEvent,
   parseStopEvent,
   renderPosttool,
   renderPretool,
   renderPrompt,
+  renderSessionStart,
   renderStop,
   resolveScope,
   vaultPathTouched
@@ -1058,6 +1060,58 @@ describe('explainPrompt', () => {
       { id: 'release-tag-moment', fired: true }
     ]);
     expect(trace.output).toEqual(['Release protocol.']);
+  });
+});
+
+describe('parseSessionStartEvent', () => {
+  it('parses session_id with optional cwd and source', () => {
+    expect(
+      parseSessionStartEvent(
+        JSON.stringify({ session_id: 's1', cwd: '/repo', source: 'compact', extra: 1 })
+      )
+    ).toEqual({ session_id: 's1', cwd: '/repo', source: 'compact' });
+    expect(parseSessionStartEvent(JSON.stringify({ session_id: 's1' }))).toEqual({
+      session_id: 's1'
+    });
+  });
+
+  it('returns null for malformed payloads', () => {
+    expect(parseSessionStartEvent('not json')).toBeNull();
+    expect(parseSessionStartEvent(JSON.stringify({ source: 'startup' }))).toBeNull();
+  });
+});
+
+describe('renderSessionStart', () => {
+  it('orients a fresh session with the resolved scope and prime instruction', () => {
+    const line = renderSessionStart('llm-wiki', 'startup');
+
+    expect(line).toContain('"llm-wiki"');
+    expect(line.toLowerCase()).toContain('prime');
+  });
+
+  it('re-orients after compaction with the capture instruction', () => {
+    const line = renderSessionStart('llm-wiki', 'compact');
+
+    expect(line).toContain('"llm-wiki"');
+    expect(line.toLowerCase()).toContain('compact');
+    expect(line.toLowerCase()).toContain('primer');
+  });
+
+  it('treats resume, clear, fork, and absent sources as fresh orientation', () => {
+    for (const source of ['resume', 'clear', 'fork', undefined]) {
+      expect(renderSessionStart('s', source).toLowerCase()).toContain('prime');
+    }
+  });
+
+  it('honors builtin_hooks prose per id while the scope binding stays engine-owned', () => {
+    const orient = renderSessionStart('s', 'startup', { orient: { text: 'Custom orient.' } });
+    const reorient = renderSessionStart('s', 'compact', { reorient: { text: 'Custom reorient.' } });
+
+    expect(orient).toContain('Custom orient.');
+    expect(orient).toContain('"s"');
+    expect(reorient).toContain('Custom reorient.');
+    expect(reorient).toContain('"s"');
+    expect(renderSessionStart('s', 'startup', { reorient: { text: 'X.' } })).not.toContain('X.');
   });
 });
 

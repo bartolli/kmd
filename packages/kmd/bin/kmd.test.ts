@@ -246,7 +246,7 @@ describe('kmd hook prompt (end-to-end)', () => {
 
     expect(result.code).toBe(2);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('usage: kmd hook <prompt|pretool|posttool|stop>');
+    expect(result.stderr).toContain('usage: kmd hook <prompt|pretool|posttool|stop|session-start>');
     expect(result.stderr).not.toContain('unknown event');
   }, 30_000);
 

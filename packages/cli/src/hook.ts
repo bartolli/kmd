@@ -1119,6 +1119,83 @@ export async function runHookStop(): Promise<void> {
   }
 }
 
+export interface SessionStartEvent {
+  session_id: string;
+  cwd?: string;
+  source?: string;
+}
+
+export function parseSessionStartEvent(raw: string): SessionStartEvent | null {
+  const fields = eventFields(raw);
+  if (fields === null) return null;
+  const { session_id, cwd, source } = fields;
+  if (typeof session_id !== 'string') return null;
+  return {
+    session_id,
+    ...(typeof cwd === 'string' && { cwd }),
+    ...(typeof source === 'string' && { source })
+  };
+}
+
+/** Engine defaults for the orientation prose ([[adr-builtin-hook-identity]]). */
+const ORIENT_TEXT =
+  'prime via the wiki MCP prime tool before substantive work — the primer carries ' +
+  'current focus, book of work, and invariants.';
+const REORIENT_TEXT =
+  'context was compacted and transcript detail is lost — re-read the primer via the ' +
+  'wiki MCP prime tool and route uncaptured findings into the wiki before continuing.';
+
+/**
+ * Session-orientation codec — public ids `orient` (fresh sources) and
+ * `reorient` (`source: "compact"`). One line, stdout-as-context on every
+ * harness that delivers SessionStart stdout to the model. The scope binding
+ * is engine-owned; only the instruction prose is config.
+ */
+export function renderSessionStart(
+  scope: string,
+  source: string | undefined,
+  messages: {
+    orient?: { text?: string | undefined } | undefined;
+    reorient?: { text?: string | undefined } | undefined;
+  } = {}
+): string {
+  const text =
+    source === 'compact'
+      ? (messages.reorient?.text ?? REORIENT_TEXT)
+      : (messages.orient?.text ?? ORIENT_TEXT);
+  return `Wiki scope "${scope}": ${text}`;
+}
+
+/**
+ * `kmd hook session-start [<vault-root>] [--scope <s>]`. Fixed-function
+ * orientation: a session starting inside a declared scope repo receives one
+ * stdout context line — the prime instruction, or the post-compaction
+ * re-orientation when the harness reports `source: "compact"`. No resolved
+ * scope means silence; no dedup state is read or written. Fails open and
+ * exits 0 on every path like the other hook events.
+ */
+export async function runHookSessionStart(): Promise<void> {
+  try {
+    const invocation = hookInvocation();
+    if (invocation === null) return;
+    if (invocation.dryRun) {
+      diag('--dry-run/--explain support prompt and pretool events only');
+      return;
+    }
+    const event = parseSessionStartEvent(await readStdin());
+    if (event === null) {
+      diag('stdin is not a session-start event ({session_id})');
+      return;
+    }
+    const config = await loadVaultConfig(invocation.vaultRoot);
+    const scope = invocation.scope ?? resolveScope(config, event.cwd);
+    if (scope === undefined) return;
+    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}));
+  } catch (err) {
+    diag(err instanceof Error ? err.message : String(err));
+  }
+}
+
 async function readStdin(): Promise<string> {
   process.stdin.setEncoding('utf8');
   let input = '';

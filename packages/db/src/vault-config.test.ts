@@ -325,6 +325,26 @@ describe('loadVaultConfig', () => {
     await expect(loadVaultConfig(dir)).rejects.toThrow();
   });
 
+  it('accepts orient and reorient text overrides and rejects reason on them', async () => {
+    const body =
+      'scopes:\n  sotto:\n    status: active\n' +
+      'kinds: [spec]\n' +
+      'statuses: [active]\n' +
+      'methodologies: [sdd]\n' +
+      'tags:\n  canonical: []\n  aliases: {}\n';
+
+    await writeFile(
+      join(dir, 'vault.yaml'),
+      `${body}builtin_hooks:\n  orient:\n    text: "prime first"\n  reorient:\n    text: "re-prime"\n`
+    );
+    const config = await loadVaultConfig(dir);
+    expect(config.builtin_hooks?.orient?.text).toBe('prime first');
+    expect(config.builtin_hooks?.reorient?.text).toBe('re-prime');
+
+    await writeFile(join(dir, 'vault.yaml'), `${body}builtin_hooks:\n  orient:\n    reason: "x"\n`);
+    await expect(loadVaultConfig(dir)).rejects.toThrow();
+  });
+
   it('accepts an object-form when predicate with fresh and than globs', async () => {
     await writeFile(
       join(dir, 'vault.yaml'),
