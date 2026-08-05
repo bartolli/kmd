@@ -1,3 +1,16 @@
+## [v0.11.0] - 2026-08-04
+
+### Added
+
+- `kmd hook session-start` — fifth hook event: a session starting inside a declared scope repo receives one stdout context line — the prime instruction (`orient`), or the post-compaction re-orientation (`reorient`) when the payload carries `source: "compact"`; no resolved scope means silence, no dedup state is read or written, fails open and exits 0
+- `builtin_hooks` ids `orient` and `reorient` (`text` only, strict) — the engine owns the scope binding (`Wiki scope "{scope}": …`), config owns the instruction prose
+
+### Changed
+
+- claude and codex adapters register SessionStart matcher-less; the engine branches on `source`. Codex delivers SessionStart stdout as developer context with the same source vocabulary and re-fires SessionStart with `source: "compact"` after compaction, mid-turn included (verified live on 0.146.0 plus the codex hooks doc); codex subagent sessions are excluded upstream. PreCompact/PostCompact stdout is not a context channel on either harness
+- wrapper `MIN_HOOK_VERSION` floor: `[0, 11, 0]` — globals below it take the `npx @latest` fallback on every hook event until upgraded
+- retro skill: the file-vs-fix-now override (retro authorizes artifacts, never fixes; four preconditions gate acting at hot momentum) and the story status sweep — all-resolved stories are proposed for `status: archived` at retro, operator approval required, verification debt named as a hold argument
+
 ## [v0.10.0] - 2026-08-04
 
 ### Added
