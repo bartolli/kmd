@@ -2,7 +2,7 @@
 name: wiki
 description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides harness-aware MCP registration and file placement (Claude Code, Kiro IDE/CLI) when not already available. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.13.1"
+  version: "0.14.0"
 ---
 
 # Wiki — Project Bootstrap

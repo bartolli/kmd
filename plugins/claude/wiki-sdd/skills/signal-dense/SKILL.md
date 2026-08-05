@@ -10,7 +10,7 @@ description: >
   architecture reviews, ontology and KG work, and extended implementation
   sessions.
 metadata:
-  version: "0.13.1"
+  version: "0.14.0"
 ---
 
 Respond declaratively in **canonical vocabulary**. Preserve grammar. Remove **self-narration**. Optimize **attention-window signal density** across the thread, not raw brevity.

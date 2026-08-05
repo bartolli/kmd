@@ -10,7 +10,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const MIN_HOOK_VERSION = [0, 10, 0];
+const MIN_HOOK_VERSION = [0, 11, 0];
 const args = process.argv.slice(2);
 
 function hookCapableEntry() {

@@ -2,7 +2,7 @@
 name: to-triggers
 description: Turn a plain-language rule into a well-formed vault trigger entry. Interviews intent (remind vs warn vs block), then authors the matching mechanics itself — stemmed keyword choice, anchored regexes, glob semantics, predicate selection — proves fire and near-miss behavior with a dry run, and writes vault.yaml only on explicit approval with kmd validate green after. The human owns the intent; the skill owns the regex. Use when the user says "add a hook", "add a trigger", "add a rule for", "create a gate", "block X until Y", "remind me about X when", "never let X happen before Y", "$to-triggers", or right after a protocol rule failed to fire — the moment a prose rule proves it needs to become a gate.
 metadata:
-  version: "0.13.1"
+  version: "0.14.0"
 ---
 
 # To-Triggers — Author Vault Gate Triggers from Intent

@@ -2,7 +2,7 @@
 name: to-issues
 description: 'Break a wiki user story into vertical-slice tracer-bullet checkboxes (or refine existing slices), and in `github`/`gitlab` mode mirror `ready-for-agent` slices to the remote issue tracker with wikilinks back to the story file. Operates on `kind: story` files in the wiki. Quizzes the user on slice granularity, AFK vs HITL, and blocked-by dependencies. Use when the user says "break this story into slices", "refine the slicing", "/to-issues", "post these to GitHub", "publish issues from this story", or wants to validate vertical-slice rules on an existing story.'
 metadata:
-  version: "0.13.1"
+  version: "0.14.0"
 ---
 
 # To Issues — Break Stories into Vertical Slices (and Optionally Mirror to GitHub/GitLab)

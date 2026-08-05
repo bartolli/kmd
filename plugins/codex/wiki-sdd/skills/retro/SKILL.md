@@ -2,7 +2,7 @@
 name: retro
 description: Formal end-of-session retrospective gate that runs BEFORE authoring or resyncing the wiki primer. Asks exactly two questions — 'What are you least confident about right now?' and 'What's the biggest thing we're missing about the situation right now? What don't I realize?' — then converts every answer into wiki artifacts (story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions) so the next cold session starts from corrected truth, never chat-only confessions. Use when the user says "$retro", "run the retro", "retro protocol", "session retro", "retro before we close", "prep the primer", "get the primer ready", "cold session prep", "what are we least confident about", "what are we missing", "what don't you realize", or before any primer rewrite at a session boundary.
 metadata:
-  version: "0.13.1"
+  version: "0.14.0"
 ---
 
 # Retro — Two Questions Before the Primer
@@ -109,6 +109,19 @@ triage like any other:
    context. When the fix shape IS an amendment, "acting now" means
    holding that conversation now — not coding around it.
 
+### Story status sweep
+
+Slices tick during the session; nothing closes the story. Before the
+primer, sweep the scope: list every story whose slices are all
+resolved — ticked, or declined with recorded rationale — but whose
+`status` is still `active` or `draft`. Propose the set to the user
+and flip `status: archived` (bump `updated`, reconcile the parent
+plan's Story Index) **only on their approval**. Name anything that
+argues for holding a candidate open, outstanding verification debt
+first — the operator decides whether debt blocks closure. A scope
+that skips this sweep buries live work under finished work; field
+evidence: a scope reached 80+ completed-but-active stories.
+
 ### Step 3 — Then, and only then, the primer
 
 Author the primer update with the retro's residue incorporated. The
@@ -136,3 +149,7 @@ No separate report document — the artifacts are the output.
   not a handled one. When the backlog only grows, re-run the
   file-vs-fix-now call on findings whose fix is already in context
   instead of filing the next one on top.
+- Ticking as closure: a fully-resolved slice list with
+  `status: active` is the graveyard's back door. The status sweep
+  exists so stories leave the active set the session they complete —
+  with the operator's approval, never silently.
