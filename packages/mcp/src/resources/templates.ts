@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BUILT_IN_KINDS, type VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Binding, VaultBinding } from '../binding.js';
 
 interface TemplateSpec {
   /** wiki://template/{domain}/{kind} — `note` collapses to single segment. */
@@ -120,51 +121,65 @@ function customTemplates(config: VaultConfig): TemplateSpec[] {
   return specs;
 }
 
+function registerTemplate(mcp: McpServer, tmpl: TemplateSpec, binding: Binding): void {
+  mcp.registerResource(
+    tmpl.name,
+    tmpl.uri,
+    { description: tmpl.description, mimeType: 'text/markdown' },
+    async (uri) => {
+      const { vaultRoot } = await binding;
+      let text: string;
+      try {
+        text = await readFile(join(vaultRoot, 'templates', tmpl.file), 'utf8');
+      } catch (err) {
+        throw new Error(`template file missing: templates/${tmpl.file} (${tmpl.uri})`, {
+          cause: err
+        });
+      }
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: 'text/markdown' as const,
+            text
+          }
+        ]
+      };
+    }
+  );
+}
+
+function buildIndexText(vaultConfig: VaultConfig): string {
+  const indexLines = ['# Wiki Templates', ''];
+  for (const tmpl of [...TEMPLATES, ...customTemplates(vaultConfig)]) {
+    indexLines.push(`- **${tmpl.name}** — \`${tmpl.uri}\`  `);
+    indexLines.push(`  ${tmpl.description}`);
+  }
+  return indexLines.join('\n');
+}
+
 /**
  * Register all template resources with the MCP server. Each template is a
  * fixed URI; `resources/read` re-reads the file on every call, so edits to
  * vault/templates/*.md are picked up without restarting the server.
+ *
+ * Custom-kind templates come from the vault's config, unknowable before a
+ * deferred binding resolves — they register once it does, and the SDK's
+ * list_changed notification announces them. A pre-resolved binding registers
+ * them synchronously, before the transport connects, as before.
  */
-export function registerTemplateResources(
-  mcp: McpServer,
-  vaultRoot: string,
-  vaultConfig: VaultConfig
-): void {
-  const dir = join(vaultRoot, 'templates');
-  const templates = [...TEMPLATES, ...customTemplates(vaultConfig)];
-  for (const tmpl of templates) {
-    mcp.registerResource(
-      tmpl.name,
-      tmpl.uri,
-      { description: tmpl.description, mimeType: 'text/markdown' },
-      async (uri) => {
-        let text: string;
-        try {
-          text = await readFile(join(dir, tmpl.file), 'utf8');
-        } catch (err) {
-          throw new Error(`template file missing: templates/${tmpl.file} (${tmpl.uri})`, {
-            cause: err
-          });
-        }
-        return {
-          contents: [
-            {
-              uri: uri.toString(),
-              mimeType: 'text/markdown' as const,
-              text
-            }
-          ]
-        };
-      }
-    );
+export function registerTemplateResources(mcp: McpServer, binding: Binding): void {
+  for (const tmpl of TEMPLATES) {
+    registerTemplate(mcp, tmpl, binding);
   }
 
-  const indexLines = ['# Wiki Templates', ''];
-  for (const tmpl of templates) {
-    indexLines.push(`- **${tmpl.name}** — \`${tmpl.uri}\`  `);
-    indexLines.push(`  ${tmpl.description}`);
-  }
-  const indexText = indexLines.join('\n');
+  const registerCustom = (bound: VaultBinding): void => {
+    for (const tmpl of customTemplates(bound.vaultConfig)) {
+      registerTemplate(mcp, tmpl, binding);
+    }
+  };
+  if (binding instanceof Promise) void binding.then(registerCustom);
+  else registerCustom(binding);
 
   mcp.registerResource(
     'Template index',
@@ -174,8 +189,17 @@ export function registerTemplateResources(
         'Index of all wiki templates with URIs and descriptions. Read a specific template via its URI.',
       mimeType: 'text/markdown'
     },
-    async (uri) => ({
-      contents: [{ uri: uri.toString(), mimeType: 'text/markdown' as const, text: indexText }]
-    })
+    async (uri) => {
+      const { vaultConfig } = await binding;
+      return {
+        contents: [
+          {
+            uri: uri.toString(),
+            mimeType: 'text/markdown' as const,
+            text: buildIndexText(vaultConfig)
+          }
+        ]
+      };
+    }
   );
 }

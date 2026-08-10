@@ -28,7 +28,10 @@ commands:
   validate [<path>]        deterministic vault checker
   mcp [<vault-root>] [--default-root <path>]
                            start the stdio MCP server; --default-root is the plugin form
-                           (config default the project tier may beat); flags are mutually exclusive
+                           (config default the project tier may beat); flags are mutually exclusive;
+                           no positional and no $KMD_PROJECT_DIR: the vault binds after
+                           initialization, from the client's roots/list when it declares the
+                           roots capability
   config [<vault-root>]    print resolved vault + winning source; with nothing resolvable, list known vaults
   config <set|get|unset> default_vault [<path>]
                            read/write the global default in ~/.kmd/config.yaml
@@ -88,6 +91,21 @@ async function run(): Promise<void> {
         console.error('kmd mcp: <vault-root> and --default-root are mutually exclusive');
         process.exit(2);
       }
+      const { startMcpServer } = await import('@llm-wiki/mcp/start');
+      if (!positional && !process.env.KMD_PROJECT_DIR) {
+        // Roots-sourced project-aware mode: the client's roots/list feeds the
+        // same tier walk KMD_PROJECT_DIR would, so binding defers to after
+        // initialization — fail-loud moves to bind time. A malformed global
+        // config still crashes here, before serving.
+        const { loadGlobalConfig } = await import('@llm-wiki/db/kmd-config');
+        await startMcpServer({
+          cwd: process.cwd(),
+          defaultRoot,
+          envVault: process.env.WIKI_VAULT,
+          globalDefault: loadGlobalConfig().default_vault
+        });
+        break;
+      }
       const { resolveCliVault } = await import('@llm-wiki/cli/cli');
       const resolved = resolveCliVault(positional, defaultRoot);
       if (resolved.root === null) {
@@ -97,7 +115,6 @@ async function run(): Promise<void> {
         process.exit(1);
       }
       process.env.WIKI_VAULT = resolved.root;
-      const { startMcpServer } = await import('@llm-wiki/mcp/start');
       await startMcpServer();
       break;
     }

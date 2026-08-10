@@ -4,7 +4,13 @@ import { join } from 'node:path';
 import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { VaultBinding } from '../binding.js';
 import { registerTemplateResources, TEMPLATES } from './templates.js';
+
+// Resources never touch the index; a dummy db satisfies the binding shape.
+function asBinding(vaultRoot: string, vaultConfig: VaultConfig): VaultBinding {
+  return { vaultRoot, vaultConfig, db: undefined as unknown as VaultBinding['db'] };
+}
 
 const CONFIG: VaultConfig = {
   scopes: { sotto: { status: 'active' } },
@@ -67,14 +73,14 @@ describe('TEMPLATES array', () => {
 describe('wiki://templates index resource', () => {
   it('is registered alongside the 11 individual templates', () => {
     const { mcp } = captureMcp();
-    registerTemplateResources(mcp, '/fake-vault', CONFIG);
+    registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG));
 
     expect(mcp.registerResource).toHaveBeenCalledTimes(12);
   });
 
   it('returns markdown listing every template name and URI', async () => {
     const { mcp, handlers } = captureMcp();
-    registerTemplateResources(mcp, '/fake-vault', CONFIG);
+    registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG));
 
     const text = await readResource(handlers, 'wiki://templates');
 
@@ -89,7 +95,7 @@ describe('wiki://templates index resource', () => {
 describe('custom-kind templates', () => {
   it('registers wiki://template/{name} for an object-form kind, signal as description', () => {
     const { mcp, handlers } = captureMcp();
-    registerTemplateResources(mcp, '/fake-vault', CONFIG_WITH_CUSTOM);
+    registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG_WITH_CUSTOM));
 
     expect(handlers.has('wiki://template/experiment')).toBe(true);
     expect(mcp.registerResource).toHaveBeenCalledWith(
@@ -102,7 +108,7 @@ describe('custom-kind templates', () => {
 
   it('lists the custom kind in the wiki://templates index', async () => {
     const { mcp, handlers } = captureMcp();
-    registerTemplateResources(mcp, '/fake-vault', CONFIG_WITH_CUSTOM);
+    registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG_WITH_CUSTOM));
 
     const text = await readResource(handlers, 'wiki://templates');
 
@@ -116,7 +122,7 @@ describe('custom-kind templates', () => {
       kinds: ['spec', { name: 'adr', signal: 'Reworded row', where: '`x`' }, 'note']
     };
     const { mcp, handlers } = captureMcp();
-    registerTemplateResources(mcp, '/fake-vault', reworded);
+    registerTemplateResources(mcp, asBinding('/fake-vault', reworded));
 
     expect(handlers.has('wiki://template/adr')).toBe(false);
     expect(mcp.registerResource).toHaveBeenCalledTimes(12);
@@ -140,7 +146,7 @@ describe('custom-kind templates', () => {
         '---\nkind: experiment\n---\n\n# {{title}}\n'
       );
       const { mcp, handlers } = captureMcp();
-      registerTemplateResources(mcp, dir, CONFIG_WITH_CUSTOM);
+      registerTemplateResources(mcp, asBinding(dir, CONFIG_WITH_CUSTOM));
 
       const text = await readResource(handlers, 'wiki://template/experiment');
 
@@ -149,7 +155,7 @@ describe('custom-kind templates', () => {
 
     it('a declared kind without its template file errors naming the file', async () => {
       const { mcp, handlers } = captureMcp();
-      registerTemplateResources(mcp, dir, CONFIG_WITH_CUSTOM);
+      registerTemplateResources(mcp, asBinding(dir, CONFIG_WITH_CUSTOM));
 
       const handler = handlers.get('wiki://template/experiment');
       await expect(handler?.(new URL('wiki://template/experiment'))).rejects.toThrow(

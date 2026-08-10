@@ -1,6 +1,7 @@
 import { canonicalVaultRoot } from '@llm-wiki/db/database';
 import { type KindEntry, kindName, type VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Binding } from '../binding.js';
 
 interface KindPedagogy {
   readonly signal: string;
@@ -191,11 +192,7 @@ function buildVocabulary(config: VaultConfig): string {
   return lines.join('\n');
 }
 
-export function registerAuthoringResource(
-  mcp: McpServer,
-  vaultRoot: string,
-  vaultConfig: VaultConfig
-): void {
+export function registerAuthoringResource(mcp: McpServer, binding: Binding): void {
   mcp.registerResource(
     'Authoring guide',
     'wiki://authoring',
@@ -205,6 +202,7 @@ export function registerAuthoringResource(
       mimeType: 'text/markdown'
     },
     async (uri) => {
+      const { vaultRoot, vaultConfig } = await binding;
       const sections = [
         '# Wiki authoring guide',
         '',

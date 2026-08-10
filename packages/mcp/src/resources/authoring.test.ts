@@ -1,7 +1,13 @@
 import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { describe, expect, it, vi } from 'vitest';
+import type { VaultBinding } from '../binding.js';
 import { registerAuthoringResource } from './authoring.js';
+
+// Resources never touch the index; a dummy db satisfies the binding shape.
+function asBinding(vaultRoot: string, vaultConfig: VaultConfig): VaultBinding {
+  return { vaultRoot, vaultConfig, db: undefined as unknown as VaultBinding['db'] };
+}
 
 const CONFIG: VaultConfig = {
   scopes: { sotto: { status: 'active' } },
@@ -58,7 +64,7 @@ async function readAuthoring(
 describe('wiki://authoring resource', () => {
   it('registers at wiki://authoring', () => {
     const { mcp } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     expect(mcp.registerResource).toHaveBeenCalledWith(
       'Authoring guide',
       'wiki://authoring',
@@ -69,7 +75,7 @@ describe('wiki://authoring resource', () => {
 
   it('opens with the vault root — the base for every page path it teaches', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('Vault root: `/fake-vault`');
@@ -77,7 +83,7 @@ describe('wiki://authoring resource', () => {
 
   it('includes the kind selector table', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Kind selector');
@@ -90,7 +96,7 @@ describe('wiki://authoring resource', () => {
 
   it('kind selector is config-driven — only configured kinds appear', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', MINIMAL_CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('**recipe**');
@@ -104,7 +110,7 @@ describe('wiki://authoring resource', () => {
 
   it('unknown kinds get a graceful row with dashes', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', MINIMAL_CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toMatch(/\| — \| \*\*recipe\*\* \| — \|/);
@@ -112,7 +118,7 @@ describe('wiki://authoring resource', () => {
 
   it('project-kind paths include the projects/ prefix', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('`projects/{scope}/adr/adr-{slug}.md`');
@@ -124,7 +130,7 @@ describe('wiki://authoring resource', () => {
 
   it('includes controlled vocabulary from vault config', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Controlled vocabulary');
@@ -137,7 +143,7 @@ describe('wiki://authoring resource', () => {
 
   it('references wiki://templates instead of embedding the list', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Templates');
@@ -147,7 +153,7 @@ describe('wiki://authoring resource', () => {
 
   it('includes default authoring rules when authoring_rules is absent', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Authoring rules');
@@ -162,7 +168,7 @@ describe('wiki://authoring resource', () => {
       authoring_rules: 'Always use wikilinks for cross-references.'
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Authoring rules');
@@ -172,7 +178,7 @@ describe('wiki://authoring resource', () => {
 
   it('includes default resync protocol when sync_protocol is absent', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Resync protocol');
@@ -185,7 +191,7 @@ describe('wiki://authoring resource', () => {
       sync_protocol: 'Always run wiki validate after edits.'
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('## Resync protocol');
@@ -199,7 +205,7 @@ describe('wiki://authoring resource', () => {
       authoring_rules_extra: '- Vault-specific extra rule.'
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('Use the matching template');
@@ -216,7 +222,7 @@ describe('wiki://authoring resource', () => {
       authoring_rules_extra: '- Vault-specific extra rule.'
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('Replaced rules.');
@@ -230,7 +236,7 @@ describe('wiki://authoring resource', () => {
       sync_protocol_extra: 'Session-closing resyncs run /retro first.'
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('smallest set of files');
@@ -246,7 +252,7 @@ describe('wiki://authoring resource', () => {
       ]
     };
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', custom);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', custom));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('| Cooking recipe with steps | **recipe** | `recipes/{slug}.md` |');
@@ -255,7 +261,7 @@ describe('wiki://authoring resource', () => {
 
   it('renders the canonical status set as a one-directional flow', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('**Statuses:** draft → active → superseded → archived (one-directional');
@@ -263,7 +269,7 @@ describe('wiki://authoring resource', () => {
 
   it('renders a custom status set as a plain list without lifecycle claims', async () => {
     const { mcp, handlers } = captureMcp();
-    registerAuthoringResource(mcp, '/fake-vault', MINIMAL_CONFIG);
+    registerAuthoringResource(mcp, asBinding('/fake-vault', MINIMAL_CONFIG));
     const text = await readAuthoring(handlers);
 
     expect(text).toContain('**Statuses:** draft, published');

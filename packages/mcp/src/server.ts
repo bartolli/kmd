@@ -1,6 +1,5 @@
-import type { DatabaseSync } from 'node:sqlite';
-import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Binding } from './binding.js';
 import type { Logger } from './lib/logger.js';
 import { registerAuthoringResource } from './resources/authoring.js';
 import { registerTemplateResources } from './resources/templates.js';
@@ -10,16 +9,21 @@ import { handleSearch, SearchInputSchema } from './tools/search.js';
 export interface BuildServerArgs {
   readonly name: string;
   readonly version: string;
-  readonly vaultRoot: string;
-  readonly db: DatabaseSync;
   readonly logger: Logger;
-  readonly vaultConfig: VaultConfig;
+  readonly binding: Binding;
 }
 
 export function buildServer(args: BuildServerArgs): McpServer {
-  const { name, version, vaultRoot, db, logger, vaultConfig } = args;
+  const { name, version, logger, binding } = args;
 
-  const mcp = new McpServer({ name, version }, { capabilities: { tools: {}, resources: {} } });
+  // listChanged only in deferred mode: custom-kind templates register after
+  // the vault binds, announced via notifications/resources/list_changed. The
+  // pre-bound capabilities stay exactly as before.
+  const deferred = binding instanceof Promise;
+  const mcp = new McpServer(
+    { name, version },
+    { capabilities: { tools: {}, resources: deferred ? { listChanged: true } : {} } }
+  );
 
   mcp.tool(
     'prime',
@@ -27,6 +31,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
     PrimeInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'prime', input }, 'tool call');
+      const { db, vaultRoot, vaultConfig } = await binding;
       return handlePrime({ db, vaultRoot, vaultConfig }, input);
     }
   );
@@ -37,12 +42,13 @@ export function buildServer(args: BuildServerArgs): McpServer {
     SearchInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'search', input }, 'tool call');
+      const { db } = await binding;
       return handleSearch({ db }, input);
     }
   );
 
-  registerTemplateResources(mcp, vaultRoot, vaultConfig);
-  registerAuthoringResource(mcp, vaultRoot, vaultConfig);
+  registerTemplateResources(mcp, binding);
+  registerAuthoringResource(mcp, binding);
 
   return mcp;
 }
