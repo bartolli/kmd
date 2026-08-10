@@ -45,7 +45,14 @@ function runNpx() {
     process.stderr.write(`kmd hook wrapper: ${error.message}\n`);
     process.exit(0);
   });
-  child.on('close', (code) => process.exit(code ?? 0));
+  child.on('close', (code) => {
+    // kmd hook always exits 0 by contract — nonzero here is npx/registry
+    // infrastructure failure, and propagating it can block the harness event.
+    if (code !== 0 && code !== null) {
+      process.stderr.write(`kmd hook wrapper: npx exited ${code} — degrading open\n`);
+    }
+    process.exit(0);
+  });
 }
 
 const entry = hookCapableEntry();
