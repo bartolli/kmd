@@ -100,6 +100,14 @@ export function vaultKey(vaultRoot: string): string {
   return `${basename(canonical)}-${hash}`;
 }
 
+/** The vault's tier `.kmd/` home (vault root, then its parent), or null. */
+function tierKmdDir(canonical: string): string | null {
+  for (const stateHome of [join(canonical, '.kmd'), join(dirname(canonical), '.kmd')]) {
+    if (existsSync(stateHome)) return stateHome;
+  }
+  return null;
+}
+
 /**
  * Absolute path of the vault's index database file. A vault beside a `.kmd/`
  * directory (at the vault root, then its parent) homes the index there —
@@ -108,10 +116,21 @@ export function vaultKey(vaultRoot: string): string {
  */
 export function resolveIndexPath(vaultRoot: string): string {
   const canonical = canonicalVaultRoot(vaultRoot);
-  for (const stateHome of [join(canonical, '.kmd'), join(dirname(canonical), '.kmd')]) {
-    if (existsSync(stateHome)) return join(stateHome, 'db', 'index.db');
-  }
+  const tier = tierKmdDir(canonical);
+  if (tier !== null) return join(tier, 'db', 'index.db');
   return join(indexRootDir(), vaultKey(canonical), 'index.db');
+}
+
+/**
+ * Hook dedup-state directory for a vault: the tier `.kmd/state/hook` when the
+ * vault is tier-homed, else the global `$KMD_HOME/state/hook`. Deliberately
+ * outside `db/` at both homes so `kmd db reset` keeps it.
+ */
+export function resolveStateDir(vaultRoot: string): string {
+  const canonical = canonicalVaultRoot(vaultRoot);
+  const tier = tierKmdDir(canonical);
+  if (tier !== null) return join(tier, 'state', 'hook');
+  return join(kmdHome(), 'state', 'hook');
 }
 
 export function getMeta(db: DatabaseSync, key: string): string | null {

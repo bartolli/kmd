@@ -445,6 +445,108 @@ describe('kmd hook prompt (end-to-end)', () => {
   }, 30_000);
 });
 
+const NO_TRIGGER_YAML = `scopes:
+  demo:
+    status: active
+    repo: /kmd-e2e-demo-repo
+kinds: [spec]
+statuses: [active]
+methodologies: [sdd]
+tags:
+  canonical: []
+  aliases: {}
+`;
+
+describe('kmd hook vault resolution (end-to-end)', () => {
+  let base: string;
+  let kmdHome: string;
+
+  beforeEach(async () => {
+    base = realpathSync(await mkdtemp(join(tmpdir(), 'kmd-hook-chain-')));
+    kmdHome = join(base, 'kmd-home');
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('event cwd binds the project vault over --default-root; state homes in the tier', async () => {
+    const project = join(base, 'proj');
+    const projectVault = join(project, 'vault');
+    await mkdir(projectVault, { recursive: true });
+    await mkdir(join(project, '.kmd'), { recursive: true });
+    await writeFile(join(projectVault, 'vault.yaml'), VAULT_YAML);
+    const fallback = join(base, 'fallback-vault');
+    await mkdir(fallback, { recursive: true });
+    await writeFile(join(fallback, 'vault.yaml'), NO_TRIGGER_YAML);
+
+    const result = await runKmd(
+      ['hook', 'prompt', '--default-root', fallback, '--scope', 'demo'],
+      JSON.stringify({ session_id: 'chain-1', prompt: "let's cut the release", cwd: project }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+    expect(existsSync(join(project, '.kmd', 'state', 'hook'))).toBe(true);
+    expect(existsSync(join(kmdHome, 'state', 'hook'))).toBe(false);
+  }, 30_000);
+
+  it('no tier signal at the event cwd falls through to --default-root', async () => {
+    const neutral = join(base, 'neutral');
+    await mkdir(neutral, { recursive: true });
+    const fallback = join(base, 'fallback-vault');
+    await mkdir(fallback, { recursive: true });
+    await writeFile(join(fallback, 'vault.yaml'), VAULT_YAML);
+
+    const result = await runKmd(
+      ['hook', 'prompt', '--default-root', fallback, '--scope', 'demo'],
+      JSON.stringify({ session_id: 'chain-2', prompt: 'cut the release', cwd: neutral }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+  }, 30_000);
+
+  it('an unmarked vault.yaml ancestor is skipped silently on the hook path', async () => {
+    const foreign = join(base, 'foreign');
+    const sub = join(foreign, 'sub');
+    await mkdir(sub, { recursive: true });
+    await writeFile(join(foreign, 'vault.yaml'), 'not_a_kmd_vault: true\n');
+    const envVault = join(base, 'env-vault');
+    await mkdir(envVault, { recursive: true });
+    await writeFile(join(envVault, 'vault.yaml'), VAULT_YAML);
+
+    const result = await runKmd(
+      ['hook', 'prompt', '--scope', 'demo'],
+      JSON.stringify({ session_id: 'chain-3', prompt: 'cut the release', cwd: sub }),
+      kmdHome,
+      { WIKI_VAULT: envVault }
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+    expect(result.stderr).not.toContain('ignoring');
+  }, 30_000);
+
+  it('degrades open with one stderr line when nothing resolves', async () => {
+    const neutral = join(base, 'neutral');
+    await mkdir(neutral, { recursive: true });
+
+    const result = await runKmd(
+      ['hook', 'prompt', '--scope', 'demo'],
+      JSON.stringify({ session_id: 'chain-4', prompt: 'cut the release', cwd: neutral }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(result.stderr).toContain('no vault root resolvable');
+  }, 30_000);
+});
+
 describe('two-tier resolution (end-to-end)', () => {
   let base: string;
   let kmdHome: string;

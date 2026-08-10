@@ -7,9 +7,10 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/claude-project-override.mjs",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
               "hook",
               "session-start",
+              "--default-root",
               "${user_config.vault_path}"
             ]
           }
@@ -23,9 +24,10 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/claude-project-override.mjs",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
               "hook",
               "prompt",
+              "--default-root",
               "${user_config.vault_path}"
             ]
           }
@@ -39,9 +41,10 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/claude-project-override.mjs",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
               "hook",
               "pretool",
+              "--default-root",
               "${user_config.vault_path}",
               "--harness",
               "claude"
@@ -58,9 +61,10 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/claude-project-override.mjs",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
               "hook",
               "posttool",
+              "--default-root",
               "${user_config.vault_path}",
               "--harness",
               "claude"
@@ -76,9 +80,10 @@
             "type": "command",
             "command": "node",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/hooks/claude-project-override.mjs",
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
               "hook",
               "stop",
+              "--default-root",
               "${user_config.vault_path}"
             ]
           }

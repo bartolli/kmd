@@ -112,7 +112,6 @@ chrome:
     - .mcp.json
     - README.md
     - hooks/hooks.json
-    - hooks/claude-project-override.mjs
   codex:
     - .codex-plugin/plugin.json
     - .mcp.json

@@ -36,9 +36,10 @@ commands:
   config <set|get|unset> default_vault [<path>]
                            read/write the global default in ~/.kmd/config.yaml
   db reset [<vault-root>]  delete the vault's index
-  hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
+  hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--default-root <path>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout;
-                           posttool auto-runs validate + sync after a vault write;
+                           the vault resolves through the chain with the event cwd as project
+                           signal; posttool auto-runs validate + sync after a vault write;
                            stop blocks the handoff once while validate errors hold the sync
 
 options:

@@ -22,7 +22,7 @@ Arc: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` 
 
 ## MCP server
 
-Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) via `npx @bartolli/kmd`; on install the plugin asks for your vault path (`vault_path` user config). If the `wiki` server is also registered globally in `~/.mcp.json`, remove the global entry when enabling this plugin to avoid double registration.
+Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) via `npx @bartolli/kmd`; on install the plugin asks for your vault path (`vault_path` user config). That path is the *default*: a project carrying its own vault — a co-located `vault/vault.yaml`, a `.kmd`-marked root vault, or a committed `.kmd/config.yaml` — resolves ahead of it automatically, so `prime`, `search`, and `wiki://` resources serve the project's vault with no per-project registration. If the `wiki` server is also registered globally in `~/.mcp.json`, remove the global entry when enabling this plugin to avoid double registration.
 
 ## Gate hooks
 
@@ -34,7 +34,7 @@ Registers the `kmd hook` gate engine on three events — no manual wiring:
 
 Scope resolves from the session's working directory when your `vault.yaml` scopes declare `repo:`; a project can override with `WIKI_SCOPE` in its settings `env`.
 
-**Per-project vault override.** A project carrying its own vault (e.g. a repo-local `vault/`) routes the gate hooks to it with `.claude/wiki-sdd.local.md` at the project root — frontmatter `vault_path: /absolute/or/~/path` replaces the globally configured `vault_path` for that project only. The override lives in this adapter's hook chrome — no other harness registers it — and only absolute or `~/` paths apply; absent, unreadable, malformed, or relative values fall back to the global vault. Gitignore it (`.claude/*.local.md`). The MCP server is overridden separately: register a project `.mcp.json` server named `wiki` pointing at the project vault — project scope shadows the plugin's server by name. The hooks run through a resolver wrapper: a globally installed `kmd` at `0.7.0`+ runs in-process (fast path — `npm i -g @bartolli/kmd` recommended), else `npx @bartolli/kmd@latest`. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
+**Per-project vaults resolve automatically.** Hooks and the MCP server run the same engine resolution chain: a project carrying its own vault — a co-located `vault/vault.yaml`, a `.kmd`-marked root vault, or a committed `.kmd/config.yaml` (`kmd init --local` scaffolds the full shape) — binds ahead of the configured `vault_path`, per event from the event's working directory. No per-project files or shadow registrations; earlier `.claude/wiki-sdd.local.md` overrides are retired and ignored — delete them, the engine resolution replaces the mechanism. The hooks run through a resolver wrapper: a globally installed `kmd` at `0.12.0`+ runs in-process (fast path — `npm i -g @bartolli/kmd` recommended), else `npx @bartolli/kmd@latest`. A missing or invalid trigger config degrades to a no-op with one stderr diagnostic — gates never block unrelated work.
 
 **Never wire `--explain` or `--dry-run` into hook registrations.** They are probe flags for testing triggers by hand (`/to-triggers` uses them): explain output carries no enforcement decision, so a hook registered with either flag silently stops denying anything.
 

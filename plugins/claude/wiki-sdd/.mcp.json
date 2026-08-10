@@ -3,9 +3,9 @@
     "wiki": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@bartolli/kmd@latest", "mcp", "${user_config.vault_path}"],
+      "args": ["-y", "@bartolli/kmd@latest", "mcp", "--default-root", "${user_config.vault_path}"],
       "env": {
-        "WIKI_VAULT": "${user_config.vault_path}",
+        "KMD_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}",
         "LOG_LEVEL": "info"
       }
     }

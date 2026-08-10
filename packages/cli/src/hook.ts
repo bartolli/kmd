@@ -3,7 +3,8 @@ import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { kmdHome } from '@llm-wiki/db/database';
+import { resolveStateDir } from '@llm-wiki/db/database';
+import { loadGlobalConfig, resolveVaultRoot } from '@llm-wiki/db/kmd-config';
 import type { Trigger, VaultConfig } from '@llm-wiki/db/vault-config';
 import { loadVaultConfig, TriggerSchema } from '@llm-wiki/db/vault-config';
 import { parse as parseYaml } from 'yaml';
@@ -635,9 +636,9 @@ export function dedupePretoolMatches(
   return matches.filter((match) => blocks.includes(match) || fresh.includes(match));
 }
 
-/** Session dedup state — deliberately outside `db/` so `kmd db reset` keeps it. */
-export function hookStateDir(): string {
-  return join(kmdHome(), 'state', 'hook');
+/** Session dedup state follows the vault's tier home; `kmd db reset` keeps it. */
+export function hookStateDir(vaultRoot: string): string {
+  return resolveStateDir(vaultRoot);
 }
 
 export type DedupVerdict = 'exempt' | 'never' | 'fresh' | 'suppressed';
@@ -861,14 +862,16 @@ function pruneStale(stateDir: string, keep: string): void {
 }
 
 /**
- * `kmd hook prompt [<vault-root>] [--scope <s>] [--harness kiro-ide]`. Exits 0
+ * `kmd hook prompt [<vault-root>] [--default-root <path>] [--scope <s>]
+ * [--harness kiro-ide]`. Exits 0
  * on every path and never throws: stdout is the harness's context-injection
  * channel, so a degraded gate engine emits one stderr diagnostic and injects
  * nothing — it must never block a prompt. `--harness` selects the input codec;
  * without it (claude, codex, kiro-cli) the event arrives as JSON on stdin.
  */
 interface HookInvocation {
-  vaultRoot: string;
+  positional: string | undefined;
+  defaultRoot: string | undefined;
   scope: string | undefined;
   harness: unknown;
   triggersFile: unknown;
@@ -877,7 +880,7 @@ interface HookInvocation {
   explain: boolean;
 }
 
-function hookInvocation(): HookInvocation | null {
+function hookInvocation(): HookInvocation {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     allowPositionals: true,
@@ -886,23 +889,51 @@ function hookInvocation(): HookInvocation | null {
       scope: { type: 'string' },
       harness: { type: 'string' },
       triggers: { type: 'string' },
+      'default-root': { type: 'string' },
       'dry-run': { type: 'boolean' },
       explain: { type: 'boolean' }
     }
   });
-  const vaultRoot = positionals[2] ?? process.env.WIKI_VAULT;
-  if (vaultRoot === undefined || vaultRoot === '') {
-    diag('no vault root (positional or $WIKI_VAULT)');
-    return null;
-  }
   return {
-    vaultRoot,
+    positional: positionals[2],
+    defaultRoot: typeof values['default-root'] === 'string' ? values['default-root'] : undefined,
     scope: typeof values.scope === 'string' ? values.scope : process.env.WIKI_SCOPE,
     harness: values.harness,
     triggersFile: values.triggers,
     dryRun: values['dry-run'] === true || values.explain === true,
     explain: values.explain === true
   };
+}
+
+/**
+ * The one chain, hook edition: the project signal is the event-payload cwd,
+ * never a harness env. Fail-open where operator commands fail loud — a
+ * malformed config or unresolvable `${VAR}` degrades to one stderr line and
+ * no gate work, because no sync beats syncing the wrong index. The unmarked
+ * bare-`vault.yaml` skip stays silent here: hook stderr is the degradation
+ * channel, and a skipped foreign file is correct resolution, not degradation.
+ */
+function resolveHookVault(invocation: HookInvocation, eventCwd: string | undefined): string | null {
+  if (invocation.positional !== undefined && invocation.defaultRoot !== undefined) {
+    diag('<vault-root> and --default-root are mutually exclusive — using the positional');
+  }
+  try {
+    const resolution = resolveVaultRoot({
+      positional: invocation.positional,
+      projectDir: eventCwd,
+      defaultRoot: invocation.defaultRoot,
+      envVault: process.env.WIKI_VAULT,
+      globalDefault: loadGlobalConfig().default_vault
+    });
+    if (resolution.root === null) {
+      diag('no vault root resolvable (positional, event cwd, --default-root, or $WIKI_VAULT)');
+      return null;
+    }
+    return resolution.root;
+  } catch (err) {
+    diag(`vault resolution failed: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 function resolveFileTriggers(invocation: HookInvocation): Trigger[] {
@@ -918,8 +949,6 @@ function resolveFileTriggers(invocation: HookInvocation): Trigger[] {
 export async function runHookPrompt(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    if (invocation === null) return;
-    const { vaultRoot } = invocation;
     let event: PromptEvent | null = null;
     if (invocation.harness === 'kiro-ide') {
       event = kiroIdePromptEvent();
@@ -931,6 +960,8 @@ export async function runHookPrompt(): Promise<void> {
       diag('stdin is not a prompt event ({session_id, prompt})');
       return;
     }
+    const vaultRoot = resolveHookVault(invocation, event.cwd);
+    if (vaultRoot === null) return;
     const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     const { triggers, duplicates } = effectiveTriggers(
@@ -945,7 +976,7 @@ export async function runHookPrompt(): Promise<void> {
       const trace = explainPrompt({
         prompt: event.prompt,
         triggers,
-        stateDir: hookStateDir(),
+        stateDir: hookStateDir(vaultRoot),
         sessionId: event.session_id
       });
       console.log(JSON.stringify({ event: 'prompt', scope: scope ?? null, duplicates, ...trace }));
@@ -953,7 +984,7 @@ export async function runHookPrompt(): Promise<void> {
     }
     const matches = matchPromptTriggers(event.prompt, triggers);
     const fresh = dedupeMatches(
-      hookStateDir(),
+      hookStateDir(vaultRoot),
       event.session_id,
       matches,
       Date.now(),
@@ -976,8 +1007,6 @@ export async function runHookPrompt(): Promise<void> {
 export async function runHookPretool(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    if (invocation === null) return;
-    const { vaultRoot } = invocation;
     let format: 'neutral' | 'claude' = 'neutral';
     if (invocation.harness === 'claude') {
       format = 'claude';
@@ -989,6 +1018,8 @@ export async function runHookPretool(): Promise<void> {
       diag('stdin is not a pretool event ({session_id, tool_name})');
       return;
     }
+    const vaultRoot = resolveHookVault(invocation, event.cwd);
+    if (vaultRoot === null) return;
     const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     const { triggers, duplicates } = effectiveTriggers(
@@ -1005,7 +1036,7 @@ export async function runHookPretool(): Promise<void> {
         toolInput: event.tool_input,
         triggers,
         vaultRoot,
-        stateDir: hookStateDir(),
+        stateDir: hookStateDir(vaultRoot),
         sessionId: event.session_id,
         ...(event.cwd !== undefined && { cwd: event.cwd }),
         format
@@ -1019,7 +1050,7 @@ export async function runHookPretool(): Promise<void> {
       diag(`trigger "${id}": unknown or unevaluable predicate — skipped`);
     }
     const rendered = renderPretool(
-      dedupePretoolMatches(hookStateDir(), event.session_id, fired, !invocation.dryRun),
+      dedupePretoolMatches(hookStateDir(vaultRoot), event.session_id, fired, !invocation.dryRun),
       format
     );
     for (const line of rendered.stderr) {
@@ -1043,7 +1074,6 @@ export async function runHookPretool(): Promise<void> {
 export async function runHookPosttool(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    if (invocation === null) return;
     if (invocation.dryRun) {
       diag('--dry-run/--explain support prompt and pretool events only');
       return;
@@ -1059,13 +1089,15 @@ export async function runHookPosttool(): Promise<void> {
       diag('stdin is not a posttool event ({session_id, tool_name})');
       return;
     }
-    if (!vaultPathTouched(event.tool_input, invocation.vaultRoot, event.cwd)) return;
-    const config = await loadVaultConfig(invocation.vaultRoot);
-    const findings = await validateVault(invocation.vaultRoot);
+    const vaultRoot = resolveHookVault(invocation, event.cwd);
+    if (vaultRoot === null) return;
+    if (!vaultPathTouched(event.tool_input, vaultRoot, event.cwd)) return;
+    const config = await loadVaultConfig(vaultRoot);
+    const findings = await validateVault(vaultRoot);
     let synced = false;
     if (!hasErrors(findings)) {
       try {
-        await syncVault(invocation.vaultRoot);
+        await syncVault(vaultRoot);
         synced = true;
       } catch (err) {
         diag(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1092,7 +1124,6 @@ export async function runHookPosttool(): Promise<void> {
 export async function runHookStop(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    if (invocation === null) return;
     if (invocation.dryRun) {
       diag('--dry-run/--explain support prompt and pretool events only');
       return;
@@ -1103,15 +1134,19 @@ export async function runHookStop(): Promise<void> {
       return;
     }
     if (event.stop_hook_active === true) return;
-    const config = await loadVaultConfig(invocation.vaultRoot);
+    const vaultRoot = resolveHookVault(invocation, event.cwd);
+    if (vaultRoot === null) return;
+    const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     if (scope === undefined) return;
     const rendered = renderStop(
-      await validateVault(invocation.vaultRoot),
+      await validateVault(vaultRoot),
       config.builtin_hooks?.['handoff-gate']?.reason
     );
     if (rendered === null) return;
-    const fired = dedupeMatches(hookStateDir(), event.session_id, [{ id: 'handoff-gate' }]);
+    const fired = dedupeMatches(hookStateDir(vaultRoot), event.session_id, [
+      { id: 'handoff-gate' }
+    ]);
     if (fired.length === 0) return;
     console.log(rendered);
   } catch (err) {
@@ -1177,7 +1212,6 @@ export function renderSessionStart(
 export async function runHookSessionStart(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    if (invocation === null) return;
     if (invocation.dryRun) {
       diag('--dry-run/--explain support prompt and pretool events only');
       return;
@@ -1187,7 +1221,9 @@ export async function runHookSessionStart(): Promise<void> {
       diag('stdin is not a session-start event ({session_id})');
       return;
     }
-    const config = await loadVaultConfig(invocation.vaultRoot);
+    const vaultRoot = resolveHookVault(invocation, event.cwd);
+    if (vaultRoot === null) return;
+    const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     if (scope === undefined) return;
     console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}));
