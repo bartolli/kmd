@@ -9,7 +9,7 @@
       "name": "wiki-sdd",
       "source": "./plugins/claude/wiki-sdd",
       "description": "Wiki-native spec-driven development loop for the llm-wiki agent wiki: bootstrap a project scope, grill intent into spec-context, synthesize PRDs and user stories, triage stories through a state machine, slice into tracker issues, and implement slices via red-green-refactor TDD.",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "author": {
         "name": "Angel Bartolli"
       },
