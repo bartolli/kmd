@@ -6,6 +6,7 @@
   "description": "SQLite FTS5 index for llm-wiki. Disposable — rebuilt from the canonical vault via sync.",
   "exports": {
     "./database": "./src/database.ts",
+    "./kmd-config": "./src/kmd-config.ts",
     "./vault-config": "./src/vault-config.ts"
   },
   "scripts": {

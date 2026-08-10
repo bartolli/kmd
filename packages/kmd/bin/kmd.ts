@@ -13,13 +13,23 @@ process.on('warning', (warning) => {
 
 const USAGE = `usage: kmd <command> [options]
 
+vault resolution (every command): positional > project tier (.kmd/config.local.yaml >
+.kmd/config.yaml > vault/vault.yaml > vault.yaml, nearest ancestor of
+$KMD_PROJECT_DIR or cwd) > --default-root > $WIKI_VAULT > ~/.kmd/config.yaml default_vault
+
 commands:
-  init [<dir>] [-y]        scaffold a fresh vault (no dir: current directory — TTY prompt, or -y)
-  sync                     vault → index sync (runs validate first)
-  validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
-  mcp [<vault-root>]       start the stdio MCP server (default: $WIKI_VAULT)
-  config [<vault-root>]    print vault + index resolution; with no vault, list known vaults
-  db reset [<vault-root>]  delete the vault's index (default: $WIKI_VAULT)
+  init [<dir>] [-y]        scaffold a fresh vault (no dir: current directory — TTY prompt, or -y);
+                           offers to record it as default_vault
+  init --local [-y]        scaffold a project vault: <git-root>/vault + <git-root>/.kmd state home
+  sync [<vault-root>]      vault → index sync (runs validate first)
+  validate [<path>]        deterministic vault checker
+  mcp [<vault-root>] [--default-root <path>]
+                           start the stdio MCP server; --default-root is the plugin form
+                           (config default the project tier may beat); flags are mutually exclusive
+  config [<vault-root>]    print resolved vault + winning source; with nothing resolvable, list known vaults
+  config <set|get|unset> default_vault [<path>]
+                           read/write the global default in ~/.kmd/config.yaml
+  db reset [<vault-root>]  delete the vault's index
   hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout;
                            posttool auto-runs validate + sync after a vault write;
@@ -36,55 +46,68 @@ const { positionals, values } = parseArgs({
   options: {
     version: { type: 'boolean', short: 'v' },
     help: { type: 'boolean', short: 'h' },
-    yes: { type: 'boolean', short: 'y' }
+    yes: { type: 'boolean', short: 'y' },
+    'default-root': { type: 'string' },
+    local: { type: 'boolean' }
   }
 });
 
 const command = values.version ? '--version' : values.help ? '--help' : positionals[0];
 
-function applyVaultRoot(positionalIndex: number): void {
-  const arg = positionals[positionalIndex];
-  if (arg) {
-    process.env.WIKI_VAULT = arg;
-  }
-}
-
 async function run(): Promise<void> {
   switch (command) {
     case 'init': {
       const { runInit } = await import('@llm-wiki/cli/cli');
-      await runInit(positionals[1], Boolean(values.yes));
+      await runInit(positionals[1], Boolean(values.yes), Boolean(values.local));
       break;
     }
     case 'sync': {
       const { runSyncCommand } = await import('@llm-wiki/cli/cli');
-      await runSyncCommand();
+      await runSyncCommand(positionals[1]);
       break;
     }
     case 'validate': {
-      applyVaultRoot(1);
       const { runValidate } = await import('@llm-wiki/cli/cli');
-      await runValidate();
+      await runValidate(positionals[1]);
       break;
     }
     case 'mcp': {
-      applyVaultRoot(1);
+      const positional = positionals[1];
+      const defaultRoot =
+        typeof values['default-root'] === 'string' ? values['default-root'] : undefined;
+      if (positional && defaultRoot !== undefined) {
+        console.error('kmd mcp: <vault-root> and --default-root are mutually exclusive');
+        process.exit(2);
+      }
+      const { resolveCliVault } = await import('@llm-wiki/cli/cli');
+      const resolved = resolveCliVault(positional, defaultRoot);
+      if (resolved.root === null) {
+        console.error(
+          'kmd mcp: no vault resolvable — pass <vault-root>, run inside a project vault, set WIKI_VAULT, or `kmd config set default_vault <path>`'
+        );
+        process.exit(1);
+      }
+      process.env.WIKI_VAULT = resolved.root;
       const { startMcpServer } = await import('@llm-wiki/mcp/start');
       await startMcpServer();
       break;
     }
     case 'config': {
-      applyVaultRoot(1);
-      const { runConfig } = await import('@llm-wiki/cli/cli');
-      await runConfig();
+      const sub = positionals[1];
+      const { runConfig, runConfigGet, runConfigSet, runConfigUnset } = await import(
+        '@llm-wiki/cli/cli'
+      );
+      if (sub === 'set') await runConfigSet(positionals[2], positionals[3]);
+      else if (sub === 'get') await runConfigGet(positionals[2]);
+      else if (sub === 'unset') await runConfigUnset(positionals[2]);
+      else await runConfig(sub);
       break;
     }
     case 'db': {
       const sub = positionals[1];
       if (sub === 'reset') {
-        applyVaultRoot(2);
         const { runDbReset } = await import('@llm-wiki/cli/cli');
-        await runDbReset();
+        await runDbReset(positionals[2]);
       } else {
         console.error(sub ? `unknown db subcommand: ${sub}` : 'usage: kmd db reset [<vault-root>]');
         process.exit(2);

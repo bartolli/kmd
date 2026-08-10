@@ -1,8 +1,15 @@
-import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getMeta, openDatabase, resolveIndexPath, setMeta, vaultKey } from './database.js';
+import {
+  getMeta,
+  indexRootDir,
+  openDatabase,
+  resolveIndexPath,
+  setMeta,
+  vaultKey
+} from './database.js';
 
 function insertPage(
   db: ReturnType<typeof openDatabase>,
@@ -113,5 +120,38 @@ describe('per-vault index layout', () => {
 
     expect(getMeta(db, 'vault_root')).toBe('/vaults/b');
     db.close();
+  });
+
+  it('a vault beside a .kmd directory homes its index there', () => {
+    const repo = mkdtempSync(join(tmpdir(), 'kmd-tier-repo-'));
+    try {
+      const vault = join(repo, 'vault');
+      mkdirSync(vault, { recursive: true });
+      mkdirSync(join(repo, '.kmd'));
+
+      expect(resolveIndexPath(vault)).toBe(join(realpathSync(repo), '.kmd', 'db', 'index.db'));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('a root-layout vault with its own .kmd homes the index inside it', () => {
+    const vault = mkdtempSync(join(tmpdir(), 'kmd-tier-rootvault-'));
+    try {
+      mkdirSync(join(vault, '.kmd'));
+
+      expect(resolveIndexPath(vault)).toBe(join(realpathSync(vault), '.kmd', 'db', 'index.db'));
+    } finally {
+      rmSync(vault, { recursive: true, force: true });
+    }
+  });
+
+  it('a vault with no .kmd sibling keeps the global keyed home', () => {
+    const vault = mkdtempSync(join(tmpdir(), 'kmd-tier-plain-'));
+    try {
+      expect(resolveIndexPath(vault)).toBe(join(indexRootDir(), vaultKey(vault), 'index.db'));
+    } finally {
+      rmSync(vault, { recursive: true, force: true });
+    }
   });
 });

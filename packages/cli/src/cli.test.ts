@@ -51,21 +51,29 @@ describe('kmd config / db reset (per-vault index)', () => {
   let kmdHome: string;
   let vaultA: string;
   let vaultB: string;
-  const savedEnv = { KMD_HOME: process.env.KMD_HOME, WIKI_VAULT: process.env.WIKI_VAULT };
+  const savedEnv = {
+    KMD_HOME: process.env.KMD_HOME,
+    WIKI_VAULT: process.env.WIKI_VAULT,
+    KMD_PROJECT_DIR: process.env.KMD_PROJECT_DIR
+  };
 
   beforeEach(async () => {
     kmdHome = await mkdtemp(join(tmpdir(), 'kmd-home-'));
     vaultA = await mkdtemp(join(tmpdir(), 'kmd-cfg-vault-a-'));
     vaultB = await mkdtemp(join(tmpdir(), 'kmd-cfg-vault-b-'));
     process.env.KMD_HOME = kmdHome;
+    // neutral project signal: the real cwd could sit under a vault-carrying tree
+    process.env.KMD_PROJECT_DIR = kmdHome;
     delete process.env.WIKI_VAULT;
   });
 
   afterEach(async () => {
     process.env.KMD_HOME = savedEnv.KMD_HOME;
     process.env.WIKI_VAULT = savedEnv.WIKI_VAULT;
+    process.env.KMD_PROJECT_DIR = savedEnv.KMD_PROJECT_DIR;
     if (savedEnv.KMD_HOME === undefined) delete process.env.KMD_HOME;
     if (savedEnv.WIKI_VAULT === undefined) delete process.env.WIKI_VAULT;
+    if (savedEnv.KMD_PROJECT_DIR === undefined) delete process.env.KMD_PROJECT_DIR;
     for (const dir of [kmdHome, vaultA, vaultB]) {
       await rm(dir, { recursive: true, force: true });
     }
@@ -138,7 +146,7 @@ describe('wiki sync pre-sync gate', () => {
     // WIKI_DB is blanked, not real: if the gate were ever removed, sync would still
     // abort (on the env check) without touching a database — so the validation
     // output the assertions pin can only come from the gate firing first.
-    const env = { ...process.env, WIKI_VAULT: dir, WIKI_DB: '' };
+    const env = { ...process.env, WIKI_VAULT: dir, WIKI_DB: '', KMD_PROJECT_DIR: dir };
     try {
       const result = await execFileAsync('node', ['--import', 'tsx', CLI_ENTRY, 'sync'], {
         env

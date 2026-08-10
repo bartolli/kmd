@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -66,6 +66,9 @@ async function runKmd(
   delete env.WIKI_VAULT;
   delete env.WIKI_SCOPE;
   delete env.USER_PROMPT;
+  // deterministic project signal: the workspace cwd could sit under a
+  // vault-carrying tree on a dev machine
+  env.KMD_PROJECT_DIR = cwd ?? kmdHome;
   Object.assign(env, extraEnv);
   const promise = execFileAsync('node', ['--import', TSX_ENTRY, KMD_ENTRY, ...args], {
     env,
@@ -107,7 +110,7 @@ describe('kmd init (end-to-end)', () => {
 
     const init = await runKmd(['init', target], '', kmdHome);
     expect(init.code).toBe(0);
-    expect(init.stdout).toContain(`WIKI_VAULT=${target}`);
+    expect(init.stdout).toContain(`kmd config set default_vault ${target}`);
     expect(init.stdout).toContain('kmd mcp');
 
     const validate = await runKmd(['validate', target], '', kmdHome);
@@ -439,5 +442,66 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('kmd hook:');
+  }, 30_000);
+});
+
+describe('two-tier resolution (end-to-end)', () => {
+  let base: string;
+  let kmdHome: string;
+
+  beforeEach(async () => {
+    // realpath: resolution canonicalizes, and macOS tmpdir is a symlink
+    base = realpathSync(await mkdtemp(join(tmpdir(), 'kmd-tier-e2e-')));
+    kmdHome = join(base, 'kmd-home');
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('rejects a positional combined with --default-root', async () => {
+    const result = await runKmd(['mcp', '/some/vault', '--default-root', '/other'], '', kmdHome);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('mutually exclusive');
+  });
+
+  it('init --local scaffolds the project tier and config resolves it', async () => {
+    const project = join(base, 'project');
+    await mkdir(project, { recursive: true });
+
+    const init = await runKmd(['init', '--local', '-y'], '', kmdHome, {}, project);
+    expect(init.code).toBe(0);
+    expect(existsSync(join(project, 'vault', 'vault.yaml'))).toBe(true);
+    const gitignore = join(project, '.kmd', '.gitignore');
+    expect(existsSync(gitignore)).toBe(true);
+
+    const config = await runKmd(['config'], '', kmdHome, {}, project);
+    expect(config.code).toBe(0);
+    expect(config.stdout).toContain(join(project, 'vault'));
+    expect(config.stdout).toContain('source: project tier (convention)');
+    expect(config.stdout).toContain(join(project, '.kmd', 'db', 'index.db'));
+  }, 30_000);
+
+  it('config set/get default_vault round-trips and resolves outside projects', async () => {
+    const vault = join(base, 'global-vault');
+    const init = await runKmd(['init', vault], '', kmdHome);
+    expect(init.code).toBe(0);
+    const neutral = join(base, 'neutral');
+    await mkdir(neutral, { recursive: true });
+
+    const set = await runKmd(['config', 'set', 'default_vault', vault], '', kmdHome, {}, neutral);
+    expect(set.code).toBe(0);
+    expect(existsSync(join(kmdHome, 'config.yaml'))).toBe(true);
+
+    const get = await runKmd(['config', 'get', 'default_vault'], '', kmdHome, {}, neutral);
+    expect(get.code).toBe(0);
+    expect(get.stdout.trim()).toBe(vault);
+
+    const config = await runKmd(['config'], '', kmdHome, {}, neutral);
+    expect(config.stdout).toContain(`vault: ${vault}`);
+    expect(config.stdout).toContain('source: global config (default_vault)');
+
+    const unset = await runKmd(['config', 'unset', 'default_vault'], '', kmdHome, {}, neutral);
+    expect(unset.code).toBe(0);
   }, 30_000);
 });

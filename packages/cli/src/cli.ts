@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   canonicalVaultRoot,
@@ -8,6 +8,14 @@ import {
   openDatabase,
   resolveIndexPath
 } from '@llm-wiki/db/database';
+import {
+  loadGlobalConfig,
+  resolveVaultRoot,
+  setGlobalConfigValue,
+  unsetGlobalConfigValue,
+  type VaultRootResolution
+} from '@llm-wiki/db/kmd-config';
+import { loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { runSync } from './sync.js';
 import { type Finding, hasErrors, validateVault } from './validate.js';
 
@@ -35,13 +43,40 @@ export function resolveCli(argv: string[]): CliResolution {
   return { kind: 'error', message: `unknown command: ${command}` };
 }
 
-export function vaultRoot(): string {
-  const root = process.env.WIKI_VAULT;
-  if (!root) {
-    console.error('WIKI_VAULT is not set');
+/** The one chain, from the CLI's inputs; project signal = KMD_PROJECT_DIR ?? cwd. */
+export function resolveCliVault(positional?: string, defaultRoot?: string): VaultRootResolution {
+  return resolveVaultRoot({
+    positional,
+    defaultRoot,
+    projectDir: process.env.KMD_PROJECT_DIR ?? process.cwd(),
+    envVault: process.env.WIKI_VAULT,
+    globalDefault: loadGlobalConfig().default_vault
+  });
+}
+
+const SOURCE_LABELS: Record<VaultRootResolution['source'], string> = {
+  positional: 'positional',
+  'project-local-config': 'project tier (local config)',
+  'project-config': 'project tier (config)',
+  'project-convention': 'project tier (convention)',
+  'default-root': '--default-root',
+  env: '$WIKI_VAULT',
+  'global-config': 'global config (default_vault)',
+  none: 'none'
+};
+
+const NO_VAULT_HINT =
+  'no vault resolvable — pass a vault root, run inside a project vault, set WIKI_VAULT, or `kmd config set default_vault <path>`';
+
+/** Resolve or die loud; on success, pin WIKI_VAULT so downstream code agrees. */
+function requireCliVault(positional?: string): { root: string; resolution: VaultRootResolution } {
+  const resolution = resolveCliVault(positional);
+  if (resolution.root === null) {
+    console.error(NO_VAULT_HINT);
     process.exit(1);
   }
-  return root;
+  process.env.WIKI_VAULT = resolution.root;
+  return { root: resolution.root, resolution };
 }
 
 function reportFindings(findings: Finding[]): void {
@@ -52,15 +87,17 @@ function reportFindings(findings: Finding[]): void {
 
 export { runInit } from './init.js';
 
-export async function runValidate(): Promise<void> {
-  const findings = await validateVault(vaultRoot());
+export async function runValidate(positional?: string): Promise<void> {
+  const { root } = requireCliVault(positional);
+  const findings = await validateVault(root);
   reportFindings(findings);
   console.log(`validate: ${findings.length} finding(s)`);
   process.exit(hasErrors(findings) ? 1 : 0);
 }
 
-export async function runSyncCommand(): Promise<void> {
-  const findings = await validateVault(vaultRoot());
+export async function runSyncCommand(positional?: string): Promise<void> {
+  const { root } = requireCliVault(positional);
+  const findings = await validateVault(root);
   reportFindings(findings);
   if (hasErrors(findings)) {
     const errors = findings.filter((f) => f.severity === 'error').length;
@@ -120,17 +157,16 @@ function knownVaults(): VaultDescription[] {
   return known;
 }
 
-export async function runConfig(): Promise<void> {
-  const root = process.env.WIKI_VAULT;
-  if (root) {
-    printVault(describeVault(root));
+export async function runConfig(positional?: string): Promise<void> {
+  const resolution = resolveCliVault(positional);
+  if (resolution.root !== null) {
+    printVault(describeVault(resolution.root));
+    console.log(`source: ${SOURCE_LABELS[resolution.source]}`);
     return;
   }
   const known = knownVaults();
   if (known.length === 0) {
-    console.error(
-      'no vault specified and none known — pass a vault root, set WIKI_VAULT, or run `kmd sync <vault-root>` once'
-    );
+    console.error(NO_VAULT_HINT);
     process.exit(1);
   }
   known.forEach((d, i) => {
@@ -139,13 +175,47 @@ export async function runConfig(): Promise<void> {
   });
 }
 
-export async function runDbReset(): Promise<void> {
-  const root = process.env.WIKI_VAULT;
-  if (!root) {
+export async function runConfigSet(key?: string, value?: string): Promise<void> {
+  if (key !== 'default_vault' || !value) {
+    console.error('usage: kmd config set default_vault <path>');
+    process.exit(2);
+  }
+  const vault = resolve(value);
+  // fail loud before recording: the default must point at a loadable vault
+  await loadVaultConfig(vault);
+  setGlobalConfigValue('default_vault', vault);
+  console.log(`default_vault: ${vault}`);
+}
+
+export async function runConfigGet(key?: string): Promise<void> {
+  if (key !== 'default_vault') {
+    console.error('usage: kmd config get default_vault');
+    process.exit(2);
+  }
+  const value = loadGlobalConfig().default_vault;
+  if (value === undefined) process.exit(1);
+  console.log(value);
+}
+
+export async function runConfigUnset(key?: string): Promise<void> {
+  if (key !== 'default_vault') {
+    console.error('usage: kmd config unset default_vault');
+    process.exit(2);
+  }
+  if (!unsetGlobalConfigValue('default_vault')) {
+    console.error('default_vault is not set');
+    process.exit(1);
+  }
+  console.log('default_vault unset');
+}
+
+export async function runDbReset(positional?: string): Promise<void> {
+  const resolution = resolveCliVault(positional);
+  if (resolution.root === null) {
     console.error('usage: kmd db reset [<vault-root>] (or set WIKI_VAULT)');
     process.exit(2);
   }
-  const dir = dirname(resolveIndexPath(root));
+  const dir = dirname(resolveIndexPath(resolution.root));
   if (!existsSync(dir)) {
     console.log(`${dir} does not exist — nothing to reset`);
     return;
