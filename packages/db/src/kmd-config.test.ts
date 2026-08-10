@@ -88,9 +88,17 @@ describe('findProjectTier', () => {
     });
   });
 
-  it('finds a root-layout vault by convention', () => {
+  it('finds a .kmd-marked root-layout vault by convention', () => {
     makeVault(project);
+    mkdirSync(join(project, '.kmd'), { recursive: true });
     expect(findProjectTier(project)?.vaultRoot).toBe(project);
+  });
+
+  it('skips an unmarked bare vault.yaml and reports the candidate', () => {
+    makeVault(project);
+    const skipped: string[] = [];
+    expect(findProjectTier(project, process.env, (c) => skipped.push(c))).toBeNull();
+    expect(skipped).toEqual([join(project, 'vault.yaml')]);
   });
 
   it('walks up from a subdirectory to the nearest tier', () => {
@@ -169,6 +177,18 @@ describe('resolveVaultRoot', () => {
         globalDefault: '/global'
       }).root
     ).toBe('/plugin-default');
+  });
+
+  it('a foreign unmarked vault.yaml does not capture rank 2 over env', () => {
+    makeVault(project);
+    const skipped: string[] = [];
+    const res = resolveVaultRoot({
+      projectDir: project,
+      envVault: '/env',
+      onSkip: (c) => skipped.push(c)
+    });
+    expect(res).toEqual({ root: '/env', source: 'env' });
+    expect(skipped).toEqual([join(project, 'vault.yaml')]);
   });
 
   it('env beats global default; global default is last; none when empty', () => {

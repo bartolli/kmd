@@ -14,12 +14,15 @@ process.on('warning', (warning) => {
 const USAGE = `usage: kmd <command> [options]
 
 vault resolution (every command): positional > project tier (.kmd/config.local.yaml >
-.kmd/config.yaml > vault/vault.yaml > vault.yaml, nearest ancestor of
-$KMD_PROJECT_DIR or cwd) > --default-root > $WIKI_VAULT > ~/.kmd/config.yaml default_vault
+.kmd/config.yaml > vault/vault.yaml > vault.yaml with a .kmd marker beside it,
+nearest ancestor of $KMD_PROJECT_DIR or cwd) > --default-root > $WIKI_VAULT >
+~/.kmd/config.yaml default_vault
 
 commands:
-  init [<dir>] [-y]        scaffold a fresh vault (no dir: current directory — TTY prompt, or -y);
-                           offers to record it as default_vault
+  init [<dir>] [-y] [--set-default]
+                           scaffold a fresh vault (no dir: current directory — TTY prompt, or -y);
+                           TTY offers to record it as default_vault, --set-default records it
+                           without asking (-y alone never touches the machine default)
   init --local [-y]        scaffold a project vault: <git-root>/vault + <git-root>/.kmd state home
   sync [<vault-root>]      vault → index sync (runs validate first)
   validate [<path>]        deterministic vault checker
@@ -48,6 +51,7 @@ const { positionals, values } = parseArgs({
     help: { type: 'boolean', short: 'h' },
     yes: { type: 'boolean', short: 'y' },
     'default-root': { type: 'string' },
+    'set-default': { type: 'boolean' },
     local: { type: 'boolean' }
   }
 });
@@ -58,7 +62,12 @@ async function run(): Promise<void> {
   switch (command) {
     case 'init': {
       const { runInit } = await import('@llm-wiki/cli/cli');
-      await runInit(positionals[1], Boolean(values.yes), Boolean(values.local));
+      await runInit(
+        positionals[1],
+        Boolean(values.yes),
+        Boolean(values.local),
+        Boolean(values['set-default'])
+      );
       break;
     }
     case 'sync': {

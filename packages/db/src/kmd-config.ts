@@ -115,7 +115,14 @@ const TIER_CONFIG_FILES = [
   ['config.yaml', 'config']
 ] as const;
 
-function projectVaultAt(level: string, env: NodeJS.ProcessEnv): ProjectTier | null {
+/** Called when the walk skips an unmarked bare `vault.yaml`; receives its path. */
+export type SkipListener = (candidate: string) => void;
+
+function projectVaultAt(
+  level: string,
+  env: NodeJS.ProcessEnv,
+  onSkip?: SkipListener
+): ProjectTier | null {
   for (const [file, via] of TIER_CONFIG_FILES) {
     const path = join(level, '.kmd', file);
     const config = loadYamlFile(path, ProjectConfigSchema);
@@ -131,7 +138,15 @@ function projectVaultAt(level: string, env: NodeJS.ProcessEnv): ProjectTier | nu
     return { tierRoot: level, vaultRoot: join(level, 'vault'), via: 'convention' };
   }
   if (existsSync(join(level, 'vault.yaml'))) {
-    return { tierRoot: level, vaultRoot: level, via: 'convention' };
+    // Bare root-layout binds only when `.kmd` marks the directory as kmd
+    // territory — any tool can own a root-level vault.yaml, and an ancestor's
+    // foreign file must not capture rank 2 over env/global resolution. The
+    // nested vault/vault.yaml shape above is already a strong signal and
+    // stays existence-only.
+    if (existsSync(join(level, '.kmd'))) {
+      return { tierRoot: level, vaultRoot: level, via: 'convention' };
+    }
+    onSkip?.(join(level, 'vault.yaml'));
   }
   return null;
 }
@@ -139,15 +154,17 @@ function projectVaultAt(level: string, env: NodeJS.ProcessEnv): ProjectTier | nu
 /**
  * Nearest-ancestor project tier from `fromDir`: at each level,
  * `.kmd/config.local.yaml` > `.kmd/config.yaml` > `vault/vault.yaml` >
- * `vault.yaml`. Relative config paths resolve against the tier root.
+ * `vault.yaml` (bare form `.kmd`-marked only). Relative config paths resolve
+ * against the tier root.
  */
 export function findProjectTier(
   fromDir: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  onSkip?: SkipListener
 ): ProjectTier | null {
   let level = canonicalVaultRoot(fromDir);
   for (;;) {
-    const hit = projectVaultAt(level, env);
+    const hit = projectVaultAt(level, env, onSkip);
     if (hit !== null) return hit;
     const parent = dirname(level);
     if (parent === level) return null;
@@ -184,10 +201,11 @@ export function resolveVaultRoot(input: {
   envVault?: string | undefined;
   globalDefault?: string | undefined;
   env?: NodeJS.ProcessEnv | undefined;
+  onSkip?: SkipListener | undefined;
 }): VaultRootResolution {
   if (input.positional) return { root: input.positional, source: 'positional' };
   if (input.projectDir) {
-    const tier = findProjectTier(input.projectDir, input.env ?? process.env);
+    const tier = findProjectTier(input.projectDir, input.env ?? process.env, input.onSkip);
     if (tier !== null) {
       return { root: tier.vaultRoot, source: `project-${tier.via}`, tierRoot: tier.tierRoot };
     }

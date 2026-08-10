@@ -482,6 +482,58 @@ describe('two-tier resolution (end-to-end)', () => {
     expect(config.stdout).toContain(join(project, '.kmd', 'db', 'index.db'));
   }, 30_000);
 
+  it('a foreign ancestor vault.yaml does not capture env resolution', async () => {
+    const envVault = join(base, 'env-vault');
+    const init = await runKmd(['init', envVault], '', kmdHome);
+    expect(init.code).toBe(0);
+    const foreign = join(base, 'foreign');
+    const sub = join(foreign, 'sub');
+    await mkdir(sub, { recursive: true });
+    await writeFile(join(foreign, 'vault.yaml'), 'not_a_kmd_vault: true\n');
+
+    const config = await runKmd(['config'], '', kmdHome, { WIKI_VAULT: envVault }, sub);
+    expect(config.code).toBe(0);
+    expect(config.stdout).toContain(`vault: ${envVault}`);
+    expect(config.stdout).toContain('source: $WIKI_VAULT');
+    expect(config.stderr).toContain(`ignoring ${join(foreign, 'vault.yaml')}`);
+    expect(config.stderr).toContain('.kmd marker');
+  }, 30_000);
+
+  it('init -y never touches default_vault; --set-default records it', async () => {
+    const scratch = join(base, 'scratch-vault');
+    const init = await runKmd(['init', scratch, '-y'], '', kmdHome);
+    expect(init.code).toBe(0);
+    expect(init.stdout).toContain(`kmd config set default_vault ${scratch}`);
+
+    const unset = await runKmd(['config', 'get', 'default_vault'], '', kmdHome);
+    expect(unset.code).toBe(1);
+    expect(unset.stdout).toBe('');
+
+    const chosen = join(base, 'chosen-vault');
+    const initSet = await runKmd(['init', chosen, '--set-default'], '', kmdHome);
+    expect(initSet.code).toBe(0);
+    expect(initSet.stdout).toContain(`default_vault: ${chosen}`);
+
+    const get = await runKmd(['config', 'get', 'default_vault'], '', kmdHome);
+    expect(get.code).toBe(0);
+    expect(get.stdout.trim()).toBe(chosen);
+  }, 30_000);
+
+  it('rejects --set-default on init --local', async () => {
+    const project = join(base, 'local-project');
+    await mkdir(project, { recursive: true });
+
+    const result = await runKmd(
+      ['init', '--local', '-y', '--set-default'],
+      '',
+      kmdHome,
+      {},
+      project
+    );
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('--set-default applies to global init only');
+  }, 30_000);
+
   it('config set/get default_vault round-trips and resolves outside projects', async () => {
     const vault = join(base, 'global-vault');
     const init = await runKmd(['init', vault], '', kmdHome);

@@ -50,7 +50,11 @@ export function resolveCliVault(positional?: string, defaultRoot?: string): Vaul
     defaultRoot,
     projectDir: process.env.KMD_PROJECT_DIR ?? process.cwd(),
     envVault: process.env.WIKI_VAULT,
-    globalDefault: loadGlobalConfig().default_vault
+    globalDefault: loadGlobalConfig().default_vault,
+    onSkip: (candidate) =>
+      console.error(
+        `kmd: ignoring ${candidate} — no .kmd marker beside it; mkdir ${dirname(candidate)}/.kmd to bind it as the project vault`
+      )
   });
 }
 

@@ -155,10 +155,21 @@ next steps:
   kmd sync    # builds the index at .kmd/db/index.db`);
 }
 
-export async function runInit(dir: string | undefined, yes = false, local = false): Promise<void> {
+export async function runInit(
+  dir: string | undefined,
+  yes = false,
+  local = false,
+  setDefaultFlag = false
+): Promise<void> {
   if (local) {
     if (dir !== undefined) {
       console.error('usage: kmd init --local  (the root is the nearest .git ancestor, not chosen)');
+      process.exit(2);
+    }
+    if (setDefaultFlag) {
+      console.error(
+        'kmd init: --set-default applies to global init only (a project vault resolves by location)'
+      );
       process.exit(2);
     }
     await runInitLocal(yes);
@@ -195,10 +206,11 @@ export async function runInit(dir: string | undefined, yes = false, local = fals
   templates/           ${templateCount} built-in templates (served at wiki://template/...)
   projects/  research/  notes/`);
 
-  // default_vault offer: TTY asks, -y accepts, piped stdin gets the hint —
-  // a config write never happens silently.
-  let setDefault = yes;
-  if (!yes && process.stdin.isTTY) {
+  // default_vault offer: TTY asks, --set-default accepts explicitly, everything
+  // else gets the hint. -y answers only the scaffold confirmation — a scripted
+  // scratch init must never rewrite the machine default.
+  let setDefault = setDefaultFlag;
+  if (!setDefault && !yes && process.stdin.isTTY) {
     setDefault = await promptYesNo(
       `set as default vault in ~/.kmd/config.yaml? [Y/n] `,
       process.stdin,
