@@ -1,3 +1,25 @@
+## [v0.12.0] - 2026-08-10
+
+### Added
+
+- two-tier project-aware vault resolution — one chain for every entry point (bare CLI, MCP server, hooks): positional > project tier (`.kmd/config.local.yaml` > `.kmd/config.yaml` > `vault/vault.yaml` > `vault.yaml` with a `.kmd` sibling, nearest ancestor of the project signal) > `--default-root` > `$WIKI_VAULT` > global `default_vault`. Project signal: MCP `KMD_PROJECT_DIR` ?? client roots; hooks the event-payload `cwd`; bare CLI the process cwd. The engine reads no harness-named variable — adapters map their tokens in chrome
+- global config `~/.kmd/config.yaml` (`default_vault`) with `kmd config set|get|unset` (comment-preserving writes); project tier: committed `.kmd/config.yaml` carries repo-relative paths or `${VAR}`/`${VAR:-default}` expansions, gitignored `config.local.yaml` carries personal absolutes and wins. Unresolvable `${VAR}`: loud on operator commands, degrade-open on hooks
+- `kmd init --local` — project vault at `<git-root>/vault/` plus `.kmd/` state home with a `.gitignore` covering `db/`, `state/`, `config.local.yaml`; `kmd init --set-default` — the only non-interactive route to writing `default_vault`
+- `kmd mcp --default-root <path>` and `kmd hook <event> --default-root <path>` — the plugin invocation form: a config default the project tier may beat; the positional stays authoritative (mcp: mutual exclusion is a usage error, exit 2; hooks: the positional wins with one diagnostic)
+- tier-homed state: a vault beside a `.kmd/` directory homes its index at `<that>/db/index.db` and hook dedup state at `<that>/state/hook` — living and dying with the repo; `kmd db reset` touches neither config nor state at either tier
+- `kmd sync` gains the vault-root positional; `kmd config` prints the winning chain rank as `source:`
+- MCP roots-sourced deferred binding — with no positional and no `KMD_PROJECT_DIR`, the vault binds after initialization from the client's `roots/list` through the same tier walk, fail-loud at bind time; transitional: MCP spec revision 2026-07-28 deprecates Roots — the path serves handshake-protocol clients through the deprecation window and is removed, not migrated, when the SDK crosses that revision
+
+### Changed
+
+- resolution inside a vault-carrying project: the project tier beats `$WIKI_VAULT` for bare invocations — this is the feature; the explicit positional is the escape hatch
+- bare root-layout `vault.yaml` binds by convention only in `.kmd`-marked directories; a skipped unmarked candidate gets one stderr notice on operator commands (naming the `mkdir .kmd` fix) and silence on the hook path — hook stderr is the degradation channel
+- `init -y` answers scaffold confirmations only — `kmd init <dir> -y` never writes the machine `default_vault`
+- claude adapter: `.mcp.json` launches `kmd mcp --default-root ${user_config.vault_path}` with `env.KMD_PROJECT_DIR = "${CLAUDE_PROJECT_DIR}"`; `hooks.json` passes `--default-root`; per-project vaults resolve with no per-project files — the `.claude/wiki-sdd.local.md` hook override and `claude-project-override.mjs` are removed
+- codex adapter: `hooks.json` passes `--default-root` (hooks are project-aware from the payload `cwd`); the MCP launcher passes `--default-root` and `.mcp.json` whitelists `KMD_PROJECT_DIR` — codex ≤0.146.0 provides plugin MCP servers no workspace signal (plugin-cache cwd, no root token, no roots capability), so per-project `prime`/`search` needs the export in the launching shell (openai/codex#37903)
+- wrapper `MIN_HOOK_VERSION` floor: `[0, 12, 0]` — pre-chain globals take the npx fallback; a pre-chain engine reached via npx degrades the new hook args to the configured-vault behavior
+- plugin surfaces at 0.16.0 (claude, codex, marketplace)
+
 ## [v0.11.0] - 2026-08-04
 
 ### Added
