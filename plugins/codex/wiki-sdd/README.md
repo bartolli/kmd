@@ -22,7 +22,9 @@ Arc: `$grill-with-docs` → `$to-prd` → `$triage` → `$to-issues` → `$tdd` 
 
 ## MCP server
 
-Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) via `npx @bartolli/kmd`. The launcher reads `WIKI_VAULT` and falls back to `~/llm-wiki/vault`; set `WIKI_MCP_LOG_LEVEL` to override the default `info` log level. If the `wiki` server is also registered globally, remove the global entry when enabling this plugin to avoid double registration.
+Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) via `npx @bartolli/kmd`. The launcher passes `--default-root` (from `WIKI_VAULT`, falling back to `~/llm-wiki/vault`), so the engine's full resolution chain stays live; set `WIKI_MCP_LOG_LEVEL` to override the default `info` log level. If the `wiki` server is also registered globally, remove the global entry when enabling this plugin to avoid double registration.
+
+**Per-project vaults.** Gate hooks are project-aware automatically — every hook event carries the session working directory, and a project carrying its own vault (co-located `vault/vault.yaml`, `.kmd`-marked root vault, or committed `.kmd/config.yaml`) resolves ahead of the configured default. The MCP server cannot see the workspace on its own (codex ≤ 0.146.0 launches plugin MCP servers in the plugin cache directory with no workspace signal and no `roots` capability), so per-project `prime`/`search` needs an explicit export in the shell that launches codex: `export KMD_PROJECT_DIR="$PWD"` engages the same chain, or `WIKI_VAULT` pins the vault directly. Both pass through the plugin's `env_vars` whitelist.
 
 ## Gate hooks
 

@@ -9,6 +9,7 @@
       "cwd": ".",
       "env_vars": [
         "WIKI_VAULT",
+        "KMD_PROJECT_DIR",
         "WIKI_MCP_LOG_LEVEL"
       ]
     }
