@@ -1,227 +1,160 @@
 # kmd — knowledge-markdown
 
-CLI + MCP server for structured markdown knowledge vaults. Validate, index (SQLite FTS5), and serve content to AI agents — one `npx` away.
-
-Same primitives as [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) (markdown + YAML frontmatter + directory tree), but opinionated where OKF is minimal:
-
-| | OKF | kmd |
-|---|---|---|
-| Vocabulary | open — producer picks `type` values | controlled — `vault.yaml` defines kinds, scopes, statuses, tags; `kmd validate` enforces |
-| Structure | flat — organize however | three domains: `projects/` · `research/` · `notes/` |
-| Validation | none — format spec only | deterministic, LLM-free; gates sync + pre-commit hook |
-| Cross-refs | bundle-relative `/path.md` | `[[wikilinks]]` (Obsidian-native, rename-safe, no-dangling guarantee) |
-| Agent surface | none — bring your own | two MCP tools (`prime`, `search`) + template resources |
-| Guardrails | none | declarative prompt reminders + tool gates from `vault.yaml` (`kmd hook`) |
-| Infrastructure | n/a | `node:sqlite` FTS5; zero external deps |
-
-## Install
+A CLI and MCP server for markdown knowledge vaults. Your notes stay plain markdown in git. `kmd` validates them against a controlled vocabulary, indexes them with SQLite FTS5, and serves them to AI agents through two MCP tools. One `npx` away, no database to run.
 
 ```bash
 npx @bartolli/kmd --help
 ```
 
+## Quick start
+
+Two setups. Pick one, or use both — they compose.
+
+**A global vault** — one personal wiki serving all your projects:
+
+```bash
+npx @bartolli/kmd init ~/wiki-vault --set-default
+```
+
+`--set-default` records the vault in `~/.kmd/config.yaml`. Every `kmd` command and MCP server on this machine now finds it without configuration.
+
+**A project vault** — the repo carries its own knowledge:
+
+```bash
+cd my-repo
+npx @bartolli/kmd init --local
+```
+
+This scaffolds `my-repo/vault/` plus a `.kmd/` state home. Every command run inside the repo resolves this vault automatically — it wins over the global default. Nothing else to configure.
+
+Then, either way:
+
+```bash
+kmd validate   # deterministic checker, no LLM
+kmd sync       # vault → SQLite index
+```
+
+## Where things live
+
+| Thing | Where | Nature |
+|---|---|---|
+| Vault | wherever you put it (`~/wiki-vault`, `<repo>/vault/`) | yours: markdown + `vault.yaml`, git-tracked, canonical |
+| Index | `~/.kmd/db/{vault-key}/index.db`, or `<repo>/.kmd/db/` for project vaults | disposable: `kmd db reset` deletes it, `kmd sync` rebuilds it |
+| Machine config | `~/.kmd/config.yaml` | `default_vault`, written by `kmd init --set-default` or `kmd config set` |
+| Project config | `<repo>/.kmd/config.yaml` | committed, repo-relative paths; `.kmd/config.local.yaml` is the personal, gitignored override |
+| Hook state | `~/.kmd/state/` or `<repo>/.kmd/state/` | session dedup markers; survives `kmd db reset` |
+
+A project vault's index and state live in the repo. Delete the repo and they go with it.
+
+## How kmd finds your vault
+
+One resolution order, used by the CLI, the MCP server, and the hooks. First hit wins:
+
+1. An explicit path argument — pins that vault, beats everything.
+2. The project: nearest ancestor with `.kmd/config.local.yaml`, `.kmd/config.yaml`, `vault/vault.yaml`, or a `vault.yaml` with a `.kmd/` directory beside it.
+3. `--default-root <path>` — a configured default the project may beat.
+4. `$WIKI_VAULT`.
+5. `default_vault` from `~/.kmd/config.yaml`.
+
+The project signal is the working directory: the shell's for CLI commands, the session's for hooks, `KMD_PROJECT_DIR` for MCP servers. When something resolves to the wrong vault, run `kmd config` — it prints the vault and which rank won.
+
+Teams commit `.kmd/config.yaml` with a repo-relative `vault:` path or a `${VAR}` expansion. Absolute paths belong in the gitignored `config.local.yaml`.
+
 ## Commands
 
 ```
-kmd init [<dir>] [-y]        scaffold a fresh vault (starter vault.yaml + IDE schema, templates, domain dirs)
-kmd validate [<path>]        deterministic vault checker (default: $WIKI_VAULT)
-kmd sync                     vault → SQLite index (runs validate first)
-kmd mcp [<vault-root>]       stdio MCP server
-kmd config [<vault-root>]    print vault + index resolution; no vault → list known vaults
-kmd db reset [<vault-root>]  delete the vault's index
-kmd hook <prompt|pretool|posttool>
-                             harness gate engine — see "Hook gates" below
+kmd init [<dir>] [-y] [--set-default]   scaffold a vault; --set-default records it as the machine default
+kmd init --local [-y]                   project vault at <git-root>/vault/ with a .kmd/ state home
+kmd validate [<path>]                   deterministic vault checker
+kmd sync [<vault-root>]                 vault → SQLite index (validates first, aborts on errors)
+kmd mcp [<vault-root>] [--default-root <path>]
+                                        stdio MCP server
+kmd config [<vault-root>]               print resolved vault, index path, winning rank
+kmd config <set|get|unset> default_vault [<path>]
+kmd db reset [<vault-root>]             delete the vault's index
+kmd hook <prompt|pretool|posttool|stop|session-start> [--default-root <path>] [--scope <s>] [--harness <h>] [--explain|--dry-run]
+                                        harness gate engine — see Hooks
 ```
 
-The index is **per-vault**: `~/.kmd/db/{vault-key}/index.db`, keyed by the resolved vault root — multiple vaults never share or clobber an index, and re-pointing a server at a different vault can't serve stale rows from the old one. `kmd config` prints the resolution (or lists every known vault), and agents get `vault_root` in every `prime` response — that's the base for resolving `search`'s vault-relative paths.
+`kmd --help` is canonical for flags; this list names the surface.
 
-## Bootstrap a vault
+## MCP server
 
-```bash
-kmd init my-vault    # or bare `kmd init` — asks [y/N] before using the current directory
-```
+Two tools, deliberately few:
 
-One command scaffolds a working vault: a starter `vault.yaml` (canonical kinds, statuses, and methodologies; empty `scopes` — the first scope is yours to name), the 11 built-in templates, the `projects/` / `research/` / `notes/` domain dirs, and `vault.schema.json` — a draft-07 JSON Schema emitted from the same module that validates at runtime, bound to `vault.yaml` by a yaml-language-server modeline on line 1, so any modern IDE validates the file and shows field docs with no extension setup. The starter is serialized from the runtime schema itself, never a text snapshot, and `vault.yaml` is written last — an interrupted scaffold is never a loadable vault. A non-empty target is refused with its entries listed; a target already holding a `vault.yaml` is refused as `already a vault`. The result passes `kmd validate` as-is: add your first scope under `scopes:` and go. In scripts, `-y` skips the current-directory prompt; piped stdin without `-y` is a usage error, never a hang.
+- **`prime(scope, task?)`** — an orientation briefing: identity, primer, active decision records, current plan, vocabulary, most-linked pages, recent activity, cross-scope links. Pass `task` and it adds the top-ranked relevant pages, weighted so a page naming the concept in its title outranks pages that merely mention it.
+- **`search(query, scope?, kind?, limit?)`** — ranked candidates `{path, title, kind, summary, score}`. Never page bodies; the agent opens files itself.
 
-## MCP registration
+Templates are served as MCP resources at `wiki://template/{domain}/{kind}`, and the authoring guide at `wiki://authoring`.
+
+Registration:
 
 ```json
 {
   "mcpServers": {
     "wiki": {
       "command": "npx",
-      "args": ["-y", "@bartolli/kmd", "mcp", "/absolute/path/to/vault"]
+      "args": ["-y", "@bartolli/kmd", "mcp", "--default-root", "/absolute/path/to/vault"]
     }
   }
 }
 ```
 
-Two tools:
+`--default-root` keeps the resolution order live: a project that carries its own vault wins automatically. Passing the path as a bare positional instead pins that one vault unconditionally — use it only when that is what you want.
 
-- **`prime(scope, task?)`** — orientation briefing: identity, primer, active ADRs, plan, vocabulary, hubs, task-relevant pages.
-- **`search(query, scope?, kind?, limit?)`** — FTS5 ranked candidates `{path, title, kind, summary, score}`. Never page bodies.
+## Skills
 
-Templates served as MCP resources at `wiki://template/{domain}/{kind}`.
+The `wiki-sdd` plugin ships nine skills — a complete spec-driven development loop that reads and writes the vault. Each is a slash command (`$name` on Codex):
 
-## Vault structure
+| Skill | What it does |
+|---|---|
+| `/wiki` | wires a project to the wiki; local-vs-global vault setup; the hub for everything below |
+| `/grill-with-docs` | interview that sharpens intent and scaffolds a scope: index, primer, glossary, lazy ADRs |
+| `/to-prd` | turns the working conversation into a thin plan plus user stories with Gherkin scenarios |
+| `/triage` | moves stories through `needs-triage` → `ready-for-agent` / `ready-for-human` / `wontfix` |
+| `/to-issues` | slices stories into vertical tracer bullets; mirrors to GitHub or GitLab when configured |
+| `/tdd` | implements one `ready-for-agent` slice, red-green-refactor, and ticks its checkbox |
+| `/retro` | two questions before every primer rewrite; converts the answers into wiki artifacts |
+| `/to-triggers` | turns a prose rule into a tested vault trigger: you own the intent, it owns the regex |
+| `/signal-dense` | canonical-vocabulary register for long agentic threads |
 
-```
-vault/
-├── vault.yaml               # controlled vocabulary
-├── templates/               # frontmatter templates → MCP resources
-├── projects/{scope}/        # specs, ADRs, plans, stories
-├── research/{topic}/        # articles, sources
-└── notes/                   # low-ceremony capture
-```
+The working loop: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` per slice → `/retro` before the session closes. `/wiki` is the on-ramp; `/to-triggers` joins whenever a rule proves it should be a gate. The same skills render for all three harnesses below.
 
-`vault.yaml` is the controlled vocabulary and the served pedagogy for one vault. Loading is fail-loud: an invalid file stops the MCP server from starting and blocks `kmd sync` / `kmd validate`, and unknown keys are rejected loud — a typo'd field never silently does nothing. The schema lives in one module (`packages/db/src/vault-config.ts`) shared by sync, validate, the MCP server, and `kmd init`; `kmd sync` keeps `vault.schema.json` at the vault root matched to the running engine, and the modeline on `vault.yaml` line 1 gives any modern IDE live validation against it. A complete annotated example: [`vault.yaml.example`](vault.yaml.example).
+## Harness integration
 
-| Field | Type | Required | Enforced by |
-|---|---|---|---|
-| `scopes` | map of scope name → entry | yes | schema; `prime(scope)` resolves against it |
-| `scopes.*.status` | string | yes | schema (free string; keep within `statuses` by convention) |
-| `scopes.*.repo` | string | no | `kmd hook` — resolves the active scope from the session's working directory |
-| `scopes.*.methodology` | string | no | schema — must appear in `methodologies` |
-| `kinds` | (string \| `{name, signal, where}`)[] | yes | `kmd validate`: page `kind` must be listed; object form adds a kind-selector row |
-| `statuses` | string[] | yes | `kmd validate`: page `status` must be listed |
-| `methodologies` | string[] | yes | `kmd validate` (pages) + schema (scope entries) |
-| `tags.canonical` | string[] | yes | membership check currently deferred; `prime` surfaces `top_tags` |
-| `tags.aliases` | map alias → canonical | yes | `kmd validate` warns when a page uses an alias |
-| `authoring_rules` | multiline string | no | replaces `wiki://authoring` § Authoring rules (escape hatch) |
-| `authoring_rules_extra` | multiline string | no | appended after the served § Authoring rules |
-| `sync_protocol` | multiline string | no | replaces `wiki://authoring` § Resync protocol (escape hatch) |
-| `sync_protocol_extra` | multiline string | no | appended after the served § Resync protocol |
-| `triggers` | map scope → trigger list | no | full-replace of the built-in + plugin trigger base for that scope (escape hatch) |
-| `triggers_extra` | map scope → trigger list | no | appended per scope; the reserved `_all` key applies to every session |
+### Claude Code
 
-Kinds with built-in authoring pedagogy (kind-selector rows): `project`, `spec`, `adr`, `plan`, `story`, `ops`, `topic`, `article`, `src`, `note`, `artifact`, `prompt`. A custom kind gets its row via the object form: `{name, signal, where}` — *signal* is when to pick the kind, *where* is the path pattern.
+The repo is a plugin marketplace. The [`wiki-sdd`](plugins/claude/wiki-sdd/README.md) plugin wires everything: the MCP server, all five hook events, and the [nine skills](#skills).
 
-```yaml
-scopes:
-  my-app:
-    methodology: sdd        # optional — any value from `methodologies`
-    status: active
-  research-notes:
-    status: active
-
-kinds: [spec, adr, plan, story, ops, article, src, note]
-statuses: [draft, active, superseded, archived]
-methodologies: [sdd, tdd, hybrid]
-
-tags:
-  canonical: [auth, api, sync]
-  aliases:
-    authentication: auth    # normalize on write; warn on validate
+```bash
+claude plugin marketplace add bartolli/kmd
+claude plugin install wiki-sdd@kmd
 ```
 
-## Served pedagogy
+Project vaults resolve automatically — the plugin passes the project directory to the server. No per-project files.
 
-The MCP resource `wiki://authoring` is how agents learn to write in your vault: it opens with the vault root (so every path it teaches is immediately actionable), then a kind-selector table, the controlled vocabulary, authoring rules (structure, frontmatter discipline, content quality bar, linking), and the resync protocol. It ships with strong defaults and is assembled fresh from `vault.yaml` on every read — edit the config, and the next agent session works under the new rules. No rebuild, no restart.
+### Codex
 
-### Add vault-specific rules — keep every default
-
-The `_extra` fields append to the served sections. You keep the full built-in rulebook, and future default improvements keep flowing to your vault:
-
-```yaml
-authoring_rules_extra: |
-  - **Diagrams live in `assets/`** as `.excalidraw.md` — embed with `![[...]]`, don't inline SVG.
-  - **Meeting notes are one file per meeting**: `notes/mtg-{date}-{topic}.md`.
-
-sync_protocol_extra: |
-  Session-closing primer resyncs run /retro first: convert every finding
-  into wiki artifacts, then author the primer from the corrected state.
+```bash
+codex plugin marketplace add bartolli/kmd
+codex plugin add wiki-sdd@kmd
 ```
 
-Served result: § Authoring rules is the complete default set with your two rules at the end; § Resync protocol gains the retro gate after the default edit-validate-sync loop.
+Hooks are project-aware out of the box. The MCP server needs one line of help, because Codex gives plugin MCP servers no workspace signal ([openai/codex#37903](https://github.com/openai/codex/issues/37903)). Add to your shell profile:
 
-### Teach the agent a custom kind
-
-A `kinds` entry in object form adds a row to the served kind selector — `signal` is *when to pick this kind*, `where` is *the path pattern to follow*:
-
-```yaml
-kinds:
-  - spec
-  - adr
-  - note
-  - name: experiment
-    signal: Hypothesis, setup, and outcome of a training run
-    where: "`projects/{scope}/lab/exp-{slug}.md`"
+```zsh
+codex() { KMD_PROJECT_DIR="$PWD" command codex "$@"; }
 ```
 
-Served kind selector:
+Now every Codex launch carries its project directory, and `prime`/`search` follow project vaults exactly as on Claude Code. Details: [codex adapter README](plugins/codex/wiki-sdd/README.md).
 
-```markdown
-| Signal | Kind | Where |
-|---|---|---|
-| How a system works (state of world, not decision) | **spec** | `projects/{scope}/spec/spec-{slug}.md` |
-| Decision between alternatives, commits direction | **adr** | `projects/{scope}/adr/adr-{slug}.md` |
-| Low-ceremony capture, sort later | **note** | `notes/{slug}.md` |
-| Hypothesis, setup, and outcome of a training run | **experiment** | `projects/{scope}/lab/exp-{slug}.md` |
-```
+### Kiro
 
-…and `kmd validate` accepts `kind: experiment` on pages. Plain-string entries use the built-in pedagogy; the object form also lets you reword a built-in kind's row.
+Kiro consumes the same skills as [Agent Skills](plugins/kiro/wiki-sdd/README.md) — copy the skill folders into `~/.kiro/skills/` or `.kiro/skills/`, and register the MCP server in `.kiro/settings/mcp.json` from the bundled template. Both Kiro seats (IDE and CLI) read the same layout.
 
-The template comes with it: drop `templates/experiment.md` in the vault and it's served at `wiki://template/experiment`, listed in `wiki://templates` with the kind's `signal` as its description — same fresh-from-disk serving as the built-ins. A declared custom kind without its template file is a `kmd validate` warning, so the gap never goes unnoticed.
+### Manual wiring
 
-Custom-kind pages get a **soft universal floor** instead of the built-ins' strict one: missing `title`, `summary`, or `updated` warns but never blocks. Those three are the fields the index serves — `title`/`summary` feed search, `updated` feeds `prime` ordering — so the nudge keeps pages retrievable while everything beyond the floor stays the kind's own business.
-
-### Bring your own methodology
-
-The `methodologies` list is the single authority for page frontmatter *and* scope entries — no hard-coded set:
-
-```yaml
-scopes:
-  care-ops:
-    methodology: pdca-raci   # legal because the list declares it
-    status: active
-
-methodologies: [sdd, tdd, hybrid, pdca-raci]
-```
-
-A scope methodology missing from the list fails the whole file at load — fail-loud, before any index write.
-
-### Replace wholesale (escape hatch)
-
-`authoring_rules` / `sync_protocol` (without `_extra`) replace the served section entirely. Every default rule not restated is gone — reach for this only when your vault genuinely runs a different rulebook. Custom `statuses` behave similarly on the serving side: only the canonical `draft → active → superseded → archived` set is presented as a one-directional lifecycle; any other list is served as a plain enumeration, and the ordering pedagogy is yours to supply via `authoring_rules_extra`.
-
-## Hook gates
-
-A rule written in prose loses the agent's attention a hundred thousand tokens in. A trigger fires at the exact moment the rule matters — as a reminder injected into context, or as a gate that stops the tool call. Triggers are declared in `vault.yaml`; `kmd hook` evaluates them when the agent harness fires an event.
-
-This inverts where pedagogy lives. Instructions files (`CLAUDE.md`, `AGENTS.md`), memory files, and playbooks pay their token cost on every request and compete with the task for attention — yet most of their rules are conditional: they bind only at specific moments (a release, a vault write, a force push). Hooks move those rules out of the standing context into an event layer — zero tokens while silent, the full rule at the moment it binds, deterministically. Keep the static layers for what is genuinely unconditional (identity, architecture, conventions in every file you touch); compile the rest into triggers and delete the prose. The auto validate + sync loop is the pattern at its endpoint: a protocol that used to be instructions is now machinery, and the model never spends attention on it.
-
-Three events:
-
-- **`kmd hook prompt`** — runs when the user submits a prompt. Matching triggers each inject one context line (a protocol pointer, a skill reminder). Each trigger fires **once per session** — a rule you've seen is a rule you've seen.
-- **`kmd hook pretool`** — runs before the agent executes a tool. A matching gate can inject context, warn, or **deny the call with a reason the agent reads**. Deny-class gates fire every time; only reminders spend the once-per-session budget.
-- **`kmd hook posttool`** — runs after the agent writes a file. When the file is inside the vault, `kmd validate` runs on the spot: findings come back into the session for the agent to fix, and the index doesn't sync until they are. A clean write syncs silently. The edit-validate-sync loop stops being something the agent has to remember. Writes outside the vault exit without touching anything.
-
-```yaml
-triggers_extra:
-  _all:                        # reserved: every session, whatever the scope
-    - id: skill-notes
-      on: prompt
-      enforce: inject
-      keywords: [scratchpad, jot]
-      text: "Skill: /notes captures scratch thoughts into the vault."
-  my-app:
-    - id: retro-before-tag
-      on: pretool
-      enforce: block
-      tool: Bash
-      args_match: "\\bgit tag\\b"
-      when:                    # precondition — the gate fires only when it is UNMET
-        name: newer-than
-        fresh: ["notes/my-app-retro-*.md"]
-        than: ["projects/my-app/ops/release-*.md"]
-      reason: "Retro gate: run the retro before tagging."
-```
-
-**Matching.** Prompt triggers match `keywords` on word boundaries with stemming — `releasing` and `released` match the keyword `release`, `prerelease` does not — with `intent` regexes as the escape hatch for phrasings stemming can't reach. Pretool matchers AND-compose: `tool` equals the tool name, `args_match` is a regex over the tool's input, `files` is a glob list checked against the file paths the tool touches (relative to the session's working directory; `**` crosses directories, `*` stays within a segment).
-
-**State-aware gates.** `when` names a precondition checked against your vault at the moment of the call. One predicate ships today: `newer-than` — the newest page matching `fresh` must carry a frontmatter `updated` at or after the newest page matching `than`. In the example above: tagging a release is denied unless a retro note postdates the last release note. While no release note exists, the gate passes — it arms itself the day you write the first one.
-
-**Wiring (Claude Code).** Installing the [wiki-sdd plugin](#claude-code-plugin) registers both hooks automatically — manual wiring is for setups without the plugin. For those, install the binary on `PATH` first — hooks spawn on every event, and a global install keeps that spawn fast:
+No plugin, any harness that supports command hooks. Install globally first — hooks spawn per event, and a global install keeps the spawn fast:
 
 ```bash
 npm i -g @bartolli/kmd
@@ -232,24 +165,63 @@ npm i -g @bartolli/kmd
   "hooks": {
     "UserPromptSubmit": [
       { "hooks": [{ "type": "command",
-        "command": "kmd hook prompt /absolute/path/to/vault --scope my-app" }] }
+        "command": "kmd hook prompt --default-root /absolute/path/to/vault" }] }
     ],
     "PreToolUse": [
       { "hooks": [{ "type": "command",
-        "command": "kmd hook pretool /absolute/path/to/vault --scope my-app --harness claude" }] }
+        "command": "kmd hook pretool --default-root /absolute/path/to/vault --harness claude" }] }
     ],
     "PostToolUse": [
-      { "matcher": "Write|Edit",
+      { "matcher": "Write|Edit|Bash",
         "hooks": [{ "type": "command",
-        "command": "kmd hook posttool /absolute/path/to/vault --harness claude" }] }
+        "command": "kmd hook posttool --default-root /absolute/path/to/vault --harness claude" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command",
+        "command": "kmd hook stop --default-root /absolute/path/to/vault" }] }
+    ],
+    "SessionStart": [
+      { "hooks": [{ "type": "command",
+        "command": "kmd hook session-start --default-root /absolute/path/to/vault" }] }
     ]
   }
 }
 ```
 
-`--harness claude` emits Claude Code's decision JSON for tool events — deny with reason, context injection, never a silent auto-approve. Without the flag the output is a neutral JSON contract for other integrations. Kiro IDE users wire the prompt event with `--harness kiro-ide`: the prompt arrives via Kiro's `$USER_PROMPT` (Kiro writes nothing to stdin), and because Kiro passes no session id, reminders dedup per 30-minute window per workspace instead of per session. Plugins that ship skills can compile their activation triggers into a file and pass `--triggers <file>` — those fire even when no scope is active.
+`--harness claude` emits Claude Code's decision JSON on tool events. Without it the output is a neutral JSON contract. Kiro IDE wires the prompt event with `--harness kiro-ide`.
 
-Declare `repo:` on your scopes and you can drop `--scope` entirely — the engine resolves the scope from the session's working directory (longest declared path wins, `~` expands):
+## Hooks
+
+Rules in instruction files cost tokens on every request. A trigger costs nothing until the moment it applies, then delivers the whole rule. Triggers are declared in `vault.yaml`; `kmd hook` evaluates them when the harness fires an event.
+
+Five events:
+
+- **`prompt`** — matching triggers inject one context line each, once per session.
+- **`pretool`** — gates before a tool runs: inject, warn, or deny with a reason the agent reads.
+- **`posttool`** — after a write inside the vault, `kmd validate` runs; findings return to the agent and the index holds until they are fixed. Clean writes sync silently.
+- **`stop`** — a session ending with validation errors is sent back once with the fix list.
+- **`session-start`** — a session opening inside a scope's repo gets one orientation line: prime first.
+
+```yaml
+triggers_extra:
+  my-app:
+    - id: retro-before-tag
+      on: pretool
+      enforce: block
+      tool: Bash
+      args_match: "\\bgit tag\\b"
+      when:                    # precondition — the gate fires only while it is unmet
+        name: newer-than
+        fresh: ["notes/my-app-retro-*.md"]
+        than: ["projects/my-app/ops/release-*.md"]
+      reason: "Retro gate: run the retro before tagging."
+```
+
+Prompt triggers match `keywords` with stemming on word boundaries; `intent` regexes are the escape hatch. Pretool matchers AND-compose: `tool` name, `args_match` regex, `files` globs. `when` predicates read your vault's files at call time — the example denies tagging until a retro note postdates the last release note.
+
+You don't write this YAML by hand. The `/to-triggers` skill interviews your intent, authors the keyword and regex mechanics itself, proves fire and near-miss behavior with a dry run, and writes `vault.yaml` only after validation passes. You own the rule; it owns the regex.
+
+Declare `repo:` on a scope and the engine resolves the active scope from the session's working directory:
 
 ```yaml
 scopes:
@@ -258,13 +230,22 @@ scopes:
     repo: ~/Projects/my-app
 ```
 
-**Failure mode: open, and loud.** A missing or invalid `vault.yaml`, an unreadable trigger file, or a broken predicate never blocks your prompt or denies unrelated tool calls — the engine emits one stderr diagnostic and stands down until the config is fixed.
+Everything fails open. A broken config means one stderr line and no gate work — never a blocked prompt, never a denied unrelated call. Test triggers by hand with `kmd hook prompt --explain` (a read-only trace; never wire probe flags into hook registrations).
 
-**Node warnings in agent context.** `kmd` filters its own `node:sqlite` ExperimentalWarning off stderr. Other Node tooling running inside the agent loop may still print `ExperimentalWarning` lines into hook and MCP stderr — noise the model reads. Suppress globally with `export NODE_OPTIONS="--disable-warning=ExperimentalWarning"`, or scope it to the agent process only via your harness's env settings (Claude Code: `settings.json` → `"env"`), leaving your shell sessions untouched.
+If other Node tooling in your agent loop prints `ExperimentalWarning` noise, set `NODE_OPTIONS="--disable-warning=ExperimentalWarning"` in the harness env.
 
-## Pages
+## The vault
 
-Every page has YAML frontmatter validated against `vault.yaml`. Use the templates in `templates/` (or `wiki://template/{domain}/{kind}` via MCP) — don't hand-roll.
+```
+vault/
+├── vault.yaml               # controlled vocabulary — the contract
+├── templates/               # frontmatter templates, served as MCP resources
+├── projects/{scope}/        # specs, ADRs, plans, stories
+├── research/{topic}/        # articles, sources
+└── notes/                   # low-ceremony capture
+```
+
+Every page carries YAML frontmatter validated against `vault.yaml`:
 
 ```yaml
 # projects/my-app/adr/adr-sqlite-index.md
@@ -278,58 +259,42 @@ updated: 2025-06-01
 ---
 ```
 
-```yaml
-# research/retrieval/snowflake-cortex.md
----
-title: "Snowflake Cortex architecture"
-kind: article
-status: draft
-tags: [retrieval]
-created: "2025-04-20"
-updated: 2025-04-20
----
-```
+`kind` selects the template, `status` tracks lifecycle, and every value must appear in `vault.yaml` or validation fails. Loading is fail-loud: an invalid `vault.yaml` stops the server and blocks sync rather than serving drift.
 
-```yaml
-# notes/caching-thought.md
----
-title: "Quick thought on caching"
-tags: [perf]
-created: "2025-06-28"
-updated: 2025-06-28
----
-```
+`kmd validate` runs seventeen deterministic rules, no LLM involved. Among them: `dangling-link` (every `[[wikilink]]` resolves), `ambiguous-link` (a bare `[[name]]` owned by two files must disambiguate), `supersession-reciprocal` (an ADR superseding another requires the back-pointer), `path-authority` (the path, not frontmatter, decides scope and topic), and `tag-alias` (aliases normalize to canonical tags). Sync refuses to index a vault with errors.
 
-`kind` selects the template shape. `status` tracks lifecycle. Notes skip `kind` — location implies it. All values must appear in `vault.yaml` or validate fails.
+`vault.yaml` also carries the served pedagogy — the authoring rules agents read at `wiki://authoring`, custom kinds with their own templates, your methodologies, and the trigger declarations. The full reference with every field and customization pattern: [docs/vault-config.md](docs/vault-config.md). A complete annotated example: [`vault.yaml.example`](vault.yaml.example).
 
-## Claude Code plugin
+## kmd vs OKF
 
-The repo doubles as a Claude Code plugin marketplace (`kmd`) shipping [`wiki-sdd`](plugins/claude/wiki-sdd/README.md) — the wiki-native spec-driven development loop: skills for scope bootstrap, intent grilling, PRD synthesis, triage, issue slicing, TDD, and retro, plus the gate hooks (`kmd hook` on prompt and tool events), a frontmatter guard, and this MCP server preconfigured via `npx @bartolli/kmd`.
+Same primitives as [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) — markdown, YAML frontmatter, a directory tree — but opinionated where OKF is minimal:
 
-```bash
-claude plugin marketplace add bartolli/kmd
-claude plugin install wiki-sdd@kmd
-```
-
-## Codex plugin
-
-The repo also provides a Codex marketplace (`kmd`) shipping [`wiki-sdd`](plugins/codex/wiki-sdd/README.md).
-
-```bash
-codex plugin marketplace add bartolli/kmd
-codex plugin add wiki-sdd@kmd
-```
-
-Start a new Codex thread after installation so the plugin's skills and MCP tools are loaded.
+| | OKF | kmd |
+|---|---|---|
+| Vocabulary | open — producer picks `type` values | controlled — `vault.yaml` defines kinds, scopes, statuses, tags; `kmd validate` enforces |
+| Structure | flat — organize however | three domains: `projects/` · `research/` · `notes/` |
+| Validation | none — format spec only | seventeen deterministic rules, LLM-free; gates sync |
+| Cross-refs | bundle-relative `/path.md` | `[[wikilinks]]` — Obsidian-native, rename-safe, no dangling links |
+| Agent surface | none | two MCP tools (`prime`, `search`) + template resources |
+| Guardrails | none | prompt reminders and tool gates from `vault.yaml` |
+| Infrastructure | n/a | `node:sqlite` FTS5, zero external services |
 
 ## Development
 
-Requires Node.js 22+ (`node:sqlite` FTS5) and pnpm 11+.
+Node.js 22+ (`node:sqlite`) and pnpm 11+.
 
 ```bash
 pnpm install
 pnpm -r run typecheck && pnpm -r run test && pnpm lint
 ```
+
+The plugin adapters under `plugins/{claude,codex,kiro}` are build output. Edit the shared source in `plugins/src/wiki-sdd/`, then render and verify:
+
+```bash
+pnpm --filter @llm-wiki/render render && pnpm --filter @llm-wiki/render check
+```
+
+A hand-edited adapter copy diverges silently until the next render overwrites it — `check` asserts every copy matches the rendered output.
 
 ## License
 

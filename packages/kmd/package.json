@@ -31,7 +31,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
-    "prepack": "pnpm run clean && pnpm run build"
+    "prepack": "pnpm run clean && pnpm run build && cp ../../README.md ../../LICENSE ."
   },
   "devDependencies": {
     "@llm-wiki/cli": "workspace:*",
