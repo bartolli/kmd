@@ -1,8 +1,8 @@
 ---
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to `AGENTS.md` or equivalent project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides harness-aware MCP registration and file placement (Claude Code, Kiro IDE/CLI) when not already available. Also serves as the central mental-model hub for the wiki-aware skill constellation (`$grill-with-docs`, `$to-prd`, `$triage`, `$to-issues`, `$tdd`, `$retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to `AGENTS.md` or equivalent project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`$grill-with-docs`, `$to-prd`, `$triage`, `$to-issues`, `$tdd`, `$retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.16.0"
+  version: "0.16.1"
 ---
 
 # Wiki — Project Bootstrap
@@ -16,13 +16,13 @@ This is a **prompt-driven bootstrap**, not a deterministic script. Explore, pres
 In the consumer project:
 
 1. **Project instructions** (`AGENTS.md` or equivalent) populated from `templates/project-agents.md.template` with three sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning`.
-2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `npx @bartolli/kmd mcp <vault-path>` JSON and lets the user place it.
+2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `npx @bartolli/kmd mcp --default-root <vault-path>` JSON and lets the user place it.
 
 Both are idempotent — if a section/entry already exists, update in place rather than duplicate.
 
 In the vault, only when no vault exists yet (new-vault bootstrap):
 
-3. **Barebone vault structure** the MCP server requires — scaffolded by `kmd init <vault-dir>` (starter `vault.yaml` with empty `scopes`, the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs), the user's first scope then added to `vault.yaml` per `references/vault-yaml.md` § Minimal starter.
+3. **Barebone vault structure** the MCP server requires — scaffolded by `kmd init` (starter `vault.yaml` with empty `scopes`, the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs), the user's first scope then added to `vault.yaml` per `references/vault-yaml.md` § Minimal starter. Two forms: `kmd init <vault-dir> [--set-default]` for a global vault, `kmd init --local` for a vault the repo carries (§ Local vs global vault).
 
 ## Mental model
 
@@ -34,6 +34,27 @@ In the vault, only when no vault exists yet (new-vault bootstrap):
 - Templates exposed as MCP resources at `wiki://template/{domain}/{kind}` (11 templates: project-{index, primer, spec, adr, plan, ops, story}, research-{index, article, src}, note) — served from `templates/` at the vault root, re-read on every call; a missing file errors at resource-read time
 
 A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or equivalent). The agent reads this at session start and calls `prime(scope)` automatically.
+
+### Local vs global vault
+
+Every kmd entry point (MCP server, hooks, bare CLI) resolves its vault through one chain: explicit argument > **project tier** > `--default-root` > `$WIKI_VAULT` > global `default_vault` (`~/.kmd/config.yaml`). Two setups fall out, and the bootstrap's first real decision is which one the project wants:
+
+- **Global vault** (the common case): one personal wiki serves many projects. `kmd init <vault-dir> --set-default` scaffolds it and records it as the machine default; registrations point at it via `--default-root`.
+- **Project vault**: the repo carries its own vault, living and dying with it. `kmd init --local` from inside the repo scaffolds `<git-root>/vault/` plus a `.kmd/` state home (index and hook state stay in the repo, gitignored). **No registration change is needed** — the project tier resolves ahead of the default for every command run inside the repo. A team variant commits `.kmd/config.yaml` with a repo-relative `vault:` path instead.
+
+How the MCP server learns which project it serves differs per harness: the Claude Code plugin maps the project directory automatically; Codex needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches it (its adapter README documents this — Codex gives plugin MCP servers no workspace signal of its own); Kiro's registration pins one vault per settings file, so a project vault takes a workspace-level `.kiro/settings/mcp.json`. Gate hooks are project-aware everywhere without any of this — they read the project from each event.
+
+### When `prime` answers `UNKNOWN_SCOPE`
+
+The error's `valid scopes` list names every scope of the vault that actually answered — read it first, it tells you **which vault the server bound**. Two distinct causes:
+
+1. **The wrong vault answered** (the listed scopes belong to the default/global wiki, not this project): the server bound the default instead of the project vault. Confirm with `kmd config` from the project root — it prints the vault the chain resolves and the rank that won; that is what the MCP server *should* be serving. Then fix the harness's project signal:
+   - **Claude Code (plugin):** the mapping is automatic, so a wrong bind means the server predates the current session state — restart the session (or `/reload-plugins`) so the plugin re-registers with the project directory.
+   - **Codex:** the classic cause — no `KMD_PROJECT_DIR` in the launching shell, often masked by an ambient `WIKI_VAULT` export that pins the default. `export KMD_PROJECT_DIR="$PWD"`, then restart the Codex session so the MCP server inherits it.
+   - **Kiro:** the registration pins whatever vault its settings file names — point the workspace `.kiro/settings/mcp.json` at the project vault and reconnect.
+2. **The right vault answered but the scope isn't in it**: this is vocabulary, not resolution — route to step 2's scope flow; adding a scope to `vault.yaml` always takes explicit user approval.
+
+Hooks resolving correctly while `prime` serves the wrong vault is the signature of case 1 — hooks read the project from each event, the MCP server binds once at launch from its own signal.
 
 ### Wiki-aware skill constellation
 
@@ -68,11 +89,12 @@ These compose with the wiki-aware skills: `$to-prd` writes story files (using `w
 
 This skill runs anywhere SKILL.md skills are supported — same slash-invocation dialect — but where files land differs per harness:
 
-| | Claude Code | Kiro (IDE and CLI) |
-|---|---|---|
-| Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
-| MCP registration | `.mcp.json` at the project root, or user-level settings | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
-| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
+| | Claude Code | Codex | Kiro (IDE and CLI) |
+|---|---|---|---|
+| Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `wiki-sdd` plugin via `codex plugin add` | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
+| MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
+| Project-vault signal | automatic (plugin maps the project dir) | `export KMD_PROJECT_DIR="$PWD"` in the launching shell | workspace-level `mcp.json` pointing at the project vault |
+| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md` | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
 ### Gate hooks
 
@@ -92,7 +114,12 @@ Read the current state. Don't assume.
 
 ### 2. Determine scope
 
-**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. Run `kmd init <vault-dir>` — the engine scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing. Trigger sections start empty and stay empty at bootstrap; when the first rule earns a gate, `$to-triggers` authors it.
+**If `vault.yaml` does not exist (new vault):** this is vault bootstrap, not just project bootstrap. First settle the § Local vs global vault decision with the user — a vault the repo carries versus one personal wiki serving many projects — then run the matching init form:
+
+- **Global:** `kmd init <vault-dir> --set-default` — scaffolds and records the machine default in one step (`--set-default` is the only non-interactive route to writing `default_vault`; an interactive TTY init offers it as a prompt).
+- **Project:** `kmd init --local` from inside the repo — scaffolds `<git-root>/vault/` plus the `.kmd/` state home with its `.gitignore`; every kmd command run inside the repo resolves this vault from then on, no registration or env changes.
+
+Either form scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing. Trigger sections start empty and stay empty at bootstrap; when the first rule earns a gate, `$to-triggers` authors it.
 
 **If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
 
@@ -141,7 +168,7 @@ Default: `WIKI_TRIAGE_LABELS: {"needs-triage":"needs-triage","needs-info":"needs
 
 Check whether the `wiki` MCP server is already available to this session — look for it in the available tools list (a `prime` and `search` tool from a wiki-named server).
 
-**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration. Nothing to do — skip to step 6.
+**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one.
 
 **If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:
 
@@ -150,15 +177,18 @@ Check whether the `wiki` MCP server is already available to this session — loo
   "mcpServers": {
     "wiki": {
       "command": "npx",
-      "args": ["-y", "@bartolli/kmd", "mcp", "/absolute/path/to/vault"]
+      "args": ["-y", "@bartolli/kmd", "mcp", "--default-root", "/absolute/path/to/vault"]
     }
   }
 }
 ```
 
+**`--default-root` vs a bare positional:** `--default-root` keeps the resolution chain live — a project carrying its own vault wins over the registered default automatically. A bare positional (`"mcp", "/path"`) pins that vault unconditionally and disables project awareness; offer it only when the user explicitly wants one registration locked to one vault.
+
 **Placement is harness-specific** (§ Harness placement):
 
 - **Claude Code:** project-local `.mcp.json`, or user-level settings — let the user choose the scope.
+- **Codex:** `[mcp_servers.wiki]` in `~/.codex/config.toml` with the same command/args shape; `env_vars = ["KMD_PROJECT_DIR"]` lets a per-shell export reach the server for project vaults.
 - **Kiro (IDE and CLI):** `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user), from `templates/mcp-entry-kiro.json.template` — Kiro wraps the same entry in `mcpServers` and adds `disabled` and `autoApprove`; pre-approving `prime` and `search` keeps orientation friction-free, and `env` values support `${VARIABLE}` expansion. The Kiro CLI can register the same server via `kiro-cli mcp add` (defer to its `--help` for current flags rather than guessing them).
 - **Other harnesses:** show the generic JSON and let the user place it per their harness's MCP docs. Don't prescribe OS-specific paths.
 
@@ -203,8 +233,8 @@ Suggest the next step:
 - **Never silently add a new scope** to `vault.yaml`. Always confirm with the user.
 - **Never overwrite a non-empty `AGENTS.md` or equivalent project-instructions file** without showing the diff first.
 - **Check for an existing wiki MCP server** (plugin-bundled or user-registered) before offering to register one. If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.
-- **Use `npx @bartolli/kmd mcp <vault-path>`** for standalone registration — don't construct `pnpm`/`tsx` dev paths. Let the user choose where to place the `.mcp.json`.
+- **Use `npx @bartolli/kmd mcp --default-root <vault-path>`** for standalone registration — don't construct `pnpm`/`tsx` dev paths, and don't pin the bare positional unless the user asks for a locked registration. Let the user choose where to place the `.mcp.json`.
 - **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
 - **Use the bundled `templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
-- **Scaffold new vaults with `kmd init <vault-dir>`** — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
+- **Scaffold new vaults with `kmd init`** (`<vault-dir> [--set-default]` global, `--local` project) — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
 - **Don't run `$grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.

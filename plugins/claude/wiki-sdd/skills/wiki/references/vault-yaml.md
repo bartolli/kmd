@@ -158,14 +158,18 @@ every `resources/read`, and a missing file errors at read time.
 The engine owns the scaffold — never assemble it by hand:
 
 ```sh
-kmd init <vault-dir>
+kmd init <vault-dir> [--set-default]   # global vault; --set-default records it as the machine default
+kmd init --local                       # project vault at <git-root>/vault/ + .kmd/ state home
 ```
 
-`kmd init` refuses a non-empty target, then writes the starter
+Both forms refuse a non-empty target, then write the starter
 `vault.yaml` (empty `scopes`, IDE modeline on line 1),
 `vault.schema.json`, the 11 built-in templates into `templates/`,
-and the `projects/`, `research/`, `notes/` domain dirs, and prints
-the `WIKI_VAULT` value to export. Add the user's
+and the `projects/`, `research/`, `notes/` domain dirs. A global
+init offers to record `default_vault` (the machine default every
+resolution falls back to; `$WIKI_VAULT` remains an env override); a
+local init needs no config at all — commands run inside the repo
+resolve its vault through the project tier. Add the user's
 first scope to the generated `vault.yaml` — § Minimal starter above
 shows the shape — and run `kmd validate` before continuing.
 
