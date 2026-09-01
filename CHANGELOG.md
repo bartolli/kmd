@@ -1,3 +1,16 @@
+## [v0.12.1] - 2026-09-01
+
+### Added
+
+- coco (Cortex Code) adapter: the repo root carries `.cortex-plugin/plugin.json` — skills by path into `plugins/coco/wiki-sdd`, hooks and `mcpServers` inline; `.cortex-plugin` outranks `.claude-plugin` at manifest resolution, so the Claude marketplace manifest stays claude-only. The flavor dir carries components, not a plugin: rendered skills and an npx-free resolver that imports a global `kmd` ≥0.12.0 in-process and exits 0 on a missing prerequisite. Install routes: `cortex plugin install bartolli/kmd`, `--plugin-dir`, a `.cortex/plugins/` symlink, or the settings `plugins` array
+- coco render dialect: `$name` invocation like codex, bare Claude → CoCo; CoCo reads `CLAUDE.md` as a project-instructions file, so the CLAUDE.md-survival lint exempts the identity and coco dialects
+- the wiki skill's harness guidance carries a CoCo column: skill/MCP placement under `~/.snowflake/cortex`, launch-dir project signal, the `UNKNOWN_SCOPE` route
+
+### Fixed
+
+- pretool trigger `tool:` matches the runtime tool id case-insensitively — `tool: Bash` fires on claude's `Bash` and CoCo's lowercase `bash` alike; the compare stays deterministic (no harness carries two tools differing only by case)
+- `AGENTS.md` is a real tracked file; a fresh clone carried a dangling symlink to the untracked `CLAUDE.md`, which aborts `cortex plugin install` at manifest discovery
+
 ## [v0.12.0] - 2026-08-10
 
 ### Added
