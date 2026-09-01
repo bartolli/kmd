@@ -1,3 +1,23 @@
+## [v0.13.0] - 2026-09-01
+
+### Added
+
+- `kmd resource <uri> [<vault-root>]`, `kmd prime <scope> [<vault-root>] [--task <text>]`, `kmd search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]` — CLI mirrors of the MCP surface, an in-process client of the same server (the `McpServer` `kmd mcp` builds, an SDK `Client`, an in-memory transport between them; resolved binding, 2025 handshake): the handlers, validation, and error shapes the agent reaches, no second process. `resource` serves `wiki://authoring`, `wiki://templates`, and `wiki://template/{domain}/{kind}` for harnesses whose agents cannot read MCP resources (CoCo, Kiro). Exit codes: an unknown URI or a missing positional exits 2; a tool `isError` result exits 1 with `code: message` on stderr. The two-tool MCP freeze holds — a client is not a tool
+- `@llm-wiki/mcp/local`: `openLocalClient`, `runResource`, `runTool`; the CLI path logs to stderr only, synchronously
+- bundle version stamp: the `dist/kmd.mjs` head reads hashbang, then `// kmd-version=<version>`; `kmd --version` reports it (unbundled runs read `package.json`); the hook resolver reads the stamp ahead of `package.json`, so a source-linked install that pulled without rebuilding fails the floor loudly instead of running the old bundle
+
+### Changed
+
+- hook resolver (shared claude/codex wrapper, coco wrapper): three tiers, cheapest first — import (npm's symlink at `kmd.mjs`, or a pnpm shim's target read from its `cmd-shim-target` trailer (pnpm 11) or `$basedir` exec line (pnpm 10)); version-probed spawn for any other executable (`--version` asked before stdin is touched; the spawn is terminal — a non-zero exit is one stderr line and exit 0); npx `@bartolli/kmd@latest` on claude and codex only. The PATH scan never stops early, a candidate is a regular executable file, and the first below-floor entry is named in the fallback diagnostic. `MIN_HOOK_VERSION` `[0, 12, 1]` in both wrappers
+- coco wrapper: same resolution, no npx, exit 0 on every path; a stale or missing engine is one stderr line naming path and version. The bundle's npx-free invariant test bans the npx target, not `child_process` — the bundle already spawns `kmd mcp`
+- pedagogy names both routes: skill bodies, the project-instructions template, `AGENTS.md`, the `prime` tool's authoring hint, and the session-start orientation carry `kmd prime <scope>` / `kmd search <query>` / `kmd resource <uri>` beside the MCP form
+- toolchain floor: root `packageManager` pnpm 10.33.0 (corepack hash), `engines.pnpm` `>=10.0.0`; the lockfile (9.0) resolves unchanged under pnpm 10
+- README: the command list and the MCP section carry the CLI mirrors
+
+### Fixed
+
+- a shell-shim `kmd` on PATH (pnpm, Volta) no longer disables the gate hooks: the wrapper rejected any realpath without a node extension and stopped scanning — on coco every gate was silently off; on claude and codex every event fell to npx, and behind a registry without `kmd`, to nothing
+
 ## [v0.12.1] - 2026-09-01
 
 ### Added
