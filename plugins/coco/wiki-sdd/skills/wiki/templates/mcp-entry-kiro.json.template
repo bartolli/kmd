@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wiki": {
+      "command": "kmd",
+      "args": ["mcp", "--default-root", "/absolute/path/to/vault"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": ["prime", "search"]
+    }
+  }
+}

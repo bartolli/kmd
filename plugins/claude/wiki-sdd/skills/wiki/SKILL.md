@@ -1,6 +1,6 @@
 ---
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, CoCo, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
   version: "0.16.1"
 ---
@@ -42,7 +42,7 @@ Every kmd entry point (MCP server, hooks, bare CLI) resolves its vault through o
 - **Global vault** (the common case): one personal wiki serves many projects. `kmd init <vault-dir> --set-default` scaffolds it and records it as the machine default; registrations point at it via `--default-root`.
 - **Project vault**: the repo carries its own vault, living and dying with it. `kmd init --local` from inside the repo scaffolds `<git-root>/vault/` plus a `.kmd/` state home (index and hook state stay in the repo, gitignored). **No registration change is needed** — the project tier resolves ahead of the default for every command run inside the repo. A team variant commits `.kmd/config.yaml` with a repo-relative `vault:` path instead.
 
-How the MCP server learns which project it serves differs per harness: the Claude Code plugin maps the project directory automatically; Codex needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches it (its adapter README documents this — Codex gives plugin MCP servers no workspace signal of its own); Kiro's registration pins one vault per settings file, so a project vault takes a workspace-level `.kiro/settings/mcp.json`. Gate hooks are project-aware everywhere without any of this — they read the project from each event.
+How the MCP server learns which project it serves differs per harness: the Claude Code plugin maps the project directory automatically; CoCo's plugin server inherits the directory the session was launched from, so a project vault resolves on its own (but `-w`/`--workdir` does not move it — `export KMD_PROJECT_DIR="$PWD"` covers that case); Codex needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches it (its adapter README documents this — Codex gives plugin MCP servers no workspace signal of its own); Kiro's registration pins one vault per settings file, so a project vault takes a workspace-level `.kiro/settings/mcp.json`. Gate hooks are project-aware everywhere without any of this — they read the project from each event.
 
 ### When `prime` answers `UNKNOWN_SCOPE`
 
@@ -50,6 +50,7 @@ The error's `valid scopes` list names every scope of the vault that actually ans
 
 1. **The wrong vault answered** (the listed scopes belong to the default/global wiki, not this project): the server bound the default instead of the project vault. Confirm with `kmd config` from the project root — it prints the vault the chain resolves and the rank that won; that is what the MCP server *should* be serving. Then fix the harness's project signal:
    - **Claude Code (plugin):** the mapping is automatic, so a wrong bind means the server predates the current session state — restart the session (or `/reload-plugins`) so the plugin re-registers with the project directory.
+   - **CoCo:** the server bound the directory the session was launched from. Relaunch from the project root, or `export KMD_PROJECT_DIR="$PWD"` before starting — plugin MCP servers get a scrubbed environment, and the bundled registration forwards `WIKI_VAULT` and `KMD_PROJECT_DIR` through it for exactly this.
    - **Codex:** the classic cause — no `KMD_PROJECT_DIR` in the launching shell, often masked by an ambient `WIKI_VAULT` export that pins the default. `export KMD_PROJECT_DIR="$PWD"`, then restart the Codex session so the MCP server inherits it.
    - **Kiro:** the registration pins whatever vault its settings file names — point the workspace `.kiro/settings/mcp.json` at the project vault and reconnect.
 2. **The right vault answered but the scope isn't in it**: this is vocabulary, not resolution — route to step 2's scope flow; adding a scope to `vault.yaml` always takes explicit user approval.
@@ -89,12 +90,12 @@ These compose with the wiki-aware skills: `/to-prd` writes story files (using `w
 
 This skill runs anywhere SKILL.md skills are supported — same slash-invocation dialect — but where files land differs per harness:
 
-| | Claude Code | Codex | Kiro (IDE and CLI) |
-|---|---|---|---|
-| Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `wiki-sdd` plugin via `codex plugin add` | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
-| MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
-| Project-vault signal | automatic (plugin maps the project dir) | `export KMD_PROJECT_DIR="$PWD"` in the launching shell | workspace-level `mcp.json` pointing at the project vault |
-| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md` | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
+| | Claude Code | Codex | CoCo (Cortex Code) | Kiro (IDE and CLI) |
+|---|---|---|---|---|
+| Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `wiki-sdd` plugin via `codex plugin add` | `wiki-sdd` plugin, or `~/.snowflake/cortex/skills/wiki/` (`.claude/skills/` is read too) | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
+| MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | plugin-bundled, or `mcpServers` in `~/.snowflake/cortex/mcp.json` | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
+| Project-vault signal | automatic (plugin maps the project dir) | `export KMD_PROJECT_DIR="$PWD"` in the launching shell | automatic when launched from the project root; `export KMD_PROJECT_DIR="$PWD"` when using `-w` | workspace-level `mcp.json` pointing at the project vault |
+| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
 ### Gate hooks
 
@@ -168,7 +169,7 @@ Default: `WIKI_TRIAGE_LABELS: {"needs-triage":"needs-triage","needs-info":"needs
 
 Check whether the `wiki` MCP server is already available to this session — look for it in the available tools list (a `prime` and `search` tool from a wiki-named server).
 
-**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one.
+**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one. On CoCo the same export is only needed when the session was not launched from the project root.
 
 **If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:
 
@@ -189,6 +190,7 @@ Check whether the `wiki` MCP server is already available to this session — loo
 
 - **Claude Code:** project-local `.mcp.json`, or user-level settings — let the user choose the scope.
 - **Codex:** `[mcp_servers.wiki]` in `~/.codex/config.toml` with the same command/args shape; `env_vars = ["KMD_PROJECT_DIR"]` lets a per-shell export reach the server for project vaults.
+- **CoCo (Cortex Code):** `mcpServers` in `~/.snowflake/cortex/mcp.json`, same shape. Prefer a globally installed `kmd` as the `command` over `npx` — CoCo gives plugin MCP servers only `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, and `USER`, so anything the server needs from the environment must be declared in the entry's own `env` block (`${VAR:-fallback}` interpolates there).
 - **Kiro (IDE and CLI):** `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user), from `templates/mcp-entry-kiro.json.template` — Kiro wraps the same entry in `mcpServers` and adds `disabled` and `autoApprove`; pre-approving `prime` and `search` keeps orientation friction-free, and `env` values support `${VARIABLE}` expansion. The Kiro CLI can register the same server via `kiro-cli mcp add` (defer to its `--help` for current flags rather than guessing them).
 - **Other harnesses:** show the generic JSON and let the user place it per their harness's MCP docs. Don't prescribe OS-specific paths.
 

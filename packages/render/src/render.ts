@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
-import { type DialectConfig, transformCodex, transformKiro } from './transform.js';
+import { type DialectConfig, transformCoco, transformCodex, transformKiro } from './transform.js';
 
 export type Dialect =
   | { kind: 'identity' }
   | { kind: 'codex'; slashAliases: string[]; replacements: [string, string][] }
+  | { kind: 'coco'; slashAliases: string[]; replacements: [string, string][] }
   | { kind: 'kiro'; replacements: [string, string][] };
 
 export interface FlavorConfig {
@@ -84,14 +85,19 @@ function stampVersion(text: string, version: string): string {
   return `${head}\nmetadata:\n  version: "${version}"\n---${text.slice(fm[0].length)}`;
 }
 
+// Harnesses that read `CLAUDE.md` as a project-instructions file. A surviving
+// `CLAUDE.md` is drift everywhere else; here it is the correct instruction.
+// CoCo's reader list is `AGENTS.md, CLAUDE.md, CORTEX.md, RULES.md, .cursorrules`.
+const CLAUDE_MD_READERS = new Set<Dialect['kind']>(['identity', 'coco']);
+
 function applyDialect(text: string, dialect: Dialect, names: string[]): string {
   if (dialect.kind === 'identity') return text;
-  if (dialect.kind === 'codex') {
+  if (dialect.kind === 'codex' || dialect.kind === 'coco') {
     const cfg: DialectConfig = {
       slashNames: [...names, ...dialect.slashAliases],
       replacements: dialect.replacements
     };
-    return transformCodex(text, cfg);
+    return dialect.kind === 'codex' ? transformCodex(text, cfg) : transformCoco(text, cfg);
   }
   const cfg: DialectConfig = { slashNames: [], replacements: dialect.replacements };
   return transformKiro(text, cfg);
@@ -152,7 +158,7 @@ function buildPayloads(
       for (const allowed of manifest.lintAllow ?? []) {
         lintable = lintable.replaceAll(allowed, '');
       }
-      if (flavor.dialect.kind !== 'identity' && lintable.includes('CLAUDE.md')) {
+      if (!CLAUDE_MD_READERS.has(flavor.dialect.kind) && lintable.includes('CLAUDE.md')) {
         problems.push(
           `${name}: ${rel}: \`CLAUDE.md\` survives the ${name} transform — extend the manifest replacements`
         );

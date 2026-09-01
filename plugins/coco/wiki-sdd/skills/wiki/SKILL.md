@@ -1,6 +1,8 @@
 ---
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, CoCo, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, CoCo, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`$grill-with-docs`, `$to-prd`, `$triage`, `$to-issues`, `$tdd`, `$retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+metadata:
+  version: "0.16.1"
 ---
 
 # Wiki — Project Bootstrap
@@ -14,7 +16,7 @@ This is a **prompt-driven bootstrap**, not a deterministic script. Explore, pres
 In the consumer project:
 
 1. **Project instructions** (`CLAUDE.md`, `AGENTS.md`, or equivalent) populated from `templates/project-agents.md.template` with three sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning`.
-2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `npx @bartolli/kmd mcp --default-root <vault-path>` JSON and lets the user place it.
+2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `kmd mcp --default-root <vault-path>` JSON and lets the user place it.
 
 Both are idempotent — if a section/entry already exists, update in place rather than duplicate.
 
@@ -57,23 +59,23 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 
 ### Wiki-aware skill constellation
 
-`/wiki` is the on-ramp. The other wiki-aware skills form a workflow loop, each consuming what the previous produced:
+`$wiki` is the on-ramp. The other wiki-aware skills form a workflow loop, each consuming what the previous produced:
 
 | Skill | Reads | Writes |
 |---|---|---|
-| `/grill-with-docs` | wiki state via `prime(scope)`; codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
-| `/to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
-| `/triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
-| `/to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
-| `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
-| `/retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
-| `/to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
+| `$grill-with-docs` | wiki state via `prime(scope)`; codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
+| `$to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
+| `$triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
+| `$to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
+| `$tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
+| `$retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
+| `$to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
 
-Typical session arc for new work: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` (per slice) → repeat triage when stories complete or new ones surface → `/retro` before the closing primer resync. `/to-triggers` joins whenever a rule proves it needs to become a gate.
+Typical session arc for new work: `$grill-with-docs` → `$to-prd` → `$triage` → `$to-issues` → `$tdd` (per slice) → repeat triage when stories complete or new ones surface → `$retro` before the closing primer resync. `$to-triggers` joins whenever a rule proves it needs to become a gate.
 
 ### Companion skills (vault file editing)
 
-When Claude edits files in the vault, four global skills cover Obsidian-flavored markdown and adjacent file types. They are NOT wiki-aware (no `WIKI_SCOPE` knowledge), but they handle the *file format* that the wiki uses:
+When CoCo edits files in the vault, four global skills cover Obsidian-flavored markdown and adjacent file types. They are NOT wiki-aware (no `WIKI_SCOPE` knowledge), but they handle the *file format* that the wiki uses:
 
 | Skill | When to use |
 |---|---|
@@ -82,7 +84,7 @@ When Claude edits files in the vault, four global skills cover Obsidian-flavored
 | `obsidian-cli` | Only when a live Obsidian instance is genuinely needed — plugin/theme dev, screenshots, Dataview re-render. **Not** the canonical search/read surface — use the wiki MCP `search` tool and filesystem `Read` instead. |
 | `json-canvas` | Editing `.canvas` files (mind maps, flowcharts). Not in the standard wiki authoring loop. |
 
-These compose with the wiki-aware skills: `/to-prd` writes story files (using `wiki://template/project/story` for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
+These compose with the wiki-aware skills: `$to-prd` writes story files (using `wiki://template/project/story` for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
 
 ### Harness placement
 
@@ -97,7 +99,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 
 ### Gate hooks
 
-The plugin registers `kmd hook` on the harness's events — this bootstrap adds no wiring step. Three behaviors ride along: prompt-time reminders, tool gates, and auto validate + sync after every vault write (the resync protocol runs as an event; validation findings return as hook feedback and hold the sync until fixed). The bootstrap's only responsibilities toward them: declare `repo:` on each scope in vault.yaml so the engine resolves the active scope from the session's working directory, and leave the trigger sections empty — vault-owned triggers grow from observed failures (`references/vault-yaml.md` § Harness gate triggers), never from upfront speculation. When that moment arrives — the user says "add a rule/hook/trigger for…", or a prose rule just failed to fire — route to `/to-triggers`: it interviews the intent, authors the matching mechanics, dry-runs fire and near-miss cases, and writes `vault.yaml` only on approval.
+The plugin registers `kmd hook` on the harness's events — this bootstrap adds no wiring step. Three behaviors ride along: prompt-time reminders, tool gates, and auto validate + sync after every vault write (the resync protocol runs as an event; validation findings return as hook feedback and hold the sync until fixed). The bootstrap's only responsibilities toward them: declare `repo:` on each scope in vault.yaml so the engine resolves the active scope from the session's working directory, and leave the trigger sections empty — vault-owned triggers grow from observed failures (`references/vault-yaml.md` § Harness gate triggers), never from upfront speculation. When that moment arrives — the user says "add a rule/hook/trigger for…", or a prose rule just failed to fire — route to `$to-triggers`: it interviews the intent, authors the matching mechanics, dry-runs fire and near-miss cases, and writes `vault.yaml` only on approval.
 
 ## Process
 
@@ -118,7 +120,7 @@ Read the current state. Don't assume.
 - **Global:** `kmd init <vault-dir> --set-default` — scaffolds and records the machine default in one step (`--set-default` is the only non-interactive route to writing `default_vault`; an interactive TTY init offers it as a prompt).
 - **Project:** `kmd init --local` from inside the repo — scaffolds `<git-root>/vault/` plus the `.kmd/` state home with its `.gitignore`; every kmd command run inside the repo resolves this vault from then on, no registration or env changes.
 
-Either form scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing. Trigger sections start empty and stay empty at bootstrap; when the first rule earns a gate, `/to-triggers` authors it.
+Either form scaffolds the starter `vault.yaml` (empty `scopes`), the 11 served templates, and the `projects/`, `research/`, `notes/` domain dirs, refusing a non-empty target. Then add the user's first scope to the generated `vault.yaml` per `references/vault-yaml.md` § Minimal starter. The file is fail-loud — the MCP server and `kmd` tooling refuse to run on an invalid one — so validate (`kmd validate`) before continuing. Trigger sections start empty and stay empty at bootstrap; when the first rule earns a gate, `$to-triggers` authors it.
 
 **If the user declares a custom kind** (an object-form `kinds` entry, now or later): offer to co-author its template at `templates/{name}.md` right away — protocol in `references/vault-yaml.md` § Custom kinds. A declared kind without its template draws a `kmd validate` warning until the file exists.
 
@@ -130,7 +132,7 @@ Ask the user which wiki scope this project belongs to. Show the scopes from `vau
 
 > "`<requested-scope>` is not in the wiki's scope vocabulary (currently: `<comma-separated scopes from vault.yaml>`). Adding a new scope requires updating `~/llm-wiki/vault/vault.yaml` and is a deliberate vocabulary extension. Do you want to (a) approve adding `<scope>` to the vocabulary, (b) pick an existing scope, or (c) abort?"
 
-If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `/grill-with-docs` next to scaffold `projects/{scope}/`.
+If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `$grill-with-docs` next to scaffold `projects/{scope}/`.
 
 ### 3. Determine issue tracker
 
@@ -144,7 +146,7 @@ State your recommendation with reasoning. Let the user override.
 
 **Behavior implications** (mention briefly):
 
-- `github` / `gitlab`: `/to-issues` mirrors `ready-for-agent` slices to the remote tracker; story files in the wiki remain canonical.
+- `github` / `gitlab`: `$to-issues` mirrors `ready-for-agent` slices to the remote tracker; story files in the wiki remain canonical.
 - `local`: slices and triage state live entirely in story files under `plan/{plan-name}/story-N-{slug}.md`; no remote calls.
 
 ### 4. Triage label vocabulary
@@ -152,12 +154,12 @@ State your recommendation with reasoning. Let the user override.
 Default to Matt Pocock's canonical roles:
 
 - `needs-triage` — story needs evaluation
-- `needs-info` — agent waits on user clarification (in solo+Claude context, this means *Claude needs a decision from the user*)
+- `needs-info` — agent waits on user clarification (in solo+CoCo context, this means *CoCo needs a decision from the user*)
 - `ready-for-agent` — fully specified, AFK-ready
 - `ready-for-human` — needs human implementation (judgment, external access, hardware)
 - `wontfix` — will not be actioned
 
-In a solo+Claude context, `needs-info` semantically reads as "Claude is blocked on a user decision." This is the intended interpretation — flag it once during setup so the user understands the role mapping.
+In a solo+CoCo context, `needs-info` semantically reads as "CoCo is blocked on a user decision." This is the intended interpretation — flag it once during setup so the user understands the role mapping.
 
 If the user wants to override any label string (because their issue tracker uses different conventions), capture the mapping in `WIKI_TRIAGE_LABELS:` as a JSON object.
 
@@ -167,16 +169,17 @@ Default: `WIKI_TRIAGE_LABELS: {"needs-triage":"needs-triage","needs-info":"needs
 
 Check whether the `wiki` MCP server is already available to this session — look for it in the available tools list (a `prime` and `search` tool from a wiki-named server).
 
-**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one. On CoCo the same export is only needed when the session was not launched from the project root.
+**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration. It passes no vault root, so the whole resolution chain stays live — the project vault first, then `$WIKI_VAULT`, then the machine default from `kmd config set default_vault <path>`. Nothing to register, as long as one of those resolves. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one. On CoCo the same export is only needed when the session was not launched from the project root.
 
-**If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:
+**If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the registration JSON with the vault path filled in — on CoCo prefer the globally installed `kmd` over `npx`, since a plugin MCP server inherits only `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, and `USER`, and many environments block `npx` outright:
 
 ```json
 {
   "mcpServers": {
     "wiki": {
-      "command": "npx",
-      "args": ["-y", "@bartolli/kmd", "mcp", "--default-root", "/absolute/path/to/vault"]
+      "type": "stdio",
+      "command": "kmd",
+      "args": ["mcp", "--default-root", "/absolute/path/to/vault"]
     }
   }
 }
@@ -215,7 +218,7 @@ Check whether the `wiki` MCP server is already available to this session — loo
 **Per-scope adaptations to the template:**
 
 - The Sub-agent spawning section references `projects/{{scope}}/ops/ops-slicing-protocol`. If that file doesn't exist in the vault, change "if it exists" to "if/when it exists" — keep the pointer so future readers know where to look.
-- The template adds two lines (`WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`) that aren't in the original minimal shape. They're inert if unused; `/to-issues` reads `WIKI_ISSUE_TRACKER`, `/triage` reads `WIKI_TRIAGE_LABELS`.
+- The template adds two lines (`WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`) that aren't in the original minimal shape. They're inert if unused; `$to-issues` reads `WIKI_ISSUE_TRACKER`, `$triage` reads `WIKI_TRIAGE_LABELS`.
 
 **Show the rendered template to the user before writing.** Let them edit. Then write.
 
@@ -225,16 +228,16 @@ Tell the user setup is complete and which wiki-aware skills will now read from t
 
 Suggest the next step:
 
-- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `/grill-with-docs` to refine intent or kick off a new workstream."
-- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `/grill-with-docs` to scaffold it."
+- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `$grill-with-docs` to refine intent or kick off a new workstream."
+- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `$grill-with-docs` to scaffold it."
 
 ## Rules
 
 - **Never silently add a new scope** to `vault.yaml`. Always confirm with the user.
 - **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`** without showing the diff first.
 - **Check for an existing wiki MCP server** (plugin-bundled or user-registered) before offering to register one. If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.
-- **Use `npx @bartolli/kmd mcp --default-root <vault-path>`** for standalone registration — don't construct `pnpm`/`tsx` dev paths, and don't pin the bare positional unless the user asks for a locked registration. Let the user choose where to place the `.mcp.json`.
+- **Use `kmd mcp --default-root <vault-path>`** for standalone registration, from a globally installed `kmd` rather than `npx` — don't construct `pnpm`/`tsx` dev paths, and don't pin the bare positional unless the user asks for a locked registration. Let the user choose where to place the `.mcp.json`.
 - **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
 - **Use the bundled `templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
 - **Scaffold new vaults with `kmd init`** (`<vault-dir> [--set-default]` global, `--local` project) — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
-- **Don't run `/grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.
+- **Don't run `$grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.

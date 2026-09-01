@@ -47,6 +47,43 @@ flavors:
             "- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`**",
             "- **Never overwrite a non-empty `AGENTS.md` or equivalent project-instructions file**"
           ]
+  coco:
+    dest: plugins/coco/wiki-sdd
+    dialect:
+      kind: coco # /name -> $name, same token as codex; bare Claude -> CoCo
+      slashAliases: [dense]
+      # CoCo reads CLAUDE.md as a project-instructions file (reader list:
+      # AGENTS.md, CLAUDE.md, CORTEX.md, RULES.md, .cursorrules), so the sites
+      # codex and kiro must rewrite are already correct here — the
+      # CLAUDE.md-survival lint is skipped for this dialect. What does differ:
+      # CoCo has no user-config prompt, so the bundled registration carries no
+      # vault root, and the standalone form uses the globally installed kmd
+      # rather than npx.
+      replacements:
+        - [
+            "the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register.",
+            "the plugin bundles its own `.mcp.json` with the server registration. It passes no vault root, so the whole resolution chain stays live — the project vault first, then `$WIKI_VAULT`, then the machine default from `kmd config set default_vault <path>`. Nothing to register, as long as one of those resolves."
+          ]
+        - [
+            "Shows the canonical `npx @bartolli/kmd mcp --default-root <vault-path>` JSON and lets the user place it.",
+            "Shows the canonical `kmd mcp --default-root <vault-path>` JSON and lets the user place it."
+          ]
+        - [
+            "- **Use `npx @bartolli/kmd mcp --default-root <vault-path>`** for standalone registration",
+            "- **Use `kmd mcp --default-root <vault-path>`** for standalone registration, from a globally installed `kmd` rather than `npx`"
+          ]
+        - [
+            "\"command\": \"npx\",\n    \"args\": [\"-y\", \"@bartolli/kmd\", \"mcp\", \"--default-root\", \"/absolute/path/to/vault\"]",
+            "\"command\": \"kmd\",\n    \"args\": [\"mcp\", \"--default-root\", \"/absolute/path/to/vault\"]"
+          ]
+        - [
+            "Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:\n\n```json\n{\n  \"mcpServers\": {\n    \"wiki\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@bartolli/kmd\", \"mcp\", \"--default-root\", \"/absolute/path/to/vault\"]\n    }\n  }\n}\n```",
+            "Show the registration JSON with the vault path filled in — on CoCo prefer the globally installed `kmd` over `npx`, since a plugin MCP server inherits only `HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM`, and `USER`, and many environments block `npx` outright:\n\n```json\n{\n  \"mcpServers\": {\n    \"wiki\": {\n      \"type\": \"stdio\",\n      \"command\": \"kmd\",\n      \"args\": [\"mcp\", \"--default-root\", \"/absolute/path/to/vault\"]\n    }\n  }\n}\n```"
+          ]
+        - [
+            "      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@bartolli/kmd\", \"mcp\", \"--default-root\", \"/absolute/path/to/vault\"],\n      \"env\": {},",
+            "      \"command\": \"kmd\",\n      \"args\": [\"mcp\", \"--default-root\", \"/absolute/path/to/vault\"],\n      \"env\": {},"
+          ]
   kiro:
     dest: plugins/kiro/wiki-sdd
     dialect:
@@ -82,8 +119,10 @@ shared:
   exact: # byte-copied to every listed flavor (all flavors when unrestricted)
     - skills/grill-with-docs/questions-cookbook.md
     - skills/wiki/references/vault-yaml.md
-    - skills/wiki/templates/mcp-entry.json.template
-    - skills/wiki/templates/mcp-entry-kiro.json.template
+    # coco is deliberately absent: the shared wrapper's fallback is
+    # `npx @bartolli/kmd@latest`, and CoCo deployments are the ones most
+    # likely to block npx outright. coco authors its own npx-free resolver
+    # as chrome.
     - path: hooks/run-kmd-hook.mjs
       flavors: [claude, codex] # kiro pending hook pairing
   rendered: # one source; per-flavor dialect
@@ -97,16 +136,31 @@ shared:
     - skills/triage/SKILL.md
     - skills/wiki/SKILL.md
     - skills/wiki/templates/project-agents.md.template
+    - skills/wiki/templates/mcp-entry.json.template
+    - skills/wiki/templates/mcp-entry-kiro.json.template
 
 # Harness-neutral literals allowed to survive dialect transforms — the wiki
 # skill's harness-placement table names Claude Code's convention in its own
 # column. A stale entry goes loud: the CLAUDE.md lint fires again.
 lintAllow:
   - "`CLAUDE.md` or `AGENTS.md` (step 6)"
+  - "`AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read"
 
 # ── documentation: classification record (not consumed by the loader) ──
 
 chrome:
+  coco:
+    - README.md
+    - hooks/run-kmd-hook.mjs # npx-free resolver, not the shared wrapper
+    # The manifest lives at the repo root, not in dest: a managed
+    # `cortex plugin install` resolves it at the clone root, and
+    # ${CORTEX_PLUGIN_ROOT} expands to that root. One file carries the
+    # whole surface — skills by path, hooks and mcpServers inline (the
+    # docs' sample-manifest shape); the explicit mcpServers block also
+    # keeps the repo's dev .mcp.json out of the plugin. Its version
+    # stamp rides the release train beside versionSource.
+    - /.cortex-plugin/plugin.json
+    - /.cortex-plugin/activation.md
   claude:
     - .claude-plugin/plugin.json
     - .mcp.json
@@ -124,6 +178,10 @@ chrome:
       status: pending-hook-pairing
 
 retired:
+  # coco subdir plugin chrome, collapsed into the repo-root manifest
+  - plugins/coco/wiki-sdd/.cortex-plugin/
+  - plugins/coco/wiki-sdd/hooks/hooks.json
+  - plugins/coco/wiki-sdd/.mcp.json
   # kiro power layout, deleted at the skills-layout repackage
   - plugins/kiro/wiki-sdd/POWER.md
   - plugins/kiro/wiki-sdd/mcp.json

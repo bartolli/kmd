@@ -34,6 +34,13 @@ export function transformCodex(text: string, cfg: DialectConfig): string {
   return transformDialect(text, cfg, '$$$1', 'Codex');
 }
 
+// CoCo invokes skills as `$name`, same token as codex. Unlike codex it reads
+// `CLAUDE.md` as a project-instructions file, so the CLAUDE.md-survival lint
+// does not apply — see the reader set in render.ts.
+export function transformCoco(text: string, cfg: DialectConfig): string {
+  return transformDialect(text, cfg, '$$$1', 'CoCo');
+}
+
 // Kiro skills are slash-invocable — the invocation token survives; only the
 // wording replacements and the bare-Claude rule apply.
 export function transformKiro(text: string, cfg: DialectConfig): string {

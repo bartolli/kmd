@@ -17,6 +17,12 @@ flavors:
       slashAliases: [dense]
       replacements:
         - ["Read \`CLAUDE.md\` or \`AGENTS.md\`.", "Read \`AGENTS.md\`."]
+  coco:
+    dest: plugins/coco/wiki-sdd
+    dialect:
+      kind: coco
+      slashAliases: [dense]
+      replacements: []
   kiro:
     dest: plugins/kiro/wiki-sdd
     dialect:
@@ -46,6 +52,7 @@ describe('loadManifest', () => {
     expect(m.sourceRoot).toBe('plugins/src/wiki-sdd');
     expect(m.flavors.claude?.dialect).toEqual({ kind: 'identity' });
     expect(m.flavors.codex?.dialect).toMatchObject({ kind: 'codex', slashAliases: ['dense'] });
+    expect(m.flavors.coco?.dialect).toMatchObject({ kind: 'coco', slashAliases: ['dense'] });
     expect(m.shared.exact).toEqual([
       { path: 'skills/wiki/references/vault-yaml.md' },
       { path: 'hooks/run-kmd-hook.mjs', flavors: ['claude', 'codex'] }

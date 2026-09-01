@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transformCodex, transformKiro } from './transform.js';
+import { transformCoco, transformCodex, transformKiro } from './transform.js';
 
 describe('transformCodex', () => {
   it('rewrites slash invocations to dollar', () => {
@@ -50,5 +50,20 @@ describe('transformKiro', () => {
       replacements: []
     });
     expect(out).toBe('Run `/wiki`; Claude Code stays, Kiro changes.');
+  });
+});
+
+describe('transformCoco', () => {
+  it('rewrites slash invocations to dollar and bare Claude to CoCo', () => {
+    const out = transformCoco('Run `/wiki`; Claude Code stays, Claude changes.', {
+      slashNames: ['wiki'],
+      replacements: []
+    });
+    expect(out).toBe('Run `$wiki`; Claude Code stays, CoCo changes.');
+  });
+
+  it('leaves CLAUDE.md alone — CoCo reads it as a project-instructions file', () => {
+    const text = 'Read `CLAUDE.md` or `AGENTS.md`.';
+    expect(transformCoco(text, { slashNames: [], replacements: [] })).toBe(text);
   });
 });

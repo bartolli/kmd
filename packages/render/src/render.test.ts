@@ -34,6 +34,10 @@ function manifest(): RenderManifest {
         dest: 'plugins/codex/wiki-sdd',
         dialect: { kind: 'codex', slashAliases: [], replacements: [] }
       },
+      coco: {
+        dest: 'plugins/coco/wiki-sdd',
+        dialect: { kind: 'coco', slashAliases: [], replacements: [] }
+      },
       kiro: { dest: 'plugins/kiro/wiki-sdd', dialect: { kind: 'kiro', replacements: [] } }
     },
     shared: { exact: [], rendered: ['skills/foo/SKILL.md'] }
@@ -53,6 +57,9 @@ describe('render', () => {
     expect(read('plugins/claude/wiki-sdd/skills/foo/SKILL.md')).toBe(SKILL);
     expect(read('plugins/codex/wiki-sdd/skills/foo/SKILL.md')).toContain(
       'Run `$foo` when Codex asks.'
+    );
+    expect(read('plugins/coco/wiki-sdd/skills/foo/SKILL.md')).toContain(
+      'Run `$foo` when CoCo asks.'
     );
     expect(read('plugins/kiro/wiki-sdd/skills/foo/SKILL.md')).toContain(
       'Run `/foo` when Kiro asks.'
@@ -86,6 +93,25 @@ describe('render', () => {
       true
     );
     expect(existsSync(join(root, 'plugins/codex/wiki-sdd/skills/foo/SKILL.md'))).toBe(false);
+  });
+
+  it('lets CLAUDE.md survive the coco transform — CoCo reads it as project instructions', () => {
+    write('src/wiki-sdd/skills/foo/SKILL.md', 'Edit `CLAUDE.md` directly.\n');
+    const cocoOnly: RenderManifest = {
+      sourceRoot: 'src/wiki-sdd',
+      flavors: {
+        coco: {
+          dest: 'plugins/coco/wiki-sdd',
+          dialect: { kind: 'coco', slashAliases: [], replacements: [] }
+        }
+      },
+      shared: { exact: [], rendered: ['skills/foo/SKILL.md'] }
+    };
+    const result = render(root, cocoOnly, 'write');
+    expect(result.problems).toEqual([]);
+    expect(read('plugins/coco/wiki-sdd/skills/foo/SKILL.md')).toContain(
+      'Edit `CLAUDE.md` directly.'
+    );
   });
 
   it('fails the render when a kiro description exceeds 1024 parsed chars', () => {

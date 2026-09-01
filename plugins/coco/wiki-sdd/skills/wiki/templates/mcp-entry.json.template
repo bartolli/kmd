@@ -1,0 +1,6 @@
+{
+  "wiki": {
+    "command": "kmd",
+    "args": ["mcp", "--default-root", "/absolute/path/to/vault"]
+  }
+}
