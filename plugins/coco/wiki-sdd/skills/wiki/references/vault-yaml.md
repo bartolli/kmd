@@ -183,6 +183,7 @@ bootstrap that "renders" them breaks every future page.
    vault is consistent.
 2. Register/start the wiki MCP server pointing at the vault root;
    verify `prime({{scope}})` answers and `wiki://templates` lists all
-   11 entries.
+   11 entries — via MCP, or `kmd prime {{scope}}` and
+   `kmd resource wiki://templates`.
 3. Continue the standard wiki-skill bootstrap (scope, tracker, project
    instructions template).

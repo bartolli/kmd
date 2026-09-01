@@ -30,10 +30,10 @@ In the vault, only when no vault exists yet (new-vault bootstrap):
 
 - Three domains (`projects/`, `research/`, `notes/`) under `~/llm-wiki/vault/`
 - A controlled vocabulary of project scopes defined in `~/llm-wiki/vault/vault.yaml` under `scopes:` — adding a new scope requires explicit user approval per the vault blueprint
-- Two MCP tools: `prime(scope, task?)` for orientation, `search(query, scope?, kind?, limit?)` for retrieval
-- Templates exposed as MCP resources at `wiki://template/{domain}/{kind}` (11 templates: project-{index, primer, spec, adr, plan, ops, story}, research-{index, article, src}, note) — served from `templates/` at the vault root, re-read on every call; a missing file errors at resource-read time
+- Two MCP tools: `prime(scope, task?)` for orientation, `search(query, scope?, kind?, limit?)` for retrieval — mirrored as `kmd prime <scope> [--task <text>]` and `kmd search <query>` for a harness without MCP tools, same server in-process
+- Templates exposed as MCP resources at `wiki://template/{domain}/{kind}`, or via `kmd resource <uri>` where the harness reads no resources (11 templates: project-{index, primer, spec, adr, plan, ops, story}, research-{index, article, src}, note) — served from `templates/` at the vault root, re-read on every call; a missing file errors at resource-read time
 
-A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or equivalent). The agent reads this at session start and calls `prime(scope)` automatically.
+A consumer project becomes wiki-aware by declaring `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or equivalent). The agent reads this at session start and calls `prime(scope)` automatically — the wiki MCP tool, or `kmd prime <scope>` where the harness exposes no MCP tools.
 
 ### Local vs global vault
 
@@ -63,7 +63,7 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 
 | Skill | Reads | Writes |
 |---|---|---|
-| `$grill-with-docs` | wiki state via `prime(scope)`; codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
+| `$grill-with-docs` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
 | `$to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
 | `$triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
 | `$to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
@@ -84,7 +84,7 @@ When Codex edits files in the vault, four global skills cover Obsidian-flavored 
 | `obsidian-cli` | Only when a live Obsidian instance is genuinely needed — plugin/theme dev, screenshots, Dataview re-render. **Not** the canonical search/read surface — use the wiki MCP `search` tool and filesystem `Read` instead. |
 | `json-canvas` | Editing `.canvas` files (mind maps, flowcharts). Not in the standard wiki authoring loop. |
 
-These compose with the wiki-aware skills: `$to-prd` writes story files (using `wiki://template/project/story` for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
+These compose with the wiki-aware skills: `$to-prd` writes story files (using `wiki://template/project/story` — MCP resource, or `kmd resource <uri>` — for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
 
 ### Harness placement
 
@@ -111,7 +111,7 @@ Read the current state. Don't assume.
 - Read `AGENTS.md` at the project root, or identify the equivalent project-instructions file. Is there already a `## Wiki` block?
 - Read `.mcp.json` at the project root if it exists. Is the `wiki` server already registered?
 - Read `vault.yaml` in the vault root — the `scopes:` field is the authoritative scope vocabulary.
-- Check whether `prime` and `search` tools from a wiki MCP server are already available in the session.
+- Check whether `prime` and `search` tools from a wiki MCP server are already available in the session. Without them the same surface is the CLI: `kmd prime`, `kmd search`, `kmd resource`.
 
 ### 2. Determine scope
 

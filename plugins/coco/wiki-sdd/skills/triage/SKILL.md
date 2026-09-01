@@ -54,7 +54,7 @@ The user invokes `$triage` and describes what they want in natural language. Exa
 
 Query the wiki index for stories in actionable states. Present three buckets, oldest first.
 
-Query (via the `wiki` MCP `search` tool):
+Query (via the `wiki` MCP `search` tool, or `kmd search <query>` where the harness exposes no MCP tools):
 
 ```sql
 SELECT path, title, scope, meta->>'triage_state' AS state, meta->>'category' AS category, updated
@@ -223,7 +223,7 @@ Capture everything resolved during triage under "established so far" so the work
 
 ### `adr-no-{slug}.md` (when rejecting an enhancement)
 
-Use `wiki://template/project/adr` with frontmatter:
+Use `wiki://template/project/adr` (MCP resource, or `kmd resource <uri>`) with frontmatter:
 
 ```yaml
 ---

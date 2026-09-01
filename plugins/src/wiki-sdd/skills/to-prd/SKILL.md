@@ -31,7 +31,7 @@ Each story file ships with `triage_state: needs-triage`. The user runs `/triage`
 
 ### 1. Read the wiki context
 
-- Call `prime(<scope>)` via the wiki MCP — get identity, primer, active ADRs, top tags, current plan.
+- Call `prime(<scope>)` via the wiki MCP, or `kmd prime <scope>` where the harness exposes no MCP tools — get identity, primer, active ADRs, top tags, current plan.
 - Read `projects/<scope>/spec/spec-context.md` if it exists — use canonical vocabulary throughout.
 - Read recent ADRs under `projects/<scope>/adr/` to respect existing decisions.
 - Note any active plan — the new plan should not duplicate an in-flight one.
@@ -69,7 +69,7 @@ Don't write specs/ADRs in this skill — flag the gaps and reference future skil
 
 ### 4. Write the parent plan
 
-Write `projects/<scope>/plan/plan-<slug>.md` using `wiki://template/project/plan` as the frontmatter base, with body:
+Write `projects/<scope>/plan/plan-<slug>.md` using `wiki://template/project/plan` (MCP resource, or `kmd resource <uri>`) as the frontmatter base, with body:
 
 ```markdown
 # <Plan Title>
@@ -120,7 +120,7 @@ updated: <today>
 
 ### 5. Write each story file
 
-For each user story, write `projects/<scope>/plan/<slug>/story-N-<story-slug>.md` using `wiki://template/project/story`. Body:
+For each user story, write `projects/<scope>/plan/<slug>/story-N-<story-slug>.md` using `wiki://template/project/story` (MCP resource, or `kmd resource <uri>`). Body:
 
 ```markdown
 # <Story Title>
@@ -192,7 +192,7 @@ updated: <today>
 
 After writing, confirm the resync: the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
-This makes the new plan and stories searchable via `prime` and `search`.
+This makes the new plan and stories searchable via `prime` and `search` (MCP tools, or `kmd prime` / `kmd search`).
 
 ### 7. Done — suggest next step
 

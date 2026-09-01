@@ -4,7 +4,7 @@ Tooling monorepo for the llm-wiki: the single `@bartolli/kmd` binary (vault → 
 
 ## First read
 
-Wiki primer at `projects/llm-wiki/primer.md`, loaded via the wiki MCP server's `prime(scope="llm-wiki")` tool. The tool prefix varies by harness and server registration name — discover it from the available tools list at session start.
+Wiki primer at `projects/llm-wiki/primer.md`, loaded via the wiki MCP server's `prime(scope="llm-wiki")` tool. The tool prefix varies by harness and server registration name — discover it from the available tools list at session start. Without MCP tools, `kmd prime llm-wiki` returns the same briefing.
 
 ## Wiki integration
 
@@ -14,7 +14,7 @@ Wiki primer at `projects/llm-wiki/primer.md`, loaded via the wiki MCP server's `
 
 `prime(scope=llm-wiki)` carries orientation, active ADRs, plan state, and read order. Design rationale lives in wiki ADRs, not this file.
 
-Authoring rules and resync protocol: `wiki://authoring` (MCP resource).
+Authoring rules and resync protocol: `wiki://authoring` (MCP resource) or `kmd resource wiki://authoring` (CLI, same content).
 
 Wiki-aware skills: `/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`. Run `/grill-with-docs` to scaffold a new scope or refine intent on an existing one. `/wiki` is the central hub — invoke it for the full constellation map. `/retro` runs before every session-closing primer resync.
 

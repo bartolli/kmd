@@ -38,9 +38,9 @@ Collect, one question at a time:
 - **Summary** — What is it, in one or two sentences? (Recommend: extract from the user's first description; show your draft.)
 - **Methodology** — `sdd` (spec-driven), `tdd` (test-driven), or `hybrid`? (Recommend `hybrid` for app-layer work, `sdd` for spec-heavy or contract-first work, `tdd` when the surface is mostly behavior-discoverable. State your reasoning per project.)
 - **Phase** — what number? (Recommend `0` for greenfield, `1` if a working prototype exists.)
-- **Tags** — pick 3-6 from existing `top_tags` if `prime(<scope>)` is callable; otherwise propose new ones with justification.
+- **Tags** — pick 3-6 from existing `top_tags` if `prime(<scope>)` is callable (MCP tool, or `kmd prime <scope>`); otherwise propose new ones with justification.
 
-Write `projects/<scope>/index.md` in the vault using the `wiki://template/project/index` resource. Frontmatter only — body can be a single line summary. Do not invent fields outside the schema.
+Write `projects/<scope>/index.md` in the vault using the `wiki://template/project/index` template (MCP resource, or `kmd resource wiki://template/project/index`). Frontmatter only — body can be a single line summary. Do not invent fields outside the schema.
 
 ### Step 2 — Primer stub (lands in `primer.md`)
 
@@ -68,7 +68,7 @@ updated: <today>
 - <none, or specifics>
 ```
 
-Use `wiki://template/project/primer` for the canonical shape. `created` is **write-once** — set it at creation and never bump it; only `updated` changes on later edits. Optional sections (Load-bearing invariants, Read Order, Working set) are added later as they earn their place.
+Use `wiki://template/project/primer` (MCP resource, or `kmd resource <uri>`) for the canonical shape. `created` is **write-once** — set it at creation and never bump it; only `updated` changes on later edits. Optional sections (Load-bearing invariants, Read Order, Working set) are added later as they earn their place.
 
 ### Step 3 — Vocabulary (lands in `spec/spec-context.md`, **lazy creation**)
 
@@ -78,7 +78,7 @@ As the user describes the system, watch for:
 - **Synonym conflicts** — same concept, multiple words ("cancellation" vs "void" vs "refund")
 - **Overloaded terms** — same word, multiple meanings ("account" = `Customer` or `User`?)
 
-When the **first term gets resolved**, create `projects/<scope>/spec/spec-context.md` in the vault using `wiki://template/project/spec`. Body shape:
+When the **first term gets resolved**, create `projects/<scope>/spec/spec-context.md` in the vault using `wiki://template/project/spec` (MCP resource, or `kmd resource <uri>`). Body shape:
 
 ```markdown
 # <Scope> — Domain Context
@@ -129,7 +129,7 @@ Only offer to create an ADR when **all three** are true:
 
 If any of the three is missing, skip the ADR.
 
-Use `wiki://template/project/adr`. Body shape:
+Use `wiki://template/project/adr` (MCP resource, or `kmd resource <uri>`). Body shape:
 
 ```markdown
 # <Title>
@@ -171,13 +171,13 @@ The greenfield grill is done when:
 
 State the termination explicitly when reached:
 
-> "Scaffold complete. Run `prime(<scope>)` to verify orientation. Next steps: `$to-prd` if you want to draft a workstream from this conversation, or just start working in the project — the wiki will catch up via `$grill-with-docs` again later."
+> "Scaffold complete. Run `prime(<scope>)` (or `kmd prime <scope>`) to verify orientation. Next steps: `$to-prd` if you want to draft a workstream from this conversation, or just start working in the project — the wiki will catch up via `$grill-with-docs` again later."
 
 ## Brownfield flow
 
 ### Step 1 — Orient
 
-- Run `prime(<scope>)` via the wiki MCP to load identity, primer, active ADRs.
+- Run `prime(<scope>)` via the wiki MCP, or `kmd prime <scope>` where the harness exposes no MCP tools, to load identity, primer, active ADRs.
 - Read `spec-context.md` if it exists.
 - Read recent ADRs and the current plan.
 
