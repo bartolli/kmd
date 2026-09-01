@@ -109,10 +109,13 @@ describe('coco hook wiring chrome (inline in the root manifest)', () => {
     const wrapper = readFileSync(COCO_WRAPPER, 'utf8');
     const shared = readFileSync(SHARED_WRAPPER, 'utf8');
     // Not the token — the token appears in the file's own comment saying why
-    // it is absent. What must not exist is the invocation: no child process
-    // at all, so there is nothing to reach for a blocked npx.
+    // it is absent. What must not exist is the invocation: nothing here may
+    // reach a registry. Spawning the local kmd is not that reach, and the
+    // bundle already depends on it — the manifest starts the MCP server as
+    // `kmd mcp` through the same shim — so the ban is on the npx target, not
+    // on child_process itself. A shim install (pnpm, Volta) is not importable,
+    // and refusing to spawn it is what silently turned the gates off.
     expect(wrapper).not.toMatch(/['"]npx/);
-    expect(wrapper).not.toContain('child_process');
     // The shared wrapper does spawn npx — proving these are not the same file
     // is the point: byte-copying it into coco would reintroduce the fallback.
     expect(shared).toMatch(/spawn\('npx'/);
