@@ -406,6 +406,14 @@ describe('matchPretoolTriggers / renderPretool', () => {
     expect(renderPretool(matches, 'claude').stdout).toBeNull();
   });
 
+  it('matches the authored tool name across id casings — coco sends lowercase', () => {
+    const coco = matchPretoolTriggers('bash', { command: 'git tag v0.6.0' }, [gate]);
+    expect(coco).toHaveLength(1);
+
+    const otherTool = matchPretoolTriggers('write', { command: 'git tag v0.6.0' }, [gate]);
+    expect(otherTool).toEqual([]);
+  });
+
   it('matches args_match anywhere in the serialized tool input', () => {
     const compound = matchPretoolTriggers('Bash', { command: 'cd /repo && git tag v2' }, [gate]);
     expect(compound).toHaveLength(1);

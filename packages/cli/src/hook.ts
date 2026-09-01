@@ -322,7 +322,11 @@ function pretoolStage(
   toolInput: unknown,
   cwd?: string
 ): PretoolStage {
-  if (trigger.tool !== undefined && trigger.tool !== toolName) return 'tool';
+  // Case-folded: harnesses disagree on id casing (claude `Bash`, coco
+  // `bash`) and no harness carries two tools differing only by case.
+  if (trigger.tool !== undefined && trigger.tool.toLowerCase() !== toolName.toLowerCase()) {
+    return 'tool';
+  }
   if (trigger.args_match !== undefined) {
     const serialized = JSON.stringify(toolInput ?? {});
     if (!new RegExp(trigger.args_match).test(serialized)) return 'args';
