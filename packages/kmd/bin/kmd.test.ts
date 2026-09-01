@@ -92,6 +92,72 @@ function promptEvent(sessionId: string, prompt: string): string {
   return JSON.stringify({ session_id: sessionId, prompt, cwd: '/tmp' });
 }
 
+describe('kmd resource / prime / search (CLI mirrors, end-to-end)', () => {
+  let base: string;
+  let kmdHome: string;
+  let vault: string;
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-mirrors-e2e-'));
+    kmdHome = join(base, 'kmd-home');
+    vault = join(base, 'vault');
+    // init scaffolds the eleven templates; the fixture config names the scope
+    const init = await runKmd(['init', vault], '', kmdHome);
+    expect(init.code).toBe(0);
+    await writeFile(join(vault, 'vault.yaml'), VAULT_YAML);
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('resource: prints the authoring guide and a template through the binary', async () => {
+    const guide = await runKmd(['resource', 'wiki://authoring', vault], '', kmdHome);
+    expect(guide.code).toBe(0);
+    expect(guide.stdout).toContain('# Wiki authoring guide');
+    expect(guide.stdout).toContain('**Kinds:** spec');
+
+    const story = await runKmd(['resource', 'wiki://template/project/story', vault], '', kmdHome);
+    expect(story.code).toBe(0);
+    expect(story.stdout).toContain('kind: story');
+  }, 30_000);
+
+  it('resource: unknown URI exits 2 naming the known ones; no URI is usage', async () => {
+    const unknown = await runKmd(['resource', 'wiki://nope', vault], '', kmdHome);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('wiki://authoring');
+
+    const bare = await runKmd(['resource'], '', kmdHome);
+    expect(bare.code).toBe(2);
+    expect(bare.stderr).toContain('usage: kmd resource');
+  }, 30_000);
+
+  it('prime: unlisted scope exits 1 with the tool error code', async () => {
+    const result = await runKmd(['prime', 'nope', vault], '', kmdHome);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('UNKNOWN_SCOPE');
+  }, 30_000);
+
+  it('search: prints candidates JSON, exit 0', async () => {
+    const result = await runKmd(['search', 'release protocol', vault, '--limit', '2'], '', kmdHome);
+    expect(result.code).toBe(0);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+  }, 30_000);
+
+  it('mirrors: no resolvable vault exits 1 naming the routes', async () => {
+    // outside `base`: the project tier walks ancestors, and base/vault/vault.yaml
+    // is exactly the convention it looks for
+    const nowhere = await mkdtemp(join(tmpdir(), 'kmd-nowhere-'));
+    try {
+      const result = await runKmd(['prime', 'demo'], '', kmdHome, {}, nowhere);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('no vault resolvable');
+    } finally {
+      await rm(nowhere, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
 describe('kmd init (end-to-end)', () => {
   let base: string;
   let kmdHome: string;

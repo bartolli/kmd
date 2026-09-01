@@ -292,7 +292,7 @@ export function renderMarkdown(
   lines.push(
     '',
     '---',
-    'Authoring wiki content? Read `wiki://authoring` for kind selector, rules, and templates. After edits: `kmd validate`, then `kmd sync`.'
+    'Authoring wiki content? Read `wiki://authoring` (MCP resource, or `kmd resource wiki://authoring` where the harness reads no resources) for kind selector, rules, and templates. After edits: `kmd validate`, then `kmd sync`.'
   );
 
   return lines.join('\n');

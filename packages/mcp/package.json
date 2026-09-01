@@ -3,12 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "wiki-mcp stdio server: two read-only tools — prime and search.",
+  "description": "wiki-mcp stdio server: two read-only tools \u2014 prime and search.",
   "bin": {
     "wiki-mcp": "./bin/stdio.ts"
   },
   "exports": {
-    "./start": "./src/start.ts"
+    "./start": "./src/start.ts",
+    "./local": "./src/local.ts"
   },
   "scripts": {
     "dev": "tsx watch bin/stdio.ts",

@@ -76,6 +76,10 @@ kmd mcp [<vault-root>] [--default-root <path>]
 kmd config [<vault-root>]               print resolved vault, index path, winning rank
 kmd config <set|get|unset> default_vault [<path>]
 kmd db reset [<vault-root>]             delete the vault's index
+kmd resource <uri> [<vault-root>]       print wiki://authoring, wiki://templates, or wiki://template/{domain}/{kind}
+kmd prime <scope> [<vault-root>] [--task <text>]
+kmd search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]
+                                        CLI mirrors of the MCP surface, for harnesses that read no resources
 kmd hook <prompt|pretool|posttool|stop|session-start> [--default-root <path>] [--scope <s>] [--harness <h>] [--explain|--dry-run]
                                         harness gate engine (see Hooks)
 ```
@@ -90,6 +94,8 @@ Two tools, deliberately few:
 - **`search(query, scope?, kind?, limit?)`** returns ranked candidates `{path, title, kind, summary, score}`. Never page bodies; the agent opens files itself.
 
 Templates are served as MCP resources at `wiki://template/{domain}/{kind}`, and the authoring guide at `wiki://authoring`.
+
+All of it is also a CLI: `kmd prime <scope>`, `kmd search <query>`, and `kmd resource <uri>` run an in-process client of the same server, so a harness whose agent cannot read MCP resources (CoCo, Kiro) still reaches the authoring guide and templates from a shell.
 
 Registration:
 

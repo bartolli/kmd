@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 
+// Stamped by build.mjs from package.json; absent when the entry runs unbundled.
+declare const __KMD_VERSION__: string | undefined;
+
 // node:sqlite is the engine's storage bet; on older Node 22.x its
 // ExperimentalWarning lands on stderr — the hook diagnostics channel, printed
 // per spawned event. Filter that one warning, pass every other through.
@@ -36,6 +39,14 @@ commands:
   config <set|get|unset> default_vault [<path>]
                            read/write the global default in ~/.kmd/config.yaml
   db reset [<vault-root>]  delete the vault's index
+  resource <uri> [<vault-root>]
+                           print an MCP resource (wiki://authoring, wiki://templates,
+                           wiki://template/{domain}/{kind}) — the CLI route for a harness
+                           that reads no resources; same content, in-process client
+  prime <scope> [<vault-root>] [--task <text>]
+                           CLI mirror of the prime tool: the scope's orientation briefing
+  search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]
+                           CLI mirror of the search tool: ranked candidates, never page bodies
   hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--default-root <path>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
                            harness gate engine: JSON event on stdin, decision/context on stdout;
                            the vault resolves through the chain with the event cwd as project
@@ -56,9 +67,23 @@ const { positionals, values } = parseArgs({
     yes: { type: 'boolean', short: 'y' },
     'default-root': { type: 'string' },
     'set-default': { type: 'boolean' },
-    local: { type: 'boolean' }
+    local: { type: 'boolean' },
+    task: { type: 'string' },
+    scope: { type: 'string' },
+    kind: { type: 'string' },
+    limit: { type: 'string' }
   }
 });
+
+const MIRROR_USAGE: Record<string, string> = {
+  resource: 'usage: kmd resource <uri> [<vault-root>]',
+  prime: 'usage: kmd prime <scope> [<vault-root>] [--task <text>]',
+  search: 'usage: kmd search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]'
+};
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
 
 const command = values.version ? '--version' : values.help ? '--help' : positionals[0];
 
@@ -119,6 +144,53 @@ async function run(): Promise<void> {
       await startMcpServer();
       break;
     }
+    // CLI mirrors of the MCP surface: an in-process client of the same server,
+    // for harnesses whose agents cannot read resources (or reach the tools).
+    case 'resource':
+    case 'prime':
+    case 'search': {
+      const arg = positionals[1];
+      if (!arg) {
+        console.error(MIRROR_USAGE[command]);
+        process.exit(2);
+      }
+      const { resolveCliVault } = await import('@llm-wiki/cli/cli');
+      const resolved = resolveCliVault(positionals[2]);
+      if (resolved.root === null) {
+        console.error(
+          `kmd ${command}: no vault resolvable — pass <vault-root>, run inside a project vault, set WIKI_VAULT, or \`kmd config set default_vault <path>\``
+        );
+        process.exit(1);
+      }
+      const { runResource, runTool } = await import('@llm-wiki/mcp/local');
+      let outcome: Awaited<ReturnType<typeof runTool>>;
+      if (command === 'resource') {
+        outcome = await runResource(arg, resolved.root);
+      } else if (command === 'prime') {
+        const task = optionalString(values.task);
+        outcome = await runTool(
+          'prime',
+          task ? { scope: arg, task } : { scope: arg },
+          resolved.root
+        );
+      } else {
+        const limit = Number(optionalString(values.limit));
+        outcome = await runTool(
+          'search',
+          {
+            query: arg,
+            ...(optionalString(values.scope) ? { scope: values.scope } : {}),
+            ...(optionalString(values.kind) ? { kind: values.kind } : {}),
+            ...(Number.isFinite(limit) ? { limit } : {})
+          },
+          resolved.root
+        );
+      }
+      if (outcome.stdout) console.log(outcome.stdout);
+      if (outcome.stderr) console.error(outcome.stderr);
+      process.exit(outcome.code);
+      break;
+    }
     case 'config': {
       const sub = positionals[1];
       const { runConfig, runConfigGet, runConfigSet, runConfigUnset } = await import(
@@ -177,6 +249,10 @@ async function run(): Promise<void> {
     }
     case '--version':
     case '-v': {
+      if (typeof __KMD_VERSION__ === 'string') {
+        console.log(__KMD_VERSION__);
+        break;
+      }
       const { readFileSync } = await import('node:fs');
       const { join, dirname } = await import('node:path');
       const { fileURLToPath } = await import('node:url');

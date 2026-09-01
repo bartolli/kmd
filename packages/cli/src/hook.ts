@@ -1178,11 +1178,13 @@ export function parseSessionStartEvent(raw: string): SessionStartEvent | null {
 
 /** Engine defaults for the orientation prose ([[adr-builtin-hook-identity]]). */
 const ORIENT_TEXT =
-  'prime via the wiki MCP prime tool before substantive work — the primer carries ' +
-  'current focus, book of work, and invariants.';
+  'prime via the wiki MCP prime tool (or `kmd prime <scope>` where the harness exposes ' +
+  'no MCP tools) before substantive work — the primer carries current focus, book of ' +
+  'work, and invariants.';
 const REORIENT_TEXT =
   'context was compacted and transcript detail is lost — re-read the primer via the ' +
-  'wiki MCP prime tool and route uncaptured findings into the wiki before continuing.';
+  'wiki MCP prime tool (or `kmd prime <scope>`) and route uncaptured findings into the ' +
+  'wiki before continuing.';
 
 /**
  * Session-orientation codec — public ids `orient` (fresh sources) and

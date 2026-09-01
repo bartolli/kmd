@@ -19,4 +19,14 @@ export function createLogger(level: string, name: string): pino.Logger {
   return pino({ name, level, base: { pid: process.pid } }, pino.multistream(streams));
 }
 
+/**
+ * stderr-only, synchronous: for the in-process CLI mirrors, which exit within
+ * milliseconds of building the server. The async file sink above is not open
+ * yet at that point and its exit-time flush throws; the file log belongs to
+ * the long-running server.
+ */
+export function createStderrLogger(level: string, name: string): pino.Logger {
+  return pino({ name, level, base: { pid: process.pid } }, pino.destination({ fd: 2, sync: true }));
+}
+
 export type Logger = pino.Logger;
