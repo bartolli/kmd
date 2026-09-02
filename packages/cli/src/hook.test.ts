@@ -24,10 +24,10 @@ import {
   renderPretool,
   renderPrompt,
   renderSessionStart,
-  sessionStartStdout,
   renderStop,
   resolveScope,
   scanBacklog,
+  sessionStartStdout,
   vaultPathTouched
 } from './hook.js';
 import type { Finding } from './validate.js';

@@ -1286,6 +1286,18 @@ export function renderSessionStart(
 }
 
 /**
+ * The SessionStart stdout envelope. Claude Code injects plain stdout and the
+ * JSON form alike; Cortex Code injects only `hookSpecificOutput.additionalContext`
+ * and shows plain text in the transcript without delivering it to the model.
+ * One line, so a line-oriented reader still parses it.
+ */
+export function sessionStartStdout(line: string): string {
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line }
+  });
+}
+
+/**
  * `kmd hook session-start [<vault-root>] [--scope <s>]`. Fixed-function
  * orientation: a session starting inside a declared scope repo receives one
  * stdout context line — the prime instruction, or the post-compaction
@@ -1313,7 +1325,11 @@ export async function runHookSessionStart(): Promise<void> {
     const band = event.source === 'compact' ? undefined : scanBacklog(vaultRoot, scope, new Date());
     const delta = event.source === 'compact' ? undefined : await diffVault(vaultRoot);
     const behind = delta && isBehind(delta) ? summarizeDelta(delta) : undefined;
-    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind));
+    console.log(
+      sessionStartStdout(
+        renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind)
+      )
+    );
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }
