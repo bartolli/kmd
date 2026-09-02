@@ -1,3 +1,14 @@
+## [v0.15.1] - 2026-09-02
+
+### Fixed
+
+- `kmd hook session-start` prints one line of JSON — `hookSpecificOutput.hookEventName` `SessionStart`, `additionalContext` the orientation line — instead of the bare line. Claude Code and Codex inject plain stdout and the envelope alike; Cortex Code injects only the envelope and showed the bare line in its transcript without delivering it to the model, so on that harness the orientation, the backlog band, and the vault-behind state never reached the agent. `sessionStartStdout` is exported from the hook module
+- wiki-sdd 0.19.1: the `intent` skill's greenfield primer stub, its termination check, and its refine step name `Focus`, `Next`, `Open`, `Read order` — the shape `wiki://template/project/primer` serves and `/handoff` rewrites — where they had kept the six-section shape; the stub's clocks are quoted UTC timestamps. A test asserts no skill source names a six-section heading
+
+### Changed
+
+- the codex adapter README lists the SessionStart hook and its `source: "compact"` re-fire beside the other events
+
 ## [v0.15.0] - 2026-09-02
 
 ### Added
