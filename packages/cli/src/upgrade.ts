@@ -98,7 +98,7 @@ export async function applyVaultDelta(root: string, delta: VaultDelta): Promise<
   appendAll(doc, 'kinds', delta.kinds);
   appendAll(doc, 'statuses', delta.statuses);
   appendAll(doc, 'methodologies', delta.methodologies);
-  await writeFile(path, doc.toString());
+  await writeFile(path, doc.toString({ lineWidth: 0, flowCollectionPadding: false }));
 }
 
 export interface UpgradeResult {

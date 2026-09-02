@@ -172,3 +172,38 @@ describe('upgradeVault', () => {
     expect(isBehind(await diffVault(root))).toBe(false);
   });
 });
+
+describe("applyVaultDelta preserves the operator's formatting", () => {
+  let base: string;
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-upgrade-'));
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('changes nothing but the appended lines: long quoted strings stay on one line, flow sequences keep their spacing', async () => {
+    const root = await scaffoldVault(join(base, 'vault'));
+    await ageVault(root);
+    const triggers = [
+      'triggers_extra:',
+      '  _all:',
+      '    - id: long-reason',
+      '      on: pretool',
+      '      enforce: block',
+      '      files: ["**/.logs/commits/*.md"]',
+      '      args_match: "git tag"',
+      '      reason: "Blocked: this reason runs well past eighty columns so that a serializer with a default line width would fold it onto a second line."',
+      ''
+    ].join('\n');
+    const before = `${await readFile(join(root, 'vault.yaml'), 'utf8')}${triggers}`;
+    await writeFile(join(root, 'vault.yaml'), before);
+
+    await applyVaultDelta(root, await diffVault(root));
+
+    const after = await readFile(join(root, 'vault.yaml'), 'utf8');
+    expect(after.replace('  - artifact\n  - prompt\n  - intent\n', '')).toBe(before);
+  });
+});
