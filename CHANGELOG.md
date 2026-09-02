@@ -1,3 +1,23 @@
+## [v0.15.0] - 2026-09-02
+
+### Added
+
+- `kmd init --upgrade [<vault-root>] [--apply]` — the additive delta between a resolved vault and the engine's starter: missing kinds, statuses, methodologies, template files, domain dirs. Bare prints the report and exits 1 when behind, 0 when current; a template present but differing from the starter prints as `differs (kept)` and never moves the exit code. `--apply` writes the delta and exits 0 — templates byte-identical to the starter and domain dirs first, `vault.schema.json` refreshed, `vault.yaml` last through the yaml Document API with no line folding and no flow padding, so comments and the modeline survive and a block or single-line flow sequence round-trips byte-identical (a multi-line flow sequence is re-laid out on one line, semantics unchanged); idempotent, no prompt; `scopes`, `tags`, `triggers_extra`, `builtin_hooks`, and existing template bodies are never touched. `--apply` without `--upgrade` is a usage error, exit 2. Resolution is the operator-command chain: positional > project tier > `$WIKI_VAULT` > global `default_vault`
+- the session-start orientation ends with `Vault behind the starter: <counts> — kmd init --upgrade.` when the vault's additive delta is non-empty; absent when current and after compaction; the hook exits 0 either way
+- `@llm-wiki/cli/upgrade`: `diffVault`, `applyVaultDelta`, `upgradeVault`, `summarizeDelta`
+- wiki-sdd `wiki` hub, Process step `Existing vault: bring it to the starter` between MCP detection and the project-instructions write: run the report, show it verbatim, `--apply` on approval; CLI route only, no kind or template named in prose
+
+### Changed
+
+- the starter lists every built-in kind — `artifact`, `prompt`, and `intent` included — and a test binds `STARTER_CONFIG.kinds` to `BUILT_IN_KINDS`
+- `template file missing` ends with `— run kmd init --upgrade` for a starter template; a custom kind's missing template keeps the bare error
+- wrapper floor `MIN_HOOK_VERSION` `[0, 15, 0]` in the shared claude/codex wrapper and the coco chrome, paired with this engine; plugin stamps 0.19.0. The 0.18.0 train paired `[0, 14, 0]` with engine 0.14.0 and delivered the loop skills
+
+### Fixed
+
+- a vault scaffolded by `kmd init` validates an intent: `intent` was in `BUILT_IN_KINDS` and the template set but not the starter's `kinds`, so every fresh vault rejected its first intent with `kind-vocabulary`
+- the `to-stories` skill description lists `/to-stories` once; the rename had folded `/to-prd` into a repeated token
+
 ## [v0.14.0] - 2026-09-02
 
 ### Added
