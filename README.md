@@ -38,6 +38,13 @@ kmd validate   # deterministic checker, no LLM
 kmd sync       # vault → SQLite index
 ```
 
+**An existing vault.** When the engine moves ahead of a vault scaffolded earlier — a new kind, a new template — bring it to the starter:
+
+```bash
+kmd init --upgrade            # report the delta; exit 1 when behind
+kmd init --upgrade --apply    # append the missing pieces; nothing you wrote is touched
+```
+
 ## Where things live
 
 | Thing | Where | Nature |
@@ -69,6 +76,8 @@ Teams commit `.kmd/config.yaml` with a repo-relative `vault:` path or a `${VAR}`
 ```
 kmd init [<dir>] [-y] [--set-default]   scaffold a vault; --set-default records it as the machine default
 kmd init --local [-y]                   project vault at <git-root>/vault/ with a .kmd/ state home
+kmd init --upgrade [<vault-root>] [--apply]
+                                        report the vault's delta against the starter, exit 1 when behind; --apply writes it, additive only
 kmd validate [<path>]                   deterministic vault checker
 kmd sync [<vault-root>]                 vault → SQLite index (validates first, aborts on errors)
 kmd mcp [<vault-root>] [--default-root <path>]
@@ -114,11 +123,11 @@ Registration:
 
 ## Skills
 
-The `wiki-sdd` plugin ships nine skills: a complete spec-driven development loop that reads and writes the vault. Each is a slash command (`$name` on Codex):
+The `wiki-sdd` plugin ships a complete spec-driven development loop that reads and writes the vault. Each is a slash command (`$name` on Codex):
 
 | Skill | What it does |
 |---|---|
-| `/wiki` | wires a project to the wiki; local-vs-global vault setup; the hub for everything below |
+| `/wiki` | wires a project to the wiki; local-vs-global vault setup; brings an existing vault to the starter; the hub for everything below |
 | `/intent` | interview that sharpens intent and scaffolds a scope: index, primer, glossary, lazy ADRs |
 | `/to-stories` | turns the working conversation into a thin plan plus user stories with Gherkin scenarios |
 | `/triage` | moves stories through `needs-triage` → `ready-for-agent` / `ready-for-human` / `wontfix` |
@@ -211,7 +220,7 @@ Five events:
 - **`pretool`**: gates before a tool runs: inject, warn, or deny with a reason the agent reads.
 - **`posttool`**: after a write inside the vault, `kmd validate` runs; findings return to the agent and the index holds until they are fixed. Clean writes sync silently.
 - **`stop`**: a session ending with validation errors is sent back once with the fix list.
-- **`session-start`**: a session opening inside a scope's repo gets one orientation line: prime first.
+- **`session-start`**: a session opening inside a scope's repo gets one orientation line: prime first, plus the backlog band (stale AFK stories, draft intents) and a vault behind the starter when either applies.
 
 ```yaml
 triggers_extra:
@@ -251,7 +260,7 @@ If other Node tooling in your agent loop prints `ExperimentalWarning` noise, set
 vault/
 ├── vault.yaml               # controlled vocabulary, the contract
 ├── templates/               # frontmatter templates, served as MCP resources
-├── projects/{scope}/        # specs, ADRs, plans, stories
+├── projects/{scope}/        # specs, ADRs, plans, stories, intents, scoped notes
 ├── research/{topic}/        # articles, sources
 └── notes/                   # low-ceremony capture
 ```
@@ -265,14 +274,14 @@ title: "SQLite for the index"
 kind: adr
 status: active
 tags: [storage]
-created: "2025-03-15"
-updated: 2025-06-01
+created: "2025-03-15T09:12:00Z"
+updated: "2025-06-01T14:03:27Z"
 ---
 ```
 
 `kind` selects the template, `status` tracks lifecycle, and every value must appear in `vault.yaml` or validation fails. Loading is fail-loud: an invalid `vault.yaml` stops the server and blocks sync rather than serving drift.
 
-`kmd validate` runs seventeen deterministic rules, no LLM involved. Among them: `dangling-link` (every `[[wikilink]]` resolves), `ambiguous-link` (a bare `[[name]]` owned by two files must disambiguate), `supersession-reciprocal` (an ADR superseding another requires the back-pointer), `path-authority` (the path, not frontmatter, decides scope and topic), and `tag-alias` (aliases normalize to canonical tags). Sync refuses to index a vault with errors.
+`kmd validate` runs its deterministic rules, no LLM involved. Among them: `dangling-link` (every `[[wikilink]]` resolves), `ambiguous-link` (a bare `[[name]]` owned by two files must disambiguate), `supersession-reciprocal` (an ADR superseding another requires the back-pointer), `path-authority` (the path, not frontmatter, decides scope and topic), and `tag-alias` (aliases normalize to canonical tags). Sync refuses to index a vault with errors.
 
 `vault.yaml` also carries the served pedagogy: the authoring rules agents read at `wiki://authoring`, custom kinds with their own templates, your methodologies, and the trigger declarations. The full reference with every field and customization pattern: [docs/vault-config.md](docs/vault-config.md). A complete annotated example: [`vault.yaml.example`](vault.yaml.example).
 

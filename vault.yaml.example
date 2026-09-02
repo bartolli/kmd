@@ -46,7 +46,7 @@ scopes:
 # wiki://template/{name} (signal doubles as its description). Declared
 # kind without a template file → `kmd validate` warning. Custom pages
 # get a soft floor: missing title/summary/updated warns, never blocks.
-kinds: [project, spec, adr, plan, story, ops, topic, article, src, note]
+kinds: [project, spec, adr, plan, story, ops, topic, article, src, note, artifact, prompt, intent]
 
 # statuses: every `status:` a page may carry. The default set below is
 # served to the agent as a one-directional lifecycle

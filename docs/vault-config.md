@@ -6,6 +6,12 @@ The schema lives in one module shared by sync, validate, the MCP server, and `km
 
 A complete annotated example: [`vault.yaml.example`](../vault.yaml.example).
 
+## Bring an existing vault to the starter
+
+A vault falls behind the engine when a release adds a kind or a template. `kmd init --upgrade [<vault-root>]` reports the additive delta against the starter — kinds, statuses, methodologies, template files, domain dirs the vault lacks — and exits 1 when behind, 0 when current. A template you edited prints as `differs (kept)` and never counts. `--apply` writes the delta and exits 0: it appends to `vault.yaml` in place (comments and the modeline survive), writes only missing template files, creates missing domain dirs, and never touches `scopes`, `tags`, triggers, or an edited template. The vault resolves like `validate` and `sync`: positional, then project tier, then `$WIKI_VAULT`, then the global default.
+
+The session-start orientation names a vault behind the starter, and a missing starter template's `template file missing` error ends with `run kmd init --upgrade`.
+
 ## Fields
 
 | Field | Type | Required | Enforced by |
@@ -27,7 +33,7 @@ A complete annotated example: [`vault.yaml.example`](../vault.yaml.example).
 | `triggers` | map scope → trigger list | no | full-replace of the built-in + plugin trigger base for that scope (escape hatch) |
 | `triggers_extra` | map scope → trigger list | no | appended per scope; the reserved `_all` key applies to every session |
 
-A minimal starter:
+The starter `kmd init` writes, with two scopes and a tag filled in:
 
 ```yaml
 scopes:
@@ -38,7 +44,7 @@ scopes:
   research-notes:
     status: active
 
-kinds: [spec, adr, plan, story, ops, article, src, note]
+kinds: [project, spec, adr, plan, story, ops, topic, article, src, note, artifact, prompt, intent]
 statuses: [draft, active, superseded, archived]
 methodologies: [sdd, tdd, hybrid]
 
@@ -95,7 +101,7 @@ Served kind selector:
 
 `kmd validate` accepts `kind: experiment` on pages. Plain-string entries use the built-in pedagogy; the object form also lets you reword a built-in kind's row.
 
-Kinds with built-in pedagogy: `project`, `spec`, `adr`, `plan`, `story`, `ops`, `topic`, `article`, `src`, `note`, `artifact`, `prompt`.
+Kinds with built-in pedagogy: `project`, `spec`, `adr`, `plan`, `story`, `ops`, `topic`, `article`, `src`, `note`, `artifact`, `prompt`, `intent`. The starter `kmd init` writes lists all of them.
 
 The template comes with the kind: drop `templates/experiment.md` in the vault and it is served at `wiki://template/experiment`, listed in `wiki://templates` with the kind's `signal` as its description, the same fresh-from-disk serving as the built-ins. A declared custom kind without its template file is a `kmd validate` warning, so the gap never goes unnoticed.
 
