@@ -36,8 +36,8 @@ flavors:
             "- Read `AGENTS.md` at the project root, or identify the equivalent project-instructions file. Is there already a `## Wiki` block?"
           ]
         - [
-            "### 6. Confirm and write the project CLAUDE.md / AGENTS.md",
-            "### 6. Confirm and write the project AGENTS.md"
+            "### 7. Confirm and write the project CLAUDE.md / AGENTS.md",
+            "### 7. Confirm and write the project AGENTS.md"
           ]
         - [
             "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
@@ -95,8 +95,8 @@ flavors:
             "- Read `AGENTS.md` at the project root (Kiro picks it up automatically). Is there already a `## Wiki` block?"
           ]
         - [
-            "### 6. Confirm and write the project CLAUDE.md / AGENTS.md",
-            "### 6. Confirm and write the project AGENTS.md"
+            "### 7. Confirm and write the project CLAUDE.md / AGENTS.md",
+            "### 7. Confirm and write the project AGENTS.md"
           ]
         - [
             "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
@@ -107,8 +107,8 @@ flavors:
             "- **Never overwrite a non-empty `AGENTS.md` or `.kiro/steering/` file**"
           ]
         - [
-            "**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR=\"$PWD\"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one.",
-            "**If the `wiki` MCP server is already registered** (workspace or user `.kiro/settings/mcp.json`): nothing to do — skip to step 6. A project vault takes the workspace-level file pointing at it (§ Harness placement)."
+            "**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 7: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR=\"$PWD\"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one.",
+            "**If the `wiki` MCP server is already registered** (workspace or user `.kiro/settings/mcp.json`): nothing to do — skip to step 7. A project vault takes the workspace-level file pointing at it (§ Harness placement)."
           ]
         - [
             "If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.",
@@ -144,7 +144,7 @@ shared:
 # skill's harness-placement table names Claude Code's convention in its own
 # column. A stale entry goes loud: the CLAUDE.md lint fires again.
 lintAllow:
-  - "`CLAUDE.md` or `AGENTS.md` (step 6)"
+  - "`CLAUDE.md` or `AGENTS.md` (step 7)"
   - "`AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read"
 
 # ── documentation: classification record (not consumed by the loader) ──

@@ -94,7 +94,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 | Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `wiki-sdd` plugin via `codex plugin add` | `wiki-sdd` plugin, or `~/.snowflake/cortex/skills/wiki/` (`.claude/skills/` is read too) | `.kiro/skills/wiki/` (workspace) or `~/.kiro/skills/wiki/` (global) — one directory per skill, `SKILL.md` inside |
 | MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | plugin-bundled, or `mcpServers` in `~/.snowflake/cortex/mcp.json` | `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user) — both merge, workspace wins |
 | Project-vault signal | automatic (plugin maps the project dir) | `export KMD_PROJECT_DIR="$PWD"` in the launching shell | automatic when launched from the project root; `export KMD_PROJECT_DIR="$PWD"` when using `-w` | workspace-level `mcp.json` pointing at the project vault |
-| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 6) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
+| Project instructions | `CLAUDE.md` or `AGENTS.md` (step 7) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
 ### Gate hooks
 
@@ -168,7 +168,7 @@ Default: `WIKI_TRIAGE_LABELS: {"needs-triage":"needs-triage","needs-info":"needs
 
 Check whether the `wiki` MCP server is already available to this session — look for it in the available tools list (a `prime` and `search` tool from a wiki-named server).
 
-**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 6: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one. On CoCo the same export is only needed when the session was not launched from the project root.
+**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 7: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR="$PWD"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one. On CoCo the same export is only needed when the session was not launched from the project root.
 
 **If the skill is standalone (no plugin) and no wiki MCP server is available:** the user needs to register it. Show the canonical registration JSON from `templates/mcp-entry.json.template` with the vault path filled in:
 
@@ -193,7 +193,25 @@ Check whether the `wiki` MCP server is already available to this session — loo
 - **Kiro (IDE and CLI):** `.kiro/settings/mcp.json` (workspace) or `~/.kiro/settings/mcp.json` (user), from `templates/mcp-entry-kiro.json.template` — Kiro wraps the same entry in `mcpServers` and adds `disabled` and `autoApprove`; pre-approving `prime` and `search` keeps orientation friction-free, and `env` values support `${VARIABLE}` expansion. The Kiro CLI can register the same server via `kiro-cli mcp add` (defer to its `--help` for current flags rather than guessing them).
 - **Other harnesses:** show the generic JSON and let the user place it per their harness's MCP docs. Don't prescribe OS-specific paths.
 
-### 6. Confirm and write the project CLAUDE.md / AGENTS.md
+### 6. Existing vault: bring it to the starter
+
+Whenever a vault resolved in step 5 — global, project tier, or the one `prime` answered from — run the engine's report before writing project instructions:
+
+```bash
+kmd init --upgrade [<vault-root>]
+```
+
+Exit 0 means the vault is current with the engine's starter. Exit 1 means it is behind: the report names each missing kind, status, methodology, template file, or domain dir, and lists templates the vault holds in an edited form as `differs (kept)`. Show the report verbatim. On the user's approval, apply it:
+
+```bash
+kmd init --upgrade [<vault-root>] --apply
+```
+
+The apply is additive and idempotent — it appends to `vault.yaml` in place, writes only missing template files, creates missing domain dirs, and never touches `scopes`, `tags`, triggers, or an edited template. Never narrate what the deltas will be; the report is the source of truth, and a vault scaffolded by this engine's `kmd init` is current by construction.
+
+CLI route only — the two-tool MCP freeze leaves no resource for this. The session-start orientation also names a vault behind the starter, and a `template file missing` error from a served template names the same command.
+
+### 7. Confirm and write the project CLAUDE.md / AGENTS.md
 
 **Pick the file to edit:**
 
@@ -220,7 +238,7 @@ Check whether the `wiki` MCP server is already available to this session — loo
 
 **Show the rendered template to the user before writing.** Let them edit. Then write.
 
-### 7. Done
+### 8. Done
 
 Tell the user setup is complete and which wiki-aware skills will now read from these files. Mention they can edit the file directly later if `WIKI_SCOPE` or `WIKI_ISSUE_TRACKER` changes.
 
