@@ -2,7 +2,7 @@
 name: triage
 description: This skill should be used to move intents and user-story files through the wiki's triage state machine. Intents (`draft` → `active` / archived with `promoted_to`, `dismissed`, or `fixed_by`) are triaged first, ordered by sightings; stories move `needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`. Reads and writes frontmatter, recommends transitions, promotes an intent into a story via the elaboration skill, dismisses with a recorded reason, writes `adr-no-{slug}.md` when rejecting an enhancement with design rationale, and in `github`/`gitlab` mode mirrors story state to remote labels. Use when the user says "/triage", "what needs my attention", "triage the intents", "what's in the intent queue", "promote intent X", "dismiss intent X", "triage the new stories", "move story X to ready-for-agent", or similar.
 metadata:
-  version: "0.18.0"
+  version: "0.18.1"
 ---
 
 # Triage — Move Stories Through the State Machine
