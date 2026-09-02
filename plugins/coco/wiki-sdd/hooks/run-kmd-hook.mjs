@@ -23,7 +23,7 @@ import {
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const MIN_HOOK_VERSION = [0, 12, 1];
+const MIN_HOOK_VERSION = [0, 14, 0];
 const FLOOR = MIN_HOOK_VERSION.join('.');
 const IMPORTABLE = /\.(mjs|cjs|js)$/;
 const args = process.argv.slice(2);
