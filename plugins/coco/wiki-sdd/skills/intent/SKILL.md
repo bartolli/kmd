@@ -1,11 +1,11 @@
 ---
-name: grill-with-docs
-description: Interview-style grilling that captures intent, sharpens vocabulary, and scaffolds wiki structure for a project scope. Use when the user wants to start a new workstream, refine an existing scope's intent, stress-test a plan against the project's domain language, or write a `spec-context.md` (glossary + relationships). Walks one question at a time, recommends an answer for each, and creates artifacts (`index.md`, `primer.md`, `spec-context.md`, lazy ADRs) inline as decisions crystallize. Auto-detects greenfield (scope folder missing → scaffold) vs brownfield (scope exists → refine + cross-reference code). Triggers on phrases like "grill me", "grill the plan", "let's nail down what we're building", "set up a new scope", "refine the intent", or `/grill-with-docs`.
+name: intent
+description: Interview-style grilling that captures intent, sharpens vocabulary, and scaffolds wiki structure for a project scope. Use when the user wants to start a new workstream, refine an existing scope's intent, stress-test a plan against the project's domain language, or write a `spec-context.md` (glossary + relationships). Walks one question at a time, recommends an answer for each, and creates artifacts (`index.md`, `primer.md`, `spec-context.md`, lazy ADRs) inline as decisions crystallize. Auto-detects greenfield (scope folder missing → scaffold) vs brownfield (scope exists → refine + cross-reference code). Triggers on phrases like "grill me", "grill the plan", "let's nail down what we're building", "set up a new scope", "refine the intent", "capture the intent", "write an intent", or `$intent`.
 metadata:
   version: "0.17.0"
 ---
 
-# Grill with Docs
+# Intent — Grill the Idea Against the Wiki
 
 Interview the user relentlessly about every aspect of a project's intent until you reach a shared understanding. Walk down each branch of the design tree, resolving dependencies one-by-one. For each question, provide your recommended answer.
 
@@ -15,7 +15,7 @@ If a question can be answered by exploring the codebase or wiki, explore instead
 
 ## Prerequisites
 
-Before grilling, the project must declare `WIKI_SCOPE: <scope>` in its project instructions (`CLAUDE.md`, `AGENTS.md`, or equivalent). If missing, suggest `/wiki` first and stop.
+Before grilling, the project must declare `WIKI_SCOPE: <scope>` in its project instructions (`CLAUDE.md`, `AGENTS.md`, or equivalent). If missing, suggest `$wiki` first and stop.
 
 ## Mode detection
 
@@ -171,7 +171,7 @@ The greenfield grill is done when:
 
 State the termination explicitly when reached:
 
-> "Scaffold complete. Run `prime(<scope>)` (or `kmd prime <scope>`) to verify orientation. Next steps: `/to-prd` if you want to draft a workstream from this conversation, or just start working in the project — the wiki will catch up via `/grill-with-docs` again later."
+> "Scaffold complete. Run `prime(<scope>)` (or `kmd prime <scope>`) to verify orientation. Next steps: `$to-stories` if you want to draft a workstream from this conversation, or just start working in the project — the wiki will catch up via `$intent` again later."
 
 ## Brownfield flow
 
@@ -206,6 +206,15 @@ Based on the conversation:
 Per vault rules, primer is co-authored. Suggest changes; don't write them silently. If the user agrees, update `Current Focus`, `Open Questions`, `Blocked On`. Strip stale Read Order / Working set entries.
 
 ### Termination
+
+When the session sharpened one idea rather than a workstream — a finding,
+a feature candidate, a question worth a falsification path — write it as
+an intent from `wiki://template/project/intent` (MCP resource, or
+`kmd resource wiki://template/project/intent`) at
+`projects/<scope>/intent/intent-<slug>.md`, `origin: user`, `sightings: 1`,
+about fifteen lines, and stop. `$triage` promotes it; `$to-stories`
+elaborates it into a story. A workstream continues below.
+
 
 The brownfield grill is done when:
 

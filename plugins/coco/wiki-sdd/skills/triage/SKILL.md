@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Move user-story files in the wiki through a triage state machine (`needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`). Reads and writes `triage_state` and `category` in story frontmatter. Recommends transitions, grills (chains to `$grill-with-docs`) when story bodies are too thin, posts agent briefs for `ready-for-agent`, and writes `adr-no-{slug}.md` when rejecting an enhancement. In `github`/`gitlab` mode also mirrors state to remote labels. Use when the user says "$triage", "what needs my attention", "triage the new stories", "move story X to ready-for-agent", "evaluate the cart story", or similar.
+description: This skill should be used to move intents and user-story files through the wiki's triage state machine. Intents (`draft` → `active` / archived with `promoted_to`, `dismissed`, or `fixed_by`) are triaged first, ordered by sightings; stories move `needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`. Reads and writes frontmatter, recommends transitions, promotes an intent into a story via the elaboration skill, dismisses with a recorded reason, writes `adr-no-{slug}.md` when rejecting an enhancement with design rationale, and in `github`/`gitlab` mode mirrors story state to remote labels. Use when the user says "$triage", "what needs my attention", "triage the intents", "what's in the intent queue", "promote intent X", "dismiss intent X", "triage the new stories", "move story X to ready-for-agent", or similar.
 metadata:
   version: "0.17.0"
 ---
@@ -12,9 +12,18 @@ A small state machine over wiki story files. Lifts Matt Pocock's triage pedagogy
 ## Prerequisites
 
 - `WIKI_SCOPE: <scope>` declared in the project instructions. If missing, suggest `$wiki`.
-- At least one story file exists under `projects/<scope>/plan/<plan-name>/`. If none, suggest `$to-prd`.
+- At least one intent under `projects/<scope>/intent/` or one story file under `projects/<scope>/plan/<plan-name>/`. With neither, suggest `$to-stories`.
 
 ## Roles
+
+Intents carry no triage labels; their state is `status` plus one outcome field ([[adr-intent-kind]]):
+
+- `draft` — filed, unread by triage
+- `active` — scheduled: accepted, story not yet written
+- `archived` with exactly one of `promoted_to` (story slug), `dismissed` (reason), `fixed_by` (regression test path)
+- `superseded` with `superseded_by` — merged into another intent, whose `sightings` absorbed the count
+
+Stories carry two label roles.
 
 Two **category** roles (story has exactly one):
 
@@ -45,33 +54,49 @@ In `local` mode, no remote comments are posted; the disclaimer doesn't apply.
 
 The user invokes `$triage` and describes what they want in natural language. Examples:
 
-- *"Show me anything that needs my attention"* → bucket view
+- *"Show me anything that needs my attention"* → bucket view, intents first
+- *"Promote intent X"* / *"Dismiss intent X — it's covered by story Y"* → intent outcome
 - *"Let's look at story 2 of plan-billing-mvp"* → triage a specific story
 - *"Move story 3 to ready-for-agent"* → quick state override
 - *"What's ready for agents to pick up?"* → filtered view
 
 ## Pattern A — Show what needs attention
 
-Query the wiki index for stories in actionable states. Present three buckets, oldest first.
+Read state from the vault filesystem, never from an index query: the index is
+disposable and the `search` tool returns ranked candidates, not frontmatter.
 
-Query (via the `wiki` MCP `search` tool, or `kmd search <query>` where the harness exposes no MCP tools):
+- Intents: every `projects/<scope>/intent/intent-*.md`; read `status`,
+  `sightings`, `origin`, `updated`.
+- Stories: every `projects/<scope>/plan/*/story-*.md`; read `triage_state`,
+  `category`, `updated`, and the slice tick counts.
+- `search(query, scope, kind="intent")` (MCP) or
+  `kmd search "<terms>" --scope <scope> --kind intent` (CLI) finds related
+  candidates by content when a finding needs a twin check — the walk above is
+  still the state source.
 
-```sql
-SELECT path, title, scope, meta->>'triage_state' AS state, meta->>'category' AS category, updated
-FROM pages
-WHERE kind = 'story'
-  AND scope = '<scope>'
-  AND meta->>'triage_state' IN ('needs-triage', 'needs-info')
-ORDER BY meta->>'triage_state', updated;
-```
+Present the buckets in this order, each with counts and one line per item:
 
-Bucket the results:
+1. **Intents, `draft`** — ordered by `sightings` descending, then `updated`
+   ascending. Two sightings, or a confirmed falsification, is the promotion
+   threshold; flag those first.
+2. **Intents, `active`** — scheduled and waiting for a story; oldest first.
+3. **Stale AFK stories** — `triage_state: ready-for-agent`, `status: active`,
+   zero ticked slices, and `updated` more than thirty days before the clock.
+   Accepted work nobody started is the backlog's debt; it is offered three
+   actions, never left in the queue by default:
+   - **Demote** — `triage_state: needs-triage`, a Triage Notes line naming the
+     age; the story re-enters evaluation.
+   - **Dismiss** — `triage_state: wontfix`, `status: archived`, the reason in
+     Triage Notes. A capacity call, not a design rejection: no `adr-no-*`
+     unless the operator wants rationale on record.
+   - **Keep** — the operator affirms it; `updated` moves from the clock and
+     the story leaves the band for another thirty days.
+4. **`needs-triage` stories** — never evaluated, oldest first.
+5. **`needs-info` stories** — blocked on user input, oldest first.
+6. **`ready-for-agent` stories** — count plus a one-line summary each, so the
+   AFK queue is visible.
 
-1. **`needs-triage`** — never evaluated, oldest first
-2. **`needs-info`** — blocked on user input, oldest first
-3. **`ready-for-agent`** — concrete count + one-line summary per story (so user sees the AFK queue)
-
-Show counts and a one-line summary per story. Let the user pick.
+Let the user pick.
 
 ## Pattern B — Triage a specific story
 
@@ -114,7 +139,7 @@ A confirmed repro makes a much stronger agent brief.
 
 ### Step 4 — Grill (if needed)
 
-If the story body is too thin for `ready-for-agent`, chain into `$grill-with-docs` to flesh it out. Don't try to grill within `$triage` — separation of concerns.
+If the story body is too thin for `ready-for-agent`, chain into `$intent` to flesh it out. Don't try to grill within `$triage` — separation of concerns.
 
 ### Step 5 — Apply the outcome
 
@@ -162,7 +187,7 @@ Update the Story Index table in `plan/plan-{name}.md` to reflect the new state c
 
 ### Step 7 — Update `updated:` field
 
-Bump the `updated:` field in the story's frontmatter.
+Set the story's `updated:` from the clock — `date -u +%Y-%m-%dT%H:%M:%SZ`, quoted — never composed.
 
 ### Step 8 — Confirm the resync
 
@@ -173,6 +198,48 @@ Harnesses with the posttool hook validate and sync automatically. Check `kmd con
 If the user says "move story X to `ready-for-agent`", trust them. Confirm what you're about to do (frontmatter changes, comment, plan-table update), then act. Skip grilling.
 
 If moving to `ready-for-agent` without a grilling session, ask whether the body needs an agent brief appended.
+
+## Pattern D — Triage an intent
+
+### Step 1 — Gather context
+
+- Read the intent: the six sections, `origin`, `sightings`, the Falsification path.
+- Twin check across every status, archived included: `search` with `kind="intent"` on the intent's distinctive terms, then read the hits. A dismissed twin carries its reason in `dismissed` — surface it before recommending anything.
+- Read any story or spec the intent links; if a story already covers the finding, the outcome is dismiss with that story named.
+- If the Falsification path is cheap to run, run it and report the result. A confirmed path meets the promotion threshold on its own.
+
+### Step 2 — Recommend
+
+One of three outcomes, with reasoning, then wait for direction:
+
+- **Promote** — `sightings` ≥ 2, or the falsification confirmed, or the operator calls it. The story gets written now.
+- **Hold** — worth doing, not yet; `status: active` marks it scheduled.
+- **Dismiss** — covered elsewhere, not worth the fix, or falsified. The reason is the record.
+
+### Step 3 — Apply
+
+**Promote:**
+
+- Chain to the elaboration skill (`$to-stories`) with the intent as input: the story's problem, scenarios, and first slices derive from the intent's sections, under the active plan.
+- Intent frontmatter: `status: archived`, `promoted_to: <story slug>`, `updated` from the clock.
+- Parent plan: add the Story Index row. The new story's `triage_state` is whatever the operator chose at promotion — `ready-for-agent` when the brief is complete, `needs-triage` otherwise.
+
+**Hold:**
+
+- Intent frontmatter: `status: active`, `updated` from the clock. Nothing else moves.
+
+**Dismiss:**
+
+- Intent frontmatter: `status: archived`, `dismissed: "<one-line reason>"`, `updated` from the clock.
+- No ADR unless the operator wants design rationale on record; then `adr-no-<slug>.md` as for a rejected enhancement, linked from `dismissed`.
+
+**Merge** (two intents for one finding):
+
+- The later one: `status: superseded`, `superseded_by: <survivor slug>`. The survivor's `sightings` absorbs the count and its `updated` moves.
+
+### Step 4 — Confirm the resync
+
+As for stories: the posttool hook validates and syncs; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
 ## Templates
 
@@ -279,11 +346,13 @@ If prior triage notes exist in a story body, read them, check whether the user h
 
 ## Rules
 
+- **Intents before stories.** The intent queue is the loop's entry; a session that triages stories while draft intents wait is working the wrong end.
+- **An archived intent carries exactly one outcome field** — `promoted_to`, `dismissed`, or `fixed_by`. A dismissal without a reason is not a dismissal.
 - **Every triaged story must carry exactly one category and one state.** If labels conflict, flag it and ask the user.
 - **Always show your recommendation with reasoning before transitioning.** Don't move state silently.
-- **For `wontfix-enhancement`, always write `adr-no-{slug}.md`.** Rejection without rationale loses institutional memory.
+- **For `wontfix-enhancement` on design grounds, always write `adr-no-{slug}.md`.** Rejection without rationale loses institutional memory. A stale-band dismissal is a capacity call and records its reason in Triage Notes instead.
 - **Always update the parent plan's Story Index table** when state changes.
 - **Confirm the resync after frontmatter changes** — the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 - **In GH/GitLab mode, always lead remote comments with the AI disclaimer.**
-- **Never grill within `$triage`** — chain to `$grill-with-docs` if needed.
+- **Never grill within `$triage`** — chain to `$intent` if needed.
 - **Quote prose-bearing frontmatter scalars** to avoid breaking the sync walker.

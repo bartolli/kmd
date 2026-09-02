@@ -159,7 +159,7 @@ When refactoring:
 If during implementation you discover the spec is wrong (code reality differs from `spec-{topic}.md`):
 
 - **Update the spec inline** in the same commit as the slice. Don't queue spec corrections in the plan — that creates doc-debt the wiki resync protocol explicitly forbids.
-- If the divergence is a hard-to-reverse decision, propose an ADR via `/grill-with-docs`.
+- If the divergence is a hard-to-reverse decision, propose an ADR via `/intent`.
 
 ## Rules
 

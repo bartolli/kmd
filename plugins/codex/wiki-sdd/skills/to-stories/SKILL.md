@@ -1,19 +1,31 @@
 ---
-name: to-prd
-description: 'Synthesize the current conversation context into a wiki-native plan with child user-story files. Writes a thin `plan/plan-{name}.md` (Problem · Solution · Story Index · Out of Scope · References) plus one `plan/{name}/story-N-{slug}.md` per user story, each with Gherkin scenarios and an initial slice list. Default `triage_state: needs-triage`. Does NOT interview — assumes the conversation already established intent (typically via `/grill-with-docs`). Use when the user says "turn this into a plan", "draft a PRD", "/to-prd", "write up what we discussed", "synthesize this into stories", or similar synthesis requests after a working discussion. Reads `spec-context.md` and existing ADRs to use the project''s vocabulary correctly.'
+name: to-stories
+description: 'This skill should be used to write wiki stories — Gherkin scenarios plus a first slice list — from either input: the current conversation, synthesized into a thin `plan/plan-{name}.md` with one `plan/{name}/story-N-{slug}.md` per story; or a promoted intent, elaborated into one story under the active plan with the intent linked and `promoted_to` reported back. Default `triage_state: needs-triage`. Does NOT interview — if intent is unclear it suggests `$intent` and stops. Use when the user says "turn this into a plan", "draft a PRD", "$to-stories", "$to-stories", "write up what we discussed", "synthesize this into stories", "write the story for intent X", or "elaborate intent X". Reads `spec-context.md` and existing ADRs to use the project''s vocabulary correctly.'
 metadata:
   version: "0.17.0"
 ---
 
-# To PRD — Synthesize Conversation into a Wiki-Native Plan
+# To Stories — Conversation or Intent into Wiki Stories
 
-Takes the **current conversation context** and produces a thin orchestration plan plus per-story files in the wiki. Does not interview — synthesizes what you already know. If intent isn't clear, suggest `/grill-with-docs` first and stop.
+Two inputs, one output shape. From the **current conversation**, a thin orchestration plan plus per-story files. From a **promoted intent**, one story under the active plan. Does not interview — synthesizes what is already established. If intent isn't clear, suggest `$intent` first and stop.
+
+## Input B — a promoted intent
+
+When `$triage` promotes an intent, or the user names one:
+
+1. Read `projects/<scope>/intent/intent-<slug>.md` in full, then `spec-context.md` and the ADRs it links.
+2. Derive the story from the intent's sections — **Problem** and **Proposed outcome** become the User Story and the Problem line; the **Falsification** path becomes the first scenario, since it already names an observable outcome; **Affected** names the code paths for the slices; **Constraints** and **Open questions** land in the story's Decisions and scenarios respectively.
+3. Write `projects/<scope>/plan/<active-plan>/story-N-<slug>.md` — next N in that plan — with `[[intent-<slug>]]` under References. No new plan for one story.
+4. `triage_state` is what the operator chose at promotion: `ready-for-agent` when the brief is complete, `needs-triage` otherwise.
+5. Add the Story Index row to the plan, then report the story slug back so triage writes `promoted_to` and archives the intent (the intent's frontmatter is triage's to close, not this skill's).
+
+Everything below is Input A — the conversation.
 
 ## Prerequisites
 
-- `WIKI_SCOPE: <scope>` declared in the project instructions. If missing, suggest `/wiki` and stop.
-- `projects/<scope>/index.md` exists. If missing, suggest `/grill-with-docs` and stop.
-- The conversation has discussed a concrete piece of work (a feature, a refactor, a phase). If only abstract intent has been discussed, suggest `/grill-with-docs` to nail it down first.
+- `WIKI_SCOPE: <scope>` declared in the project instructions. If missing, suggest `$wiki` and stop.
+- `projects/<scope>/index.md` exists. If missing, suggest `$intent` and stop.
+- The conversation has discussed a concrete piece of work (a feature, a refactor, a phase). If only abstract intent has been discussed, suggest `$intent` to nail it down first.
 
 ## What this skill produces
 
@@ -27,7 +39,7 @@ projects/<scope>/
 │       └── story-3-<slug>.md
 ```
 
-Each story file ships with `triage_state: needs-triage`. The user runs `/triage` next to evaluate readiness.
+Each story file ships with `triage_state: needs-triage`. The user runs `$triage` next to evaluate readiness.
 
 ## Process
 
@@ -44,7 +56,7 @@ From the conversation, extract:
 
 **Plan slug** — kebab-case, descriptive, ≤4 words. e.g. `billing-mvp`, `void-and-amend`, `auth-rewrite`. The slug becomes both the parent file (`plan-{slug}.md`) and the sub-folder (`{slug}/`).
 
-**Problem** — 1-3 sentences from the user's perspective. Use vocabulary from `spec-context.md`. If you can't write this without inventing, the conversation hasn't established the problem — stop and suggest `/grill-with-docs`.
+**Problem** — 1-3 sentences from the user's perspective. Use vocabulary from `spec-context.md`. If you can't write this without inventing, the conversation hasn't established the problem — stop and suggest `$intent`.
 
 **Solution** — 2-3 sentences describing the approach. Reference existing specs/ADRs by wikilink (`[[spec-cart-model]]`, `[[adr-postgres]]`).
 
@@ -178,7 +190,7 @@ updated: <today>
 - Each scenario describes ONE behavior end-to-end.
 - Use Given/When/Then, not free-form prose.
 - Cover the happy path first, then 1-2 edge cases per story.
-- Don't try to be exhaustive — the user can add scenarios during `/triage` if a story needs more clarity.
+- Don't try to be exhaustive — the user can add scenarios during `$triage` if a story needs more clarity.
 
 **Rules for slices:**
 
@@ -188,7 +200,7 @@ updated: <today>
 - Default to AFK — push back if a user describes a slice that requires unavoidable human judgment.
 - 1-5 slices per story is normal. If a story needs 6+, the story is too coarse — split it.
 
-**Slice ownership across skills:** `/to-prd` writes a *rough* slice draft (1-3 slices, coarse, mostly to ground the story shape). `/to-issues` is the refinement pass — it validates vertical-slice rules, splits coarse slices into proper tracer bullets, sets `blocked_by` between stories, and (in GH/GitLab mode) mirrors `ready-for-agent` slices to remote issues. Don't over-invest in slice quality here; that's `/to-issues`'s job.
+**Slice ownership across skills:** `$to-stories` writes a *rough* slice draft (1-3 slices, coarse, mostly to ground the story shape). `$to-issues` is the refinement pass — it validates vertical-slice rules, splits coarse slices into proper tracer bullets, sets `blocked_by` between stories, and (in GH/GitLab mode) mirrors `ready-for-agent` slices to remote issues. Don't over-invest in slice quality here; that's `$to-issues`'s job.
 
 ### 6. Sync the wiki
 
@@ -198,16 +210,16 @@ This makes the new plan and stories searchable via `prime` and `search` (MCP too
 
 ### 7. Done — suggest next step
 
-> "Wrote `plan-<slug>` with N stories, all at `needs-triage`. Run `/triage` to evaluate readiness and move stories to `ready-for-agent` (AFK) or `ready-for-human`."
+> "Wrote `plan-<slug>` with N stories, all at `needs-triage`. Run `$triage` to evaluate readiness and move stories to `ready-for-agent` (AFK) or `ready-for-human`."
 
 ## Rules
 
-- **Do not interview.** Synthesize from conversation. If intent is unclear, suggest `/grill-with-docs`.
-- **Do not auto-trigger `/triage`.** Stories ship at `needs-triage` and wait for the user to invoke triage explicitly.
+- **Do not interview.** Synthesize from conversation. If intent is unclear, suggest `$intent`.
+- **Do not auto-trigger `$triage`.** Stories ship at `needs-triage` and wait for the user to invoke triage explicitly.
 - **Use canonical vocabulary** from `spec-context.md`. Don't invent terms.
 - **Reference existing specs and ADRs** via wikilinks rather than restating their content.
 - **One story file per user story.** Even if a story has just one slice, it gets its own file (architectural consistency).
 - **Quote prose-bearing frontmatter scalars** (`summary: "..."`) to avoid breaking the sync walker.
-- **Do not write specs or ADRs** in this skill — flag gaps and let `/grill-with-docs` fill them.
+- **Do not write specs or ADRs** in this skill — flag gaps and let `$intent` fill them.
 - **Update plan/story `updated:` field** after every edit.
 - **Set `created` once at creation; never bump it** — only `updated` changes on later edits.

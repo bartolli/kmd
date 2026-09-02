@@ -119,16 +119,17 @@ The `wiki-sdd` plugin ships nine skills: a complete spec-driven development loop
 | Skill | What it does |
 |---|---|
 | `/wiki` | wires a project to the wiki; local-vs-global vault setup; the hub for everything below |
-| `/grill-with-docs` | interview that sharpens intent and scaffolds a scope: index, primer, glossary, lazy ADRs |
-| `/to-prd` | turns the working conversation into a thin plan plus user stories with Gherkin scenarios |
+| `/intent` | interview that sharpens intent and scaffolds a scope: index, primer, glossary, lazy ADRs |
+| `/to-stories` | turns the working conversation into a thin plan plus user stories with Gherkin scenarios |
 | `/triage` | moves stories through `needs-triage` → `ready-for-agent` / `ready-for-human` / `wontfix` |
 | `/to-issues` | slices stories into vertical tracer bullets; mirrors to GitHub or GitLab when configured |
 | `/tdd` | implements one `ready-for-agent` slice, red-green-refactor, and ticks its checkbox |
-| `/retro` | two questions before every primer rewrite; converts the answers into wiki artifacts |
+| `/retro` | three questions, any time drift is suspected; routes the answers into intents and story Decisions, never a story |
+| `/handoff` | closes the session: status sweep on approval, Story Index reconcile, the primer under budget — gated on a fresh retro |
 | `/to-triggers` | turns a prose rule into a tested vault trigger: you own the intent, it owns the regex |
 | `/signal-dense` | canonical-vocabulary register for long agentic threads |
 
-The working loop: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` per slice → `/retro` before the session closes. `/wiki` is the on-ramp; `/to-triggers` joins whenever a rule proves it should be a gate. The same skills render for all three harnesses below.
+The working loop: `/intent` → `/to-stories` → `/triage` → `/to-issues` → `/tdd` per slice → `/retro` whenever drift is suspected → `/handoff` to close. `/wiki` is the on-ramp; `/to-triggers` joins whenever a rule proves it should be a gate. The same skills render for all three harnesses below.
 
 ## Harness integration
 

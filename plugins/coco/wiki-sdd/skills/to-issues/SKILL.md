@@ -9,7 +9,7 @@ metadata:
 
 Take a wiki user story and decompose it into independently-grabbable vertical slices using tracer bullets. In GitHub/GitLab mode, also mirror `ready-for-agent` slices to the remote tracker.
 
-**Hand-off from `$to-prd`:** `$to-prd` writes a rough slice draft (1-3 coarse slices) when synthesizing stories. `$to-issues` is the refinement pass — validates vertical-slice rules, splits coarse slices, sets `blocked_by` dependencies, and mirrors to GH/GitLab. Run `$to-issues` after `$triage` promotes a story to `ready-for-agent`, or earlier if the user wants to refine slicing before triage.
+**Hand-off from `$to-stories`:** `$to-stories` writes a rough slice draft (1-3 coarse slices) when synthesizing stories. `$to-issues` is the refinement pass — validates vertical-slice rules, splits coarse slices, sets `blocked_by` dependencies, and mirrors to GH/GitLab. Run `$to-issues` after `$triage` promotes a story to `ready-for-agent`, or earlier if the user wants to refine slicing before triage.
 
 ## Prerequisites
 

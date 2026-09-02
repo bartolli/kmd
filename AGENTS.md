@@ -16,7 +16,7 @@ Wiki primer at `projects/llm-wiki/primer.md`, loaded via the wiki MCP server's `
 
 Authoring rules and resync protocol: `wiki://authoring` (MCP resource) or `kmd resource wiki://authoring` (CLI, same content).
 
-Wiki-aware skills: `/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`. Run `/grill-with-docs` to scaffold a new scope or refine intent on an existing one. `/wiki` is the central hub — invoke it for the full constellation map. `/retro` runs before every session-closing primer resync.
+Wiki-aware skills: `/intent`, `/to-stories`, `/triage`, `/to-issues`, `/tdd`, `/retro`, `/handoff`. Run `/intent` to scaffold a new scope or refine intent on an existing one. `/wiki` is the central hub — invoke it for the full constellation map. `/retro` grooms the session whenever drift is suspected; `/handoff` closes it, gated on a retro newer than the primer.
 
 Companion skills for vault file editing: `obsidian-markdown` (wikilinks/callouts/frontmatter in `.md` files), `obsidian-bases` (`.base` views), `obsidian-cli` (live-Obsidian-only operations), `json-canvas` (`.canvas` files).
 

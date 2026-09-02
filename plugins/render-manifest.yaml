@@ -117,7 +117,7 @@ flavors:
 
 shared:
   exact: # byte-copied to every listed flavor (all flavors when unrestricted)
-    - skills/grill-with-docs/questions-cookbook.md
+    - skills/intent/questions-cookbook.md
     - skills/wiki/references/vault-yaml.md
     # coco is deliberately absent: the shared wrapper's fallback is
     # `npx @bartolli/kmd@latest`, and CoCo deployments are the ones most
@@ -126,12 +126,13 @@ shared:
     - path: hooks/run-kmd-hook.mjs
       flavors: [claude, codex] # kiro pending hook pairing
   rendered: # one source; per-flavor dialect
-    - skills/grill-with-docs/SKILL.md
+    - skills/intent/SKILL.md
+    - skills/handoff/SKILL.md
     - skills/retro/SKILL.md
     - skills/signal-dense/SKILL.md
     - skills/tdd/SKILL.md
     - skills/to-issues/SKILL.md
-    - skills/to-prd/SKILL.md
+    - skills/to-stories/SKILL.md
     - skills/to-triggers/SKILL.md
     - skills/triage/SKILL.md
     - skills/wiki/SKILL.md

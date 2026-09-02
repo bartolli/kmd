@@ -1,6 +1,6 @@
 ---
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, CoCo, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation (`/grill-with-docs`, `/to-prd`, `/triage`, `/to-issues`, `/tdd`, `/retro`) and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and file placement (Claude Code, Codex, CoCo, Kiro) when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 ---
 
 # Wiki — Project Bootstrap
@@ -61,15 +61,16 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 
 | Skill | Reads | Writes |
 |---|---|---|
-| `/grill-with-docs` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
-| `/to-prd` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
+| `/intent` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
+| `/to-stories` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
 | `/triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
 | `/to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
 | `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
-| `/retro` | the session's own claims, gates, and open work | story scope extensions, dated plan retro notes, needs-triage stories, primer Open Questions — runs BEFORE primer resync |
+| `/retro` | the session's own claims, gates, and drift from the slice in progress | intents (max three), sightings bumps, story Decisions entries, a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
+| `/handoff` | fully-resolved stories; every plan's Story Index; the retro's residue | archive flips on approval, reconciled Story Index, the primer under budget in the canonical-dense register — gated on a retro note newer than the scope's last edit |
 | `/to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
 
-Typical session arc for new work: `/grill-with-docs` → `/to-prd` → `/triage` → `/to-issues` → `/tdd` (per slice) → repeat triage when stories complete or new ones surface → `/retro` before the closing primer resync. `/to-triggers` joins whenever a rule proves it needs to become a gate.
+Typical session arc for new work: `/intent` → `/to-stories` → `/triage` → `/to-issues` → `/tdd` (per slice) → repeat triage when stories complete or intents reach two sightings → `/retro` whenever drift is suspected and always before the close → `/handoff` closes the session. `/to-triggers` joins whenever a rule proves it needs to become a gate.
 
 ### Companion skills (vault file editing)
 
@@ -82,7 +83,7 @@ When Claude edits files in the vault, four global skills cover Obsidian-flavored
 | `obsidian-cli` | Only when a live Obsidian instance is genuinely needed — plugin/theme dev, screenshots, Dataview re-render. **Not** the canonical search/read surface — use the wiki MCP `search` tool and filesystem `Read` instead. |
 | `json-canvas` | Editing `.canvas` files (mind maps, flowcharts). Not in the standard wiki authoring loop. |
 
-These compose with the wiki-aware skills: `/to-prd` writes story files (using `wiki://template/project/story` — MCP resource, or `kmd resource <uri>` — for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
+These compose with the wiki-aware skills: `/to-stories` writes story files (using `wiki://template/project/story` — MCP resource, or `kmd resource <uri>` — for structure and frontmatter), and `obsidian-markdown` handles the Obsidian-flavored body content (wikilinks, callouts) inside that file.
 
 ### Harness placement
 
@@ -130,7 +131,7 @@ Ask the user which wiki scope this project belongs to. Show the scopes from `vau
 
 > "`<requested-scope>` is not in the wiki's scope vocabulary (currently: `<comma-separated scopes from vault.yaml>`). Adding a new scope requires updating `~/llm-wiki/vault/vault.yaml` and is a deliberate vocabulary extension. Do you want to (a) approve adding `<scope>` to the vocabulary, (b) pick an existing scope, or (c) abort?"
 
-If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `/grill-with-docs` next to scaffold `projects/{scope}/`.
+If (a): add the new scope entry to `vault.yaml`'s `scopes:` field (with `status: active`), AND offer to run `/intent` next to scaffold `projects/{scope}/`.
 
 ### 3. Determine issue tracker
 
@@ -225,8 +226,8 @@ Tell the user setup is complete and which wiki-aware skills will now read from t
 
 Suggest the next step:
 
-- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `/grill-with-docs` to refine intent or kick off a new workstream."
-- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `/grill-with-docs` to scaffold it."
+- If `projects/<scope>/index.md` already exists in the vault → "You're set up. Try `/intent` to refine intent or kick off a new workstream."
+- If it doesn't exist → "The vault doesn't have a scope folder for `<scope>` yet. Run `/intent` to scaffold it."
 
 ## Rules
 
@@ -237,4 +238,4 @@ Suggest the next step:
 - **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
 - **Use the bundled `templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
 - **Scaffold new vaults with `kmd init`** (`<vault-dir> [--set-default]` global, `--local` project) — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
-- **Don't run `/grill-with-docs` automatically** — suggest it as the next step, but let the user invoke it.
+- **Don't run `/intent` automatically** — suggest it as the next step, but let the user invoke it.
