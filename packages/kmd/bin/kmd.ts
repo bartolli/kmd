@@ -27,6 +27,9 @@ commands:
                            TTY offers to record it as default_vault, --set-default records it
                            without asking (-y alone never touches the machine default)
   init --local [-y]        scaffold a project vault: <git-root>/vault + <git-root>/.kmd state home
+  init --upgrade [<vault-root>] [--apply]
+                           report the vault's delta against the starter (exit 1 when behind);
+                           --apply writes it, additive only
   sync [<vault-root>]      vault → index sync (runs validate first)
   validate [<path>]        deterministic vault checker
   mcp [<vault-root>] [--default-root <path>]
@@ -68,6 +71,8 @@ const { positionals, values } = parseArgs({
     'default-root': { type: 'string' },
     'set-default': { type: 'boolean' },
     local: { type: 'boolean' },
+    upgrade: { type: 'boolean' },
+    apply: { type: 'boolean' },
     task: { type: 'string' },
     scope: { type: 'string' },
     kind: { type: 'string' },
@@ -90,6 +95,15 @@ const command = values.version ? '--version' : values.help ? '--help' : position
 async function run(): Promise<void> {
   switch (command) {
     case 'init': {
+      if (values.upgrade) {
+        const { runInitUpgrade } = await import('@llm-wiki/cli/cli');
+        await runInitUpgrade(positionals[1], Boolean(values.apply));
+        break;
+      }
+      if (values.apply) {
+        console.error('usage: kmd init --upgrade [<vault-root>] [--apply]');
+        process.exit(2);
+      }
       const { runInit } = await import('@llm-wiki/cli/cli');
       await runInit(
         positionals[1],

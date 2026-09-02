@@ -36,13 +36,27 @@ export async function refreshSchemaFile(root: string): Promise<boolean> {
  */
 export const STARTER_CONFIG: VaultConfig = {
   scopes: {},
-  kinds: ['project', 'spec', 'adr', 'plan', 'story', 'ops', 'topic', 'article', 'src', 'note'],
+  kinds: [
+    'project',
+    'spec',
+    'adr',
+    'plan',
+    'story',
+    'ops',
+    'topic',
+    'article',
+    'src',
+    'note',
+    'artifact',
+    'prompt',
+    'intent'
+  ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],
   tags: { canonical: [], aliases: {} }
 };
 
-const DOMAIN_DIRS = ['projects', 'research', 'notes'] as const;
+export const DOMAIN_DIRS = ['projects', 'research', 'notes'] as const;
 
 /**
  * Scaffold a fresh vault at `dir` and return the resolved root. Throws when

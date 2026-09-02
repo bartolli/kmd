@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { configJsonSchema, loadVaultConfig } from '@llm-wiki/db/vault-config';
+import { BUILT_IN_KINDS, configJsonSchema, loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   promptYesNo,
@@ -50,6 +50,16 @@ describe('primer and plan templates', () => {
   });
 });
 
+describe('starter vocabulary', () => {
+  it('the starter lists every built-in kind', () => {
+    const starterKinds = STARTER_CONFIG.kinds.map((k) => (typeof k === 'string' ? k : k.name));
+
+    for (const kind of BUILT_IN_KINDS) {
+      expect(starterKinds).toContain(kind);
+    }
+  });
+});
+
 describe('scaffoldVault', () => {
   let base: string;
 
@@ -75,6 +85,41 @@ describe('scaffoldVault', () => {
     const findings = await validateVault(root);
 
     expect(hasErrors(findings)).toBe(false);
+  });
+
+  it('a fresh vault accepts an intent: no kind-vocabulary finding', async () => {
+    const root = await scaffoldVault(join(base, 'vault'));
+    const yaml = await readFile(join(root, 'vault.yaml'), 'utf8');
+    await writeFile(
+      join(root, 'vault.yaml'),
+      yaml.replace('scopes: {}', 'scopes:\n  demo:\n    status: active\n    methodology: sdd')
+    );
+    await mkdir(join(root, 'projects', 'demo', 'intent'), { recursive: true });
+    await writeFile(
+      join(root, 'projects', 'demo', 'intent', 'intent-probe.md'),
+      [
+        '---',
+        'title: "Probe"',
+        'kind: intent',
+        'scope: demo',
+        'status: draft',
+        'summary: "probe"',
+        'tags: [governance]',
+        'origin: user',
+        'sightings: 1',
+        'sources: []',
+        'created: "2026-09-02T20:00:00Z"',
+        'updated: "2026-09-02T20:00:00Z"',
+        '---',
+        '',
+        '# Probe',
+        ''
+      ].join('\n')
+    );
+
+    const findings = await validateVault(root);
+
+    expect(findings.filter((f) => f.rule === 'kind-vocabulary')).toEqual([]);
   });
 
   it('writes the full built-in template set, byte-equal to the embedded copies', async () => {

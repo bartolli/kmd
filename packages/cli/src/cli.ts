@@ -17,6 +17,7 @@ import {
 } from '@llm-wiki/db/kmd-config';
 import { loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { runSync } from './sync.js';
+import { upgradeVault } from './upgrade.js';
 import { type Finding, hasErrors, validateVault } from './validate.js';
 
 export type Command = 'sync' | 'validate';
@@ -239,4 +240,14 @@ export async function main(): Promise<void> {
   } else {
     await runValidate();
   }
+}
+
+export async function runInitUpgrade(
+  positional: string | undefined,
+  apply: boolean
+): Promise<void> {
+  const { root } = requireCliVault(positional);
+  const result = await upgradeVault(root, { apply });
+  for (const line of result.lines) console.log(line);
+  process.exit(result.code);
 }
