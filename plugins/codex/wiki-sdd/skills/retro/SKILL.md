@@ -2,7 +2,7 @@
 name: retro
 description: This skill should be used for a session retrospective at any point in a session — mid-session when drift is suspected, after a bug-hunting detour, after compaction, before a release cut, and always before $handoff. Asks three questions — 'What are you least confident about?', 'What's the biggest thing we're missing? What don't I realize?', and 'Where are we relative to the slice we started, and what were the detours?' — then routes every answer into intents, sightings bumps, and story Decisions entries, never a new story and never the primer. Use when the user says "$retro", "run the retro", "lightweight retro", "mid-session retro", "session retro", "retro protocol", "check for drift", "what are we least confident about", "what are we missing", or "what don't you realize".
 metadata:
-  version: "0.19.0"
+  version: "0.19.1"
 ---
 
 # Retro — Three Questions, Then Intents

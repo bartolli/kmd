@@ -2,7 +2,7 @@
 name: intent
 description: Interview-style grilling that captures intent, sharpens vocabulary, and scaffolds wiki structure for a project scope. Use when the user wants to start a new workstream, refine an existing scope's intent, stress-test a plan against the project's domain language, or write a `spec-context.md` (glossary + relationships). Walks one question at a time, recommends an answer for each, and creates artifacts (`index.md`, `primer.md`, `spec-context.md`, lazy ADRs) inline as decisions crystallize. Auto-detects greenfield (scope folder missing → scaffold) vs brownfield (scope exists → refine + cross-reference code). Triggers on phrases like "grill me", "grill the plan", "let's nail down what we're building", "set up a new scope", "refine the intent", "capture the intent", "write an intent", or `/intent`.
 metadata:
-  version: "0.19.0"
+  version: "0.19.1"
 ---
 
 # Intent — Grill the Idea Against the Wiki
@@ -44,31 +44,38 @@ Write `projects/<scope>/index.md` in the vault using the `wiki://template/projec
 
 ### Step 2 — Primer stub (lands in `primer.md`)
 
-Primer is **co-authored**. Don't invent prose. Create a stub:
+Primer is **co-authored**. Don't invent prose. Create a stub in the served shape — four sections, the reader is an agent:
 
 ```markdown
 ---
-created: "<today>"
-updated: <today>
+created: "<date -u +%Y-%m-%dT%H:%M:%SZ>"
+updated: "<same clock>"
 ---
 
-# <Title>
+# Primer
 
-## Current Focus
+## Focus
 
-<one to three sentences — agreed with user>
+<three lines: what the scope is doing now and why — agreed with user>
 
-## Open Questions
+## Next
 
-- <question 1>
-- <question 2>
+1. <top item, from the Story Index once it exists>
+2.
+3.
 
-## Blocked On
+## Open
 
-- <none, or specifics>
+- <[[intent-<slug>]] pointers only; a question without an intent is filed as one first — or none>
+
+## Read order
+
+1. <three links>
+2.
+3.
 ```
 
-Use `wiki://template/project/primer` (MCP resource, or `kmd resource <uri>`) for the canonical shape. `created` is **write-once** — set it at creation and never bump it; only `updated` changes on later edits. Optional sections (Load-bearing invariants, Read Order, Working set) are added later as they earn their place.
+Use `wiki://template/project/primer` (MCP resource, or `kmd resource <uri>`) for the canonical shape. `created` is **write-once** — set it at creation and never bump it; only `updated` changes on later edits. The four sections are the whole shape, about 300 words at most; nothing a query or another surface derives goes in. `/handoff` rewrites it at every session close.
 
 ### Step 3 — Vocabulary (lands in `spec/spec-context.md`, **lazy creation**)
 
@@ -165,7 +172,7 @@ What becomes easier. What becomes harder. What knock-on effects exist.
 The greenfield grill is done when:
 
 1. `index.md` exists with methodology declared.
-2. `primer.md` exists (stub at minimum, with Current Focus and at least one Open Question or "none").
+2. `primer.md` exists (stub at minimum, with Focus filled and Open pointing at intents or empty).
 3. `spec-context.md` exists IF any domain terms were resolved (skip if the conversation was about pure infrastructure with no project-specific vocabulary).
 4. At least one ADR exists IF a hard-to-reverse decision surfaced. Skip if none did.
 
@@ -203,7 +210,7 @@ Based on the conversation:
 
 ### Step 4 — Update primer (only when explicitly asked)
 
-Per vault rules, primer is co-authored. Suggest changes; don't write them silently. If the user agrees, update `Current Focus`, `Open Questions`, `Blocked On`. Strip stale Read Order / Working set entries.
+Per vault rules, primer is co-authored. Suggest changes; don't write them silently. If the user agrees, update `Focus`, `Next`, `Open`, `Read order` within the budget; `Open` points at intents only, and `Read order` holds three links.
 
 ### Termination
 
