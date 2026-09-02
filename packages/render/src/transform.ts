@@ -11,7 +11,8 @@ function rewriteSlashes(text: string, slashNames: string[], replacement: string)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegex)
     .join('|');
-  return text.replace(new RegExp(`(?<![\\w/])/(${alts})(?![\\w-])`, 'g'), replacement);
+  // A slash after the name means a folder segment (`{scope}/intent/`), not an invocation.
+  return text.replace(new RegExp(`(?<![\\w/])/(${alts})(?![\\w/-])`, 'g'), replacement);
 }
 
 function transformDialect(

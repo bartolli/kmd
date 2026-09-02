@@ -452,6 +452,65 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(existsSync(join(kmdHome, 'db'))).toBe(true);
   }, 30_000);
 
+  it('posttool: surfaces the clock warning when a page changed without its updated', async () => {
+    const page = join(vaultRoot, 'notes', 'demo-note.md');
+    await mkdir(join(vaultRoot, 'notes'), { recursive: true });
+    const write = (body: string) =>
+      writeFile(
+        page,
+        `---\ntitle: Demo note\ntags: [governance]\nupdated: "2026-09-02T14:00:00Z"\n---\n${body}\n`
+      );
+    const event = JSON.stringify({
+      session_id: 'e2e-post-clock',
+      tool_name: 'Write',
+      tool_input: { file_path: page }
+    });
+
+    await write('Body.');
+    const first = await runKmd(
+      ['hook', 'posttool', vaultRoot, '--harness', 'claude'],
+      event,
+      kmdHome
+    );
+    expect(first.stdout).toBe('');
+
+    await write('Edited body.');
+    const second = await runKmd(
+      ['hook', 'posttool', vaultRoot, '--harness', 'claude'],
+      event,
+      kmdHome
+    );
+
+    expect(second.code).toBe(0);
+    const out = JSON.parse(second.stdout) as { hookSpecificOutput: { additionalContext: string } };
+    expect(out.hookSpecificOutput.additionalContext).toContain(
+      'notes/demo-note.md [updated-not-advanced]'
+    );
+  }, 30_000);
+
+  it('session-start: a fresh session hears the backlog band from frontmatter', async () => {
+    await mkdir(join(vaultRoot, 'projects', 'demo', 'plan', 'p'), { recursive: true });
+    await mkdir(join(vaultRoot, 'projects', 'demo', 'intent'), { recursive: true });
+    await writeFile(
+      join(vaultRoot, 'projects', 'demo', 'plan', 'p', 'story-1-old.md'),
+      '---\ntitle: Old\nkind: story\nscope: demo\nstatus: active\ntriage_state: ready-for-agent\ncategory: enhancement\nblocked_by: []\ntags: [governance]\nsources: []\nupdated: "2026-01-01T00:00:00Z"\n---\n- [ ] **Slice 1** — x\n'
+    );
+    await writeFile(
+      join(vaultRoot, 'projects', 'demo', 'intent', 'intent-a.md'),
+      '---\ntitle: A\nkind: intent\nscope: demo\nstatus: draft\nsummary: "a"\ntags: [governance]\norigin: retro\nsightings: 1\nupdated: "2026-09-01T00:00:00Z"\n---\nbody\n'
+    );
+
+    const result = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo'],
+      JSON.stringify({ session_id: 'e2e-band', cwd: vaultRoot, source: 'startup' }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('1 stale AFK story');
+    expect(result.stdout).toContain('1 draft intent');
+  }, 30_000);
+
   it('posttool: blocks with the fix list and holds sync on validation errors', async () => {
     const page = join(vaultRoot, 'notes', 'bad-note.md');
     await mkdir(join(vaultRoot, 'notes'), { recursive: true });

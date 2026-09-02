@@ -282,7 +282,8 @@ export const BUILT_IN_KINDS: ReadonlySet<string> = new Set([
   'src',
   'note',
   'artifact',
-  'prompt'
+  'prompt',
+  'intent'
 ]);
 
 /**

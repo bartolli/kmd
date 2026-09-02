@@ -133,6 +133,12 @@ export function extractWikilinks(body: string): WikiLink[] {
  *   research/{topic}/...   → topic = first segment
  *   notes/...              → both null
  */
+/** A page whose parent chain carries a `notes/` folder — the root domain or a
+ * scope's own `projects/{scope}/notes/`. Kind is implied by location there. */
+export function isNotesPath(relPath: string): boolean {
+  return relPath.split('/').slice(0, -1).includes('notes');
+}
+
 export function deriveLocation(relPath: string): { scope: string | null; topic: string | null } {
   const segments = relPath.split('/');
   const domain = segments[0];
@@ -151,9 +157,10 @@ export function deriveLocation(relPath: string): { scope: string | null; topic: 
  *
  * Skip rules:
  *  - No `title` in frontmatter → narrative-only page (e.g., primer.md).
- *  - No `kind` AND not under notes/ → authoring incomplete; warn.
+ *  - No `kind` AND not under a notes/ folder → authoring incomplete; warn.
  *
- * Notes are the one place where `kind` is implied by location.
+ * Notes are the one place where `kind` is implied by location — the root
+ * domain or a scope's own notes/ folder.
  */
 export function buildPageFields(
   relPath: string,
@@ -168,7 +175,7 @@ export function buildPageFields(
 
   let kind = fm.kind;
   if (!kind) {
-    if (relPath.startsWith('notes/')) {
+    if (isNotesPath(relPath)) {
       kind = 'note';
     } else {
       console.warn(`  skip: ${relPath} — has title but missing kind`);
@@ -184,9 +191,9 @@ export function buildPageFields(
   }
   const updated =
     fm.updated instanceof Date
-      ? fm.updated.toISOString().slice(0, 10)
+      ? fm.updated.toISOString()
       : typeof fm.updated === 'string'
-        ? fm.updated.slice(0, 10)
+        ? fm.updated
         : null;
 
   const metaEntries = Object.entries(parsed.data as Record<string, unknown>).filter(
@@ -263,6 +270,14 @@ export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
   return 'changed';
 }
 
+/** Sync-side finding, shaped like validate's so the hook codecs render both. */
+export interface SyncWarning {
+  path: string;
+  rule: 'updated-not-advanced';
+  severity: 'warning';
+  message: string;
+}
+
 export interface SyncStats {
   changed: number;
   unchanged: number;
@@ -270,6 +285,26 @@ export interface SyncStats {
   pagesDeleted: number;
   linksDeleted: number;
   noPages: boolean;
+  warnings: SyncWarning[];
+}
+
+/**
+ * The clock check that makes `updated` trustworthy for the gates: a page
+ * whose content moved while its clock stayed put was edited without the
+ * frontmatter bump. Read before the upsert overwrites the stored row.
+ */
+export function clockNotAdvanced(db: DatabaseSync, fields: PageFields): SyncWarning | null {
+  const existing = db
+    .prepare('SELECT content_hash, updated FROM pages WHERE path = ?')
+    .get(fields.path) as { content_hash: string | null; updated: string | null } | undefined;
+  if (!existing || existing.content_hash === fields.hash) return null;
+  if (fields.updated === null || existing.updated !== fields.updated) return null;
+  return {
+    path: fields.path,
+    rule: 'updated-not-advanced',
+    severity: 'warning',
+    message: `content changed but "updated" is still ${fields.updated} — set it from \`date -u +%Y-%m-%dT%H:%M:%SZ\``
+  };
 }
 
 /**
@@ -294,6 +329,7 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
     let changed = 0;
     let unchanged = 0;
     let skipped = 0;
+    const warnings: SyncWarning[] = [];
 
     for (const file of files) {
       const path = toRelativePath(vaultRoot, file);
@@ -305,6 +341,8 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
         continue;
       }
 
+      const warning = clockNotAdvanced(db, fields);
+      if (warning) warnings.push(warning);
       const result = syncPage(db, fields);
       if (result === 'changed') {
         changed++;
@@ -346,7 +384,8 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
       skipped,
       pagesDeleted,
       linksDeleted,
-      noPages: indexedPaths.length === 0
+      noPages: indexedPaths.length === 0,
+      warnings
     };
   } finally {
     db.close();
@@ -359,6 +398,9 @@ export async function runSync(): Promise<void> {
   const stats = await syncVault(env.WIKI_VAULT);
   if (stats.noPages) {
     console.warn('no indexable pages found; index swept empty');
+  }
+  for (const w of stats.warnings) {
+    console.error(`${w.severity}: ${w.path} [${w.rule}] ${w.message}`);
   }
   console.log(
     `done: ${stats.changed} changed, ${stats.unchanged} unchanged, ${stats.skipped} skipped, ${stats.pagesDeleted} pages deleted, ${stats.linksDeleted} link orphans cleared`

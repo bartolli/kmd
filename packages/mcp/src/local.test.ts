@@ -71,6 +71,18 @@ describe('openLocalClient', () => {
     }
   });
 
+  it('the search tool tells the caller where the authoring protocol lives — resources, not search', async () => {
+    const client = await openLocalClient(vault, env);
+    try {
+      const tools = await client.listTools();
+      const search = tools.find((t) => t.name === 'search');
+      expect(search?.description).toContain('wiki://authoring');
+      expect(search?.description).toContain('kmd resource');
+    } finally {
+      await client.close();
+    }
+  });
+
   it('calls the tools through the protocol, error shape included', async () => {
     const client = await openLocalClient(vault, env);
     try {

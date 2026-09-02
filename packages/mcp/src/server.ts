@@ -38,7 +38,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
 
   mcp.tool(
     'search',
-    'Full-text search across wiki pages via SQLite FTS5. Returns ranked candidates {path, title, kind, summary, score} — never page bodies. The agent reads the returned paths directly from the filesystem.',
+    'Full-text search across wiki pages via SQLite FTS5. Returns ranked candidates {path, title, kind, summary, score} — never page bodies. The agent reads the returned paths directly from the filesystem. The authoring protocol is not indexed: read wiki://authoring, wiki://templates, and wiki://template/{domain}/{kind} as resources (or `kmd resource <uri>`) instead of searching for them.',
     SearchInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'search', input }, 'tool call');

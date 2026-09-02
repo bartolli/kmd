@@ -1,4 +1,12 @@
-import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -444,7 +452,7 @@ function readUpdated(path: string): string | null {
     const { data } = parseFrontmatter(readFileSync(path, 'utf8'));
     const updated = data.updated;
     if (typeof updated === 'string') return updated;
-    if (updated instanceof Date) return updated.toISOString().slice(0, 10);
+    if (updated instanceof Date) return updated.toISOString();
   } catch {
     // a malformed page is validate's problem, not the gate's
   }
@@ -1101,8 +1109,9 @@ export async function runHookPosttool(): Promise<void> {
     let synced = false;
     if (!hasErrors(findings)) {
       try {
-        await syncVault(vaultRoot);
+        const stats = await syncVault(vaultRoot);
         synced = true;
+        findings.push(...stats.warnings);
       } catch (err) {
         diag(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -1192,19 +1201,85 @@ const REORIENT_TEXT =
  * harness that delivers SessionStart stdout to the model. The scope binding
  * is engine-owned; only the instruction prose is config.
  */
+/** The backlog band a fresh session is told about — deterministic detection
+ * from frontmatter, the model invoked at the breach ([[plan-sdlc-loop]]). */
+export interface BacklogBand {
+  /** ready-for-agent, active, zero ticked slices, `updated` older than thirty days. */
+  stale: number;
+  draftIntents: number;
+}
+
+function renderBand(band: BacklogBand): string {
+  const parts: string[] = [];
+  if (band.stale > 0) {
+    parts.push(
+      `${band.stale} stale AFK ${band.stale === 1 ? 'story' : 'stories'} (ready-for-agent, zero ticks, thirty days)`
+    );
+  }
+  if (band.draftIntents > 0) {
+    parts.push(`${band.draftIntents} draft ${band.draftIntents === 1 ? 'intent' : 'intents'}`);
+  }
+  return parts.length === 0 ? '' : ` Backlog: ${parts.join(', ')} — /triage.`;
+}
+
+const STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+function frontmatterOf(path: string): { data: Record<string, unknown>; content: string } | null {
+  try {
+    return parseFrontmatter(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The backlog band, read from the scope's story and intent frontmatter on the
+ * vault filesystem — never the index, which may lag the vault. A story is
+ * stale when it is accepted (`ready-for-agent`, `active`), never started
+ * (zero ticked slices), and its clock is more than thirty days behind `now`.
+ */
+export function scanBacklog(vaultRoot: string, scope: string, now: Date): BacklogBand {
+  const band: BacklogBand = { stale: 0, draftIntents: 0 };
+  const planDir = join(vaultRoot, 'projects', scope, 'plan');
+  if (existsSync(planDir)) {
+    for (const entry of readdirSync(planDir, { recursive: true }) as string[]) {
+      const rel = entry.split(sep).join('/');
+      if (!/(^|\/)story-[^/]+\.md$/.test(rel)) continue;
+      const page = frontmatterOf(join(planDir, entry));
+      if (page === null) continue;
+      const { data, content } = page;
+      if (data.triage_state !== 'ready-for-agent' || data.status !== 'active') continue;
+      if (/^- \[x\]/m.test(content)) continue;
+      const updated = typeof data.updated === 'string' ? Date.parse(data.updated) : Number.NaN;
+      if (Number.isNaN(updated) || now.getTime() - updated <= STALE_AFTER_MS) continue;
+      band.stale++;
+    }
+  }
+  const intentDir = join(vaultRoot, 'projects', scope, 'intent');
+  if (existsSync(intentDir)) {
+    for (const entry of readdirSync(intentDir)) {
+      if (!entry.endsWith('.md')) continue;
+      const page = frontmatterOf(join(intentDir, entry));
+      if (page?.data.status === 'draft') band.draftIntents++;
+    }
+  }
+  return band;
+}
+
 export function renderSessionStart(
   scope: string,
   source: string | undefined,
   messages: {
     orient?: { text?: string | undefined } | undefined;
     reorient?: { text?: string | undefined } | undefined;
-  } = {}
+  } = {},
+  band?: BacklogBand
 ): string {
-  const text =
-    source === 'compact'
-      ? (messages.reorient?.text ?? REORIENT_TEXT)
-      : (messages.orient?.text ?? ORIENT_TEXT);
-  return `Wiki scope "${scope}": ${text}`;
+  if (source === 'compact') {
+    return `Wiki scope "${scope}": ${messages.reorient?.text ?? REORIENT_TEXT}`;
+  }
+  const text = messages.orient?.text ?? ORIENT_TEXT;
+  return `Wiki scope "${scope}": ${text}${band ? renderBand(band) : ''}`;
 }
 
 /**
@@ -1232,7 +1307,8 @@ export async function runHookSessionStart(): Promise<void> {
     const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     if (scope === undefined) return;
-    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}));
+    const band = event.source === 'compact' ? undefined : scanBacklog(vaultRoot, scope, new Date());
+    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band));
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }

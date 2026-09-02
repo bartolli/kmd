@@ -27,7 +27,8 @@ const CFG: VaultConfig = {
     'src',
     'note',
     'artifact',
-    'prompt'
+    'prompt',
+    'intent'
   ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],
@@ -397,6 +398,16 @@ describe('required fields', () => {
     expect(findings.some((f) => f.rule === 'required-fields')).toBe(false);
   });
 
+  it("enforces the note floor for a kind-less note under a scope's notes/ folder", () => {
+    const raw = '---\ntitle: Retro\ntags: [x]\n---\nbody\n';
+
+    const findings = validatePage('projects/sotto/notes/retro-2026-09-02.md', raw, CFG, REF);
+
+    expect(
+      findings.some((f) => f.rule === 'required-fields' && f.message.includes('"updated"'))
+    ).toBe(true);
+  });
+
   it('enforces the note floor for a kind-less note (kind inferred from notes/)', () => {
     // notes carry no `kind` key — sync infers it from location, and so must the floor.
     const raw = '---\ntitle: T\ntags: [x]\n---\nbody\n'; // missing updated
@@ -678,5 +689,91 @@ describe('hasErrors', () => {
     expect(hasErrors([{ path: 'p', rule: 'r', severity: 'error', message: 'm' }])).toBe(true);
     expect(hasErrors([{ path: 'p', rule: 'r', severity: 'warning', message: 'm' }])).toBe(false);
     expect(hasErrors([])).toBe(false);
+  });
+});
+
+// Intent frontmatter satisfying the built-in floor — the provenance fields
+// (origin, sightings) are what triage orders and the retro's two-strike rule
+// reads, so their absence is an error, not a custom-kind nudge.
+const wellFormedIntent = (over = '') =>
+  `---\ntitle: X\nkind: intent\nscope: sotto\nstatus: draft\nsummary: y\ntags: [x]\norigin: retro\nsightings: 1\ncreated: "2026-09-02"\nupdated: 2026-09-02\n${over}---\nbody\n`;
+
+describe('intent kind', () => {
+  it('accepts a well-formed intent page under intent/intent-*.md', () => {
+    expect(validatePage('projects/sotto/intent/intent-x.md', wellFormedIntent(), CFG, REF)).toEqual(
+      []
+    );
+  });
+
+  it('flags an intent outside intent/intent-*.md with folder-slug', () => {
+    const findings = validatePage('projects/sotto/plan/intent-x.md', wellFormedIntent(), CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'folder-slug' && f.severity === 'error')).toBe(true);
+  });
+
+  it('flags an intent missing its provenance fields (origin, sightings)', () => {
+    const raw = wellFormedIntent().replace('origin: retro\n', '').replace('sightings: 1\n', '');
+
+    const findings = validatePage('projects/sotto/intent/intent-x.md', raw, CFG, REF);
+
+    const missing = findings.filter((f) => f.rule === 'required-fields').map((f) => f.message);
+    expect(missing.some((m) => m.includes('"origin"'))).toBe(true);
+    expect(missing.some((m) => m.includes('"sightings"'))).toBe(true);
+  });
+});
+
+// Timestamp rules (plan-sdlc-loop story 2). Date-only values stay legal until
+// the migration lands; a timestamp is legal only in the quoted UTC form.
+describe('timestamps', () => {
+  it('flags updated ahead of the clock beyond five minutes, tolerates less', () => {
+    const at = (stamp: string) =>
+      wellFormedSpec().replace('updated: 2026-06-19\n', `updated: "${stamp}"\n`);
+    const now = new Date('2026-09-02T14:00:00Z');
+
+    const ahead = validatePage(
+      'projects/sotto/spec/spec-x.md',
+      at('2026-09-02T14:06:00Z'),
+      CFG,
+      REF,
+      {
+        now
+      }
+    );
+    const within = validatePage(
+      'projects/sotto/spec/spec-x.md',
+      at('2026-09-02T14:04:00Z'),
+      CFG,
+      REF,
+      {
+        now
+      }
+    );
+
+    expect(ahead.some((f) => f.rule === 'timestamp-skew' && f.severity === 'error')).toBe(true);
+    expect(within.some((f) => f.rule === 'timestamp-skew')).toBe(false);
+  });
+
+  it('flags updated earlier than created', () => {
+    const raw = wellFormedSpec('created: "2026-09-02T16:00:00Z"\n').replace(
+      'updated: 2026-06-19\n',
+      'updated: "2026-09-02T14:30:00Z"\n'
+    );
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'timestamp-order' && f.severity === 'error')).toBe(true);
+  });
+
+  it('flags a timestamp without the Z suffix', () => {
+    const raw = wellFormedSpec().replace(
+      'updated: 2026-06-19\n',
+      'updated: "2026-09-02T14:30:00"\n'
+    );
+
+    const findings = validatePage('projects/sotto/spec/spec-x.md', raw, CFG, REF);
+
+    expect(findings.some((f) => f.rule === 'timestamp-format' && f.severity === 'error')).toBe(
+      true
+    );
   });
 });

@@ -10,6 +10,7 @@ import { parseFrontmatter } from './frontmatter.js';
 import {
   deriveLocation,
   extractWikilinks,
+  isNotesPath,
   SCAN_DOMAINS,
   toRelativePath,
   walkMarkdown
@@ -32,7 +33,7 @@ function hasIndexableTitle(data: Record<string, unknown>): boolean {
 
 /**
  * A page sync would index: it has a `title` and either a `kind` or lives under
- * notes/ (notes imply kind=note). Title-less narrative/reserved pages (primers,
+ * a notes/ folder — the root domain or a scope's own (notes imply kind=note). Title-less narrative/reserved pages (primers,
  * the title-less ontology/alayacare pages) are skipped by sync, so the
  * sync-mirror checks are gated on this — validate governs what sync governs.
  * The kind-floor contract checks gate on kind intent instead: a missing or
@@ -41,7 +42,7 @@ function hasIndexableTitle(data: Record<string, unknown>): boolean {
 function isIndexed(relPath: string, data: Record<string, unknown>): boolean {
   if (!hasIndexableTitle(data)) return false;
   if (typeof data.kind === 'string' && data.kind !== '') return true;
-  return relPath.startsWith('notes/');
+  return isNotesPath(relPath);
 }
 
 /**
@@ -86,6 +87,7 @@ const REQUIRED_FIELDS: Record<string, readonly string[]> = {
     'blocked_by',
     'sources'
   ],
+  intent: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'origin', 'sightings'],
   topic: ['title', 'kind', 'status', 'summary', 'updated', 'confidence'],
   article: ['title', 'kind', 'status', 'updated'],
   src: ['title', 'kind', 'topic', 'status', 'summary', 'updated'],
@@ -106,6 +108,7 @@ const FOLDER_PATTERNS: Record<string, RegExp> = {
   ops: /^projects\/[^/]+\/ops\/ops-[^/]+\.md$/,
   plan: /^projects\/[^/]+\/plan\/plan-[^/]+\.md$/,
   story: /^projects\/[^/]+\/plan\/[^/]+\/story-[^/]+\.md$/,
+  intent: /^projects\/[^/]+\/intent\/intent-[^/]+\.md$/,
   project: /^projects\/[^/]+\/index\.md$/,
   topic: /^research\/[^/]+\/index\.md$/,
   src: /^research\/[^/]+\/src-[^/]+\.md$/
@@ -117,7 +120,7 @@ function checkRequiredFields(relPath: string, data: Record<string, unknown>): Fi
   const kind =
     typeof data.kind === 'string' && data.kind !== ''
       ? data.kind
-      : relPath.startsWith('notes/')
+      : isNotesPath(relPath)
         ? 'note'
         : undefined;
   const required = kind ? REQUIRED_FIELDS[kind] : undefined;
@@ -200,7 +203,7 @@ function checkTagsRequired(relPath: string, data: Record<string, unknown>): Find
   const kind =
     typeof data.kind === 'string' && data.kind !== ''
       ? data.kind
-      : relPath.startsWith('notes/')
+      : isNotesPath(relPath)
         ? 'note'
         : undefined;
   if (kind && TAG_OPTIONAL_KINDS.has(kind)) return [];
@@ -214,6 +217,61 @@ function checkTagsRequired(relPath: string, data: Record<string, unknown>): Find
         'tags must be present and non-empty (tags are open — any values, every content page tagged)'
     }
   ];
+}
+
+// Frontmatter clocks. The quoted UTC form is the target; the date-only form
+// stays legal as a coarse clock — it sorts as the start of its day under the
+// same lexicographic compare the gates use, and vaults migrate on their own
+// schedule.
+const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CLOCK_FIELDS = ['created', 'updated'] as const;
+
+function isClock(value: unknown): value is string {
+  return typeof value === 'string' && (TIMESTAMP_RE.test(value) || DATE_ONLY_RE.test(value));
+}
+
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+function checkTimestamps(relPath: string, data: Record<string, unknown>, now: Date): Finding[] {
+  const findings: Finding[] = [];
+  for (const field of CLOCK_FIELDS) {
+    const value = data[field];
+    if (value === undefined || value === null) continue;
+    if (!isClock(value)) {
+      findings.push({
+        path: relPath,
+        rule: 'timestamp-format',
+        severity: 'error',
+        message: `"${field}" must be a quoted UTC timestamp YYYY-MM-DDTHH:MM:SSZ (got ${JSON.stringify(value)})`
+      });
+      continue;
+    }
+    if (Date.parse(value) - now.getTime() > CLOCK_SKEW_MS) {
+      findings.push({
+        path: relPath,
+        rule: 'timestamp-skew',
+        severity: 'error',
+        message: `"${field}" (${value}) is ahead of the clock — take the value from \`date -u +%Y-%m-%dT%H:%M:%SZ\`, never compose it`
+      });
+    }
+  }
+  const { created, updated } = data;
+  if (isClock(created) && isClock(updated)) {
+    // A date-only side means "sometime that day": compare at day granularity
+    // rather than treating it as midnight.
+    const dayOnly = DATE_ONLY_RE.test(created) || DATE_ONLY_RE.test(updated);
+    const [from, to] = dayOnly ? [created.slice(0, 10), updated.slice(0, 10)] : [created, updated];
+    if (to < from) {
+      findings.push({
+        path: relPath,
+        rule: 'timestamp-order',
+        severity: 'error',
+        message: `"updated" (${updated}) precedes "created" (${created})`
+      });
+    }
+  }
+  return findings;
 }
 
 function checkFolderSlug(relPath: string, data: Record<string, unknown>): Finding[] {
@@ -467,7 +525,8 @@ export function validatePage(
   relPath: string,
   raw: string,
   cfg: VaultConfig,
-  refIndex: ReadonlySet<string>
+  refIndex: ReadonlySet<string>,
+  opts: { now?: Date } = {}
 ): Finding[] {
   let parsed: ReturnType<typeof parseFrontmatter>;
   try {
@@ -492,6 +551,7 @@ export function validatePage(
   return [
     ...checkRequiredFields(relPath, parsed.data),
     ...checkCustomKindFloor(relPath, parsed.data, cfg),
+    ...checkTimestamps(relPath, parsed.data, opts.now ?? new Date()),
     ...checkIndexedPage(relPath, parsed.data, parsed.content, cfg, refIndex)
   ];
 }

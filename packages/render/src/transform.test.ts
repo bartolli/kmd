@@ -15,6 +15,14 @@ describe('transformCodex', () => {
     expect(transformCodex(text, { slashNames: ['wiki'], replacements: [] })).toBe(text);
   });
 
+  it('leaves a folder segment after a placeholder untouched — `{scope}/intent/` is a path, `/intent` is a skill', () => {
+    const cfg = { slashNames: ['intent'], replacements: [] as [string, string][] };
+    const path =
+      'Lives at `projects/{scope}/intent/intent-{slug}.md` and `projects/<scope>/intent/`.';
+    expect(transformCodex(path, cfg)).toBe(path);
+    expect(transformCodex('Run `/intent` first.', cfg)).toBe('Run `$intent` first.');
+  });
+
   it('rewrites bare Claude on word boundaries, preserving CLAUDE.md and Claude Code', () => {
     const none = { slashNames: [], replacements: [] as [string, string][] };
     expect(transformCodex('When Claude edits, solo+Claude applies.', none)).toBe(

@@ -22,6 +22,32 @@ describe('buildPageFields scope authority', () => {
     expect(fields?.scope).toBe('sotto');
   });
 
+  it('keeps the intent provenance and outcome fields in meta, scope from the path', () => {
+    const { raw, parsed } = parsePage(
+      'title: X\nkind: intent\nstatus: archived\norigin: retro\nsightings: 2\npromoted_to: story-4-x\ndismissed: ""'
+    );
+
+    const fields = buildPageFields('projects/sotto/intent/intent-x.md', raw, parsed, known);
+
+    expect(fields?.scope).toBe('sotto');
+    expect(fields?.kind).toBe('intent');
+    expect(fields?.meta).toMatchObject({
+      origin: 'retro',
+      sightings: 2,
+      promoted_to: 'story-4-x',
+      dismissed: ''
+    });
+  });
+
+  it("infers kind: note for a kind-less page under a scope's notes/ folder", () => {
+    const { raw, parsed } = parsePage('title: Retro\nupdated: "2026-09-02T14:00:00Z"');
+
+    const fields = buildPageFields('projects/sotto/notes/retro-2026-09-02.md', raw, parsed, known);
+
+    expect(fields?.kind).toBe('note');
+    expect(fields?.scope).toBe('sotto');
+  });
+
   it('throws on a page under an unconfigured scope', () => {
     const { raw, parsed } = parsePage('title: X\nkind: spec');
 
@@ -30,12 +56,16 @@ describe('buildPageFields scope authority', () => {
     );
   });
 
-  it('normalizes a string `updated` (the yaml parser keeps dates as strings) to YYYY-MM-DD', () => {
-    const { raw, parsed } = parsePage('title: X\nkind: spec\nupdated: 2026-04-28');
+  it('keeps `updated` as written — a date stays a date, a UTC timestamp keeps its time', () => {
+    const day = parsePage('title: X\nkind: spec\nupdated: 2026-04-28');
+    const stamp = parsePage('title: X\nkind: spec\nupdated: "2026-09-02T14:30:00Z"');
 
-    const fields = buildPageFields('projects/sotto/spec/spec-x.md', raw, parsed, known);
-
-    expect(fields?.updated).toBe('2026-04-28');
+    expect(
+      buildPageFields('projects/sotto/spec/spec-x.md', day.raw, day.parsed, known)?.updated
+    ).toBe('2026-04-28');
+    expect(
+      buildPageFields('projects/sotto/spec/spec-x.md', stamp.raw, stamp.parsed, known)?.updated
+    ).toBe('2026-09-02T14:30:00Z');
   });
 });
 
@@ -194,5 +224,52 @@ describe('syncVault orphan sweep', () => {
 
     expect(stats.pagesDeleted).toBe(1);
     expect(indexedPaths()).toEqual([]);
+  });
+});
+
+describe('syncVault clock check', () => {
+  let vaultRoot: string;
+  let kmdHomeBefore: string | undefined;
+
+  beforeEach(() => {
+    vaultRoot = mkdtempSync(join(tmpdir(), 'kmd-clock-vault-'));
+    kmdHomeBefore = process.env.KMD_HOME;
+    process.env.KMD_HOME = mkdtempSync(join(tmpdir(), 'kmd-clock-home-'));
+    writeFileSync(
+      join(vaultRoot, 'vault.yaml'),
+      'scopes: {}\nkinds: [note]\nstatuses: [draft]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+    );
+    mkdirSync(join(vaultRoot, 'notes'));
+  });
+
+  afterEach(() => {
+    const home = process.env.KMD_HOME as string;
+    if (kmdHomeBefore === undefined) delete process.env.KMD_HOME;
+    else process.env.KMD_HOME = kmdHomeBefore;
+    rmSync(home, { recursive: true, force: true });
+    rmSync(vaultRoot, { recursive: true, force: true });
+  });
+
+  function page(updated: string, body: string): void {
+    writeFileSync(
+      join(vaultRoot, 'notes/p.md'),
+      `---\ntitle: P\nkind: note\nstatus: draft\ntags: [x]\nupdated: "${updated}"\n---\n${body}\n`
+    );
+  }
+
+  it('warns when content changed but updated did not advance', async () => {
+    page('2026-09-02T14:00:00Z', 'first body');
+    await syncVault(vaultRoot);
+
+    page('2026-09-02T14:00:00Z', 'edited body');
+    const stats = await syncVault(vaultRoot);
+
+    expect(stats.warnings).toEqual([
+      expect.objectContaining({
+        path: 'notes/p.md',
+        rule: 'updated-not-advanced',
+        severity: 'warning'
+      })
+    ]);
   });
 });

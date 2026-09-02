@@ -54,8 +54,22 @@ async function readResource(
 }
 
 describe('TEMPLATES array', () => {
-  it('has exactly 11 entries matching the vault template set', () => {
-    expect(TEMPLATES).toHaveLength(11);
+  it('has exactly 13 entries — 12 vault template files, the note file under both domains', () => {
+    expect(TEMPLATES).toHaveLength(13);
+  });
+
+  it('serves the note template under the project domain too — scoped notes share the file', () => {
+    const scoped = TEMPLATES.find((t) => t.uri === 'wiki://template/project/note');
+    const root = TEMPLATES.find((t) => t.uri === 'wiki://template/note');
+
+    expect(scoped?.file).toBe('note.md');
+    expect(root?.file).toBe('note.md');
+  });
+
+  it('serves the intent template in the project domain', () => {
+    const intent = TEMPLATES.find((t) => t.uri === 'wiki://template/project/intent');
+
+    expect(intent?.file).toBe('project-intent.md');
   });
 
   it('every URI follows wiki://template/{domain}/{kind} or wiki://template/{kind}', () => {
@@ -71,11 +85,11 @@ describe('TEMPLATES array', () => {
 });
 
 describe('wiki://templates index resource', () => {
-  it('is registered alongside the 11 individual templates', () => {
+  it('is registered alongside the 13 individual templates', () => {
     const { mcp } = captureMcp();
     registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG));
 
-    expect(mcp.registerResource).toHaveBeenCalledTimes(12);
+    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
   });
 
   it('returns markdown listing every template name and URI', async () => {
@@ -116,6 +130,18 @@ describe('custom-kind templates', () => {
     expect(text).toContain(EXPERIMENT_KIND.signal);
   });
 
+  it('treats an object-form intent entry as built-in — no custom template registered', () => {
+    const { mcp } = captureMcp();
+    const intentObjectForm: VaultConfig = {
+      ...CONFIG,
+      kinds: [...CONFIG.kinds, { name: 'intent', signal: 'Reworded', where: '`x`' }]
+    };
+
+    registerTemplateResources(mcp, asBinding('/fake-vault', intentObjectForm));
+
+    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
+  });
+
   it('does not register a custom template for an object-form built-in kind', () => {
     const reworded: VaultConfig = {
       ...CONFIG,
@@ -125,7 +151,7 @@ describe('custom-kind templates', () => {
     registerTemplateResources(mcp, asBinding('/fake-vault', reworded));
 
     expect(handlers.has('wiki://template/adr')).toBe(false);
-    expect(mcp.registerResource).toHaveBeenCalledTimes(12);
+    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
   });
 
   describe('serving from disk', () => {

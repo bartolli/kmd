@@ -18,6 +18,7 @@ const TEMPLATE_FILES = [
   'note.md',
   'project-adr.md',
   'project-index.md',
+  'project-intent.md',
   'project-ops.md',
   'project-plan.md',
   'project-primer.md',
@@ -27,6 +28,27 @@ const TEMPLATE_FILES = [
   'research-index.md',
   'research-src.md'
 ];
+
+describe('template clocks', () => {
+  it('every template carries quoted UTC timestamp placeholders, never a bare date', () => {
+    for (const [file, content] of Object.entries(VAULT_TEMPLATES)) {
+      expect(content, file).toContain('updated: "{{timestamp}}"');
+      expect(content, file).not.toContain('{{date}}');
+      if (content.includes('created:')) expect(content, file).toContain('created: "{{timestamp}}"');
+    }
+  });
+});
+
+describe('primer and plan templates', () => {
+  it('the primer template carries the four sections and the budget; the plan template has no Status Log', () => {
+    const primer = VAULT_TEMPLATES['project-primer.md'] ?? '';
+    for (const heading of ['## Focus', '## Next', '## Open', '## Read order']) {
+      expect(primer).toContain(heading);
+    }
+    expect(primer).toContain('300 words');
+    expect(VAULT_TEMPLATES['project-plan.md']).not.toContain('Status Log');
+  });
+});
 
 describe('scaffoldVault', () => {
   let base: string;

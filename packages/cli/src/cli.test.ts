@@ -163,3 +163,38 @@ describe('wiki sync pre-sync gate', () => {
     }
   }, 20_000);
 });
+
+describe('wiki sync clock check', () => {
+  it('prints an updated-not-advanced warning when a page changed without its clock', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'wiki-sync-clock-'));
+    const home = await mkdtemp(join(tmpdir(), 'wiki-sync-clock-home-'));
+    const page = (body: string) =>
+      writeFile(
+        join(dir, 'notes', 'p.md'),
+        `---\ntitle: P\nkind: note\nstatus: draft\ntags: [x]\nupdated: "2026-09-02T14:00:00Z"\n---\n${body}\n`
+      );
+    const env = { ...process.env, WIKI_VAULT: dir, KMD_HOME: home, KMD_PROJECT_DIR: dir };
+    const sync = () =>
+      execFileAsync('node', ['--import', 'tsx', CLI_ENTRY, 'sync'], { env }).then(
+        (r) => r.stderr,
+        (e: { stderr?: string }) => e.stderr ?? ''
+      );
+    try {
+      await writeFile(
+        join(dir, 'vault.yaml'),
+        'scopes: {}\nkinds: [note]\nstatuses: [draft]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+      );
+      await mkdir(join(dir, 'notes'));
+      await page('first');
+      expect(await sync()).not.toContain('updated-not-advanced');
+
+      await page('edited');
+      const stderr = await sync();
+
+      expect(stderr).toContain('warning: notes/p.md [updated-not-advanced]');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(home, { recursive: true, force: true });
+    }
+  }, 30_000);
+});

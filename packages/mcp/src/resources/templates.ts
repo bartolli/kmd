@@ -16,8 +16,10 @@ interface TemplateSpec {
 }
 
 /**
- * The vault has 11 fixed templates, mirroring the v2 frontmatter schemas
- * (extended with `story` per adr-story-vocabulary-and-triage-fields).
+ * The vault has 12 template files behind 13 URIs (the note file serves both
+ * domains), mirroring the v2 frontmatter schemas
+ * (extended with `story` per adr-story-vocabulary-and-triage-fields and
+ * `intent` per plan-sdlc-loop).
  * URI scheme: `wiki://template/{domain}/{kind}` — the agent thinks
  * "I'm authoring a {kind} in the {domain} domain" and the URI matches
  * that mental model. `note` collapses to a single segment because the
@@ -36,7 +38,7 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     name: 'Project primer',
     file: 'project-primer.md',
     description:
-      'Human-authored narrative context for a project. Free-form body. Inlined into the prime tool response.'
+      'Session-close orientation for an agent reader. Four sections — Focus, Next, Open, Read order — about 300 words, nothing another surface derives. Inlined into the prime tool response; rewritten by /handoff.'
   },
   {
     uri: 'wiki://template/project/spec',
@@ -57,7 +59,7 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     name: 'Project plan',
     file: 'project-plan.md',
     description:
-      'Plan for a phase or initiative. Sections: Goal, Scope, Milestones, Dependencies, Status Log.'
+      'Plan for a phase or initiative. Sections: Goal, Scope, Milestones, Dependencies. History lives in git and the stories, never in the plan.'
   },
   {
     uri: 'wiki://template/project/ops',
@@ -71,6 +73,13 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     file: 'project-story.md',
     description:
       'User story with Gherkin scenarios and inline implementation slices. Lives at plan/{plan-name}/story-N-{slug}.md. Frontmatter carries triage_state, category, blocked_by, parent.'
+  },
+  {
+    uri: 'wiki://template/project/intent',
+    name: 'Project intent',
+    file: 'project-intent.md',
+    description:
+      'Entry artifact for a finding or idea — problem, proposed outcome, affected, constraints, open questions, falsification path. Lives at intent/intent-{slug}.md. Frontmatter carries origin and sightings; promoted_to or dismissed records the triage outcome.'
   },
   {
     uri: 'wiki://template/research/index',
@@ -98,6 +107,13 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
     name: 'Note',
     file: 'note.md',
     description: 'Low-ceremony everyday note. Capture fast, sort later.'
+  },
+  {
+    uri: 'wiki://template/project/note',
+    name: 'Project note',
+    file: 'note.md',
+    description:
+      'The same low-ceremony note, filed under a scope at projects/{scope}/notes/{slug}.md — retros, release notes, evidence. Kind is implied by the folder.'
   }
 ];
 

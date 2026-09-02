@@ -23,7 +23,8 @@ const CONFIG: VaultConfig = {
     'src',
     'note',
     'artifact',
-    'prompt'
+    'prompt',
+    'intent'
   ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],
@@ -94,6 +95,24 @@ describe('wiki://authoring resource', () => {
     expect(text).not.toContain('| — |');
   });
 
+  it("teaches both note homes — root capture and the scope's own notes folder", async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('`projects/{scope}/notes/{slug}.md`');
+    expect(text).toContain('`notes/{slug}.md`');
+  });
+
+  it('teaches the intent kind with its folder and slug pattern', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('**intent**');
+    expect(text).toContain('`projects/{scope}/intent/intent-{slug}.md`');
+  });
+
   it('kind selector is config-driven — only configured kinds appear', async () => {
     const { mcp, handlers } = captureMcp();
     registerAuthoringResource(mcp, asBinding('/fake-vault', MINIMAL_CONFIG));
@@ -160,6 +179,16 @@ describe('wiki://authoring resource', () => {
     expect(text).toContain('Use the matching template');
     expect(text).toContain('Quote prose-bearing scalars');
     expect(text).toContain('ADR supersession is bidirectional');
+  });
+
+  it('teaches the primer contract — four sections, the budget, the register, nothing derivable', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('The primer carries only what nothing else derives');
+    expect(text).toContain('Focus, Next, Open, Read order');
+    expect(text).toContain('signal-dense');
   });
 
   it('uses custom authoring_rules from vault config when provided', async () => {

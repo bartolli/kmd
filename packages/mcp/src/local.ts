@@ -18,6 +18,8 @@ import { buildServer } from './server.js';
  */
 export interface LocalClient {
   readResource(uri: string): Promise<string>;
+  /** The served tool surface as a harness sees it — names and descriptions. */
+  listTools(): Promise<Array<{ name: string; description: string }>>;
   callTool(
     name: string,
     args: Record<string, unknown>
@@ -44,6 +46,10 @@ export async function openLocalClient(
   await mcp.connect(serverTransport);
   await client.connect(clientTransport);
   return {
+    async listTools() {
+      const result = await client.listTools();
+      return result.tools.map((t) => ({ name: t.name, description: t.description ?? '' }));
+    },
     async readResource(uri) {
       const result = await client.readResource({ uri });
       return result.contents.map((c) => ('text' in c ? String(c.text) : '')).join('\n');

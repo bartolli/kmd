@@ -45,6 +45,13 @@ const KIND_PEDAGOGY: ReadonlyMap<string, KindPedagogy> = new Map([
     }
   ],
   [
+    'intent',
+    {
+      signal: 'Finding or idea entering the loop; elaborated into a story at promotion',
+      where: '`projects/{scope}/intent/intent-{slug}.md`'
+    }
+  ],
+  [
     'ops',
     {
       signal: 'Operational runbook, how to run/deploy',
@@ -72,7 +79,13 @@ const KIND_PEDAGOGY: ReadonlyMap<string, KindPedagogy> = new Map([
       where: '`research/{topic}/src-{slug}.md`'
     }
   ],
-  ['note', { signal: 'Low-ceremony capture, sort later', where: '`notes/{slug}.md`' }],
+  [
+    'note',
+    {
+      signal: 'Low-ceremony capture, sort later',
+      where: '`notes/{slug}.md` (scope-less) or `projects/{scope}/notes/{slug}.md`'
+    }
+  ],
   [
     'artifact',
     {
@@ -101,14 +114,15 @@ const DEFAULT_AUTHORING_RULES = [
   '',
   '- **`summary` is the retrieval contract.** One sentence stating the page\'s decision or claim, not its topic. Search and `prime` rank by it — "Chose X over Y because Z" surfaces; "About the sync pipeline" sinks.',
   '- **Quote prose-bearing scalars.** `summary: "..."` — unquoted `Word: phrase` patterns break the YAML parser.',
-  '- **On any edit, update `updated`.** Never change `created` — it is write-once.',
-  '- **Notes have no `kind` field** — implied by location. Sync sets `kind: note`.',
+  '- **On any edit, update `updated`.** Never change `created` — it is write-once. Both are quoted UTC timestamps `YYYY-MM-DDTHH:MM:SSZ` taken from `date -u +%Y-%m-%dT%H:%M:%SZ`, never composed.',
+  '- **Notes have no `kind` field** — implied by location. Sync sets `kind: note`. A note that belongs to a scope lives at `projects/{scope}/notes/`; the root `notes/` is cross-scope capture only.',
   '- **Reuse existing tags** (visible in `prime` response `top_tags`). No synonyms.',
   '',
   '**Content**',
   '',
   '- **ADR and ops pages are predicate-only.** No definitional preambles for established vocabulary, no narrative, no marketing. The audience is the project team — assume fluency.',
   "- **Spec / ADR edits land inline with the change that surfaces them.** Don't queue corrections in plans — the spec reflects current code at every commit.",
+  '- **The primer carries only what nothing else derives.** Four sections — Focus, Next, Open, Read order — about 300 words, in the `signal-dense` register with `spec-context` handles; invariants live in the project instructions, versions in the changelog, counts in `prime`, work items in the Story Index and the intents. Written once per session close by `/handoff`.',
   '',
   '**Linking**',
   '',

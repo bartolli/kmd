@@ -26,6 +26,7 @@ import {
   renderSessionStart,
   renderStop,
   resolveScope,
+  scanBacklog,
   vaultPathTouched
 } from './hook.js';
 import type { Finding } from './validate.js';
@@ -710,6 +711,15 @@ describe('matchPretoolTriggers / renderPretool', () => {
       expect(evaluateMatches([gated()], vaultRoot).fired).toEqual([]);
     });
 
+    it('orders within a day when updated carries a UTC timestamp', () => {
+      page('notes/demo-retro-1.md', '"2026-09-02T14:30:00Z"');
+      page('projects/demo/ops/release-1.md', '"2026-09-02T16:05:00Z"');
+      expect(evaluateMatches([gated()], vaultRoot).fired.map((m) => m.id)).toEqual(['retro-gate']);
+
+      page('notes/demo-retro-1.md', '"2026-09-02T16:06:00Z"');
+      expect(evaluateMatches([gated()], vaultRoot).fired).toEqual([]);
+    });
+
     it('treats a same-day tie as fresh', () => {
       page('notes/demo-retro-1.md', '2026-07-26');
       page('projects/demo/ops/release-1.md', '2026-07-26');
@@ -735,6 +745,58 @@ describe('matchPretoolTriggers / renderPretool', () => {
 
       expect(evaluateMatches([gated()], vaultRoot).fired.map((m) => m.id)).toEqual(['retro-gate']);
     });
+  });
+});
+
+describe('scanBacklog', () => {
+  let vaultRoot: string;
+
+  beforeEach(async () => {
+    vaultRoot = await mkdtemp(join(tmpdir(), 'kmd-band-vault-'));
+  });
+
+  afterEach(async () => {
+    await rm(vaultRoot, { recursive: true, force: true });
+  });
+
+  function page(rel: string, frontmatter: string, body = 'body\n'): void {
+    const path = join(vaultRoot, rel);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `---\n${frontmatter}\n---\n${body}`);
+  }
+
+  it('counts ready-for-agent stories with zero ticks older than thirty days, and draft intents', () => {
+    const now = new Date('2026-09-02T12:00:00Z');
+    page(
+      'projects/demo/plan/p/story-1-old.md',
+      'title: Old\nkind: story\nstatus: active\ntriage_state: ready-for-agent\nupdated: "2026-07-20T00:00:00Z"',
+      '- [ ] **Slice 1** — x\n'
+    );
+    page(
+      'projects/demo/plan/p/story-2-fresh.md',
+      'title: Fresh\nkind: story\nstatus: active\ntriage_state: ready-for-agent\nupdated: "2026-09-01T00:00:00Z"',
+      '- [ ] **Slice 1** — x\n'
+    );
+    page(
+      'projects/demo/plan/p/story-3-started.md',
+      'title: Started\nkind: story\nstatus: active\ntriage_state: ready-for-agent\nupdated: "2026-07-01T00:00:00Z"',
+      '- [x] **Slice 1** — x\n- [ ] **Slice 2** — y\n'
+    );
+    page('projects/demo/intent/intent-a.md', 'title: A\nkind: intent\nstatus: draft\nsightings: 1');
+    page(
+      'projects/demo/intent/intent-b.md',
+      'title: B\nkind: intent\nstatus: archived\nsightings: 2'
+    );
+    page(
+      'projects/other/intent/intent-c.md',
+      'title: C\nkind: intent\nstatus: draft\nsightings: 1'
+    );
+
+    expect(scanBacklog(vaultRoot, 'demo', now)).toEqual({ stale: 1, draftIntents: 1 });
+  });
+
+  it('returns zeros for a scope with no stories or intents', () => {
+    expect(scanBacklog(vaultRoot, 'demo', new Date())).toEqual({ stale: 0, draftIntents: 0 });
   });
 });
 
@@ -1095,6 +1157,20 @@ describe('renderSessionStart', () => {
 
     expect(line).toContain('"llm-wiki"');
     expect(line.toLowerCase()).toContain('prime');
+  });
+
+  it('carries the backlog band on a fresh session — stale AFK stories and draft intents', () => {
+    const line = renderSessionStart('llm-wiki', 'startup', {}, { stale: 2, draftIntents: 3 });
+
+    expect(line).toContain('2 stale');
+    expect(line).toContain('3 draft intent');
+  });
+
+  it('stays lean when the band is empty', () => {
+    const line = renderSessionStart('llm-wiki', 'startup', {}, { stale: 0, draftIntents: 0 });
+
+    expect(line).not.toContain('stale');
+    expect(line).not.toContain('intent');
   });
 
   it('re-orients after compaction with the capture instruction', () => {
