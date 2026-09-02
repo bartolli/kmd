@@ -31,6 +31,7 @@ Ships `.mcp.json` registering the `wiki` stdio server (`prime`, `search` tools) 
 
 Registers the `kmd hook` gate engine — no manual wiring:
 
+- **SessionStart** — wiki orientation for the bound scope, delivered as the JSON context envelope; re-fires with `source: "compact"` after compaction, which carries the re-orientation.
 - **UserPromptSubmit** — prompt-time reminders from your vault's `triggers_extra` (`vault.yaml`), injected once per session per trigger.
 - **PostToolUse** — auto validate + sync: after a mutation inside the vault — an `apply_patch` edit, or a shell command whose string names a vault path, including `rm`, `mv`, redirections, and glob deletions — `kmd validate` runs; findings return into the session for the agent to fix and the index holds until they are; a clean write syncs silently. Tool calls outside the vault cost nothing.
 
