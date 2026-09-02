@@ -24,6 +24,7 @@ import {
   renderPretool,
   renderPrompt,
   renderSessionStart,
+  sessionStartStdout,
   renderStop,
   resolveScope,
   scanBacklog,
@@ -1566,5 +1567,27 @@ describe('renderSessionStart: vault behind the starter', () => {
     const line = renderSessionStart('llm-wiki', 'startup', {}, { stale: 0, draftIntents: 0 });
 
     expect(line).not.toContain('behind');
+  });
+});
+
+/** Shape lock for intent-coco-session-start-stdout-not-in-context. */
+describe('session-start stdout is the JSON context envelope', () => {
+  it('wraps the orientation line in hookSpecificOutput.additionalContext for SessionStart', () => {
+    const line = renderSessionStart('llm-wiki', 'startup');
+
+    const parsed = JSON.parse(sessionStartStdout(line)) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+
+    expect(parsed.hookSpecificOutput.hookEventName).toBe('SessionStart');
+    expect(parsed.hookSpecificOutput.additionalContext).toBe(line);
+  });
+
+  it('is one line, so a harness that reads stdout line by line still parses it', () => {
+    const out = sessionStartStdout(renderSessionStart('llm-wiki', 'compact'));
+
+    expect(out.trim().split('\n')).toHaveLength(1);
+    expect(out.trim().startsWith('{')).toBe(true);
+    expect(out.trim().endsWith('}')).toBe(true);
   });
 });
