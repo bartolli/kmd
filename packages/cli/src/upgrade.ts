@@ -111,7 +111,7 @@ function count(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
-function summarize(delta: VaultDelta): string {
+export function summarizeDelta(delta: VaultDelta): string {
   const parts: string[] = [];
   if (delta.kinds.length > 0) parts.push(count(delta.kinds.length, 'kind', 'kinds'));
   if (delta.statuses.length > 0) parts.push(count(delta.statuses.length, 'status', 'statuses'));
@@ -153,7 +153,7 @@ export async function upgradeVault(
     return {
       delta,
       lines: [
-        `vault behind the starter: ${summarize(delta)}`,
+        `vault behind the starter: ${summarizeDelta(delta)}`,
         ...itemLines(delta, ''),
         ...differs,
         'run kmd init --upgrade --apply to write the delta'

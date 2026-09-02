@@ -118,6 +118,7 @@ describe('CLI mirror outcomes', () => {
     const outcome = await runResource('wiki://template/project/spec', vault, env);
     expect(outcome.code).toBe(1);
     expect(outcome.stderr).toContain('template file missing');
+    expect(outcome.stderr).toContain('run kmd init --upgrade');
   });
 
   it('prime: unlisted scope is the tool error, exit 1', async () => {

@@ -1548,3 +1548,23 @@ describe('stop gate dedup', () => {
     expect(dedupeMatches(stateDir, 'stop-s2', gate)).toHaveLength(1);
   });
 });
+
+describe('renderSessionStart: vault behind the starter', () => {
+  it('names the delta and the command when the vault is behind', () => {
+    const line = renderSessionStart(
+      'llm-wiki',
+      'startup',
+      {},
+      { stale: 0, draftIntents: 0 },
+      '3 kinds, 1 template'
+    );
+
+    expect(line).toContain('Vault behind the starter: 3 kinds, 1 template — kmd init --upgrade.');
+  });
+
+  it('is silent when the vault is current', () => {
+    const line = renderSessionStart('llm-wiki', 'startup', {}, { stale: 0, draftIntents: 0 });
+
+    expect(line).not.toContain('behind');
+  });
+});

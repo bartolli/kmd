@@ -19,6 +19,7 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { parseFrontmatter } from './frontmatter.js';
 import { syncVault } from './sync.js';
+import { diffVault, isBehind, summarizeDelta } from './upgrade.js';
 import { type Finding, hasErrors, validateVault } from './validate.js';
 
 export interface PromptEvent {
@@ -1273,13 +1274,15 @@ export function renderSessionStart(
     orient?: { text?: string | undefined } | undefined;
     reorient?: { text?: string | undefined } | undefined;
   } = {},
-  band?: BacklogBand
+  band?: BacklogBand,
+  behind?: string
 ): string {
   if (source === 'compact') {
     return `Wiki scope "${scope}": ${messages.reorient?.text ?? REORIENT_TEXT}`;
   }
   const text = messages.orient?.text ?? ORIENT_TEXT;
-  return `Wiki scope "${scope}": ${text}${band ? renderBand(band) : ''}`;
+  const upgrade = behind ? ` Vault behind the starter: ${behind} — kmd init --upgrade.` : '';
+  return `Wiki scope "${scope}": ${text}${band ? renderBand(band) : ''}${upgrade}`;
 }
 
 /**
@@ -1308,7 +1311,9 @@ export async function runHookSessionStart(): Promise<void> {
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
     if (scope === undefined) return;
     const band = event.source === 'compact' ? undefined : scanBacklog(vaultRoot, scope, new Date());
-    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band));
+    const delta = event.source === 'compact' ? undefined : await diffVault(vaultRoot);
+    const behind = delta && isBehind(delta) ? summarizeDelta(delta) : undefined;
+    console.log(renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind));
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }

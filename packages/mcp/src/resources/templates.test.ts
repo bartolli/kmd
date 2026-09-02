@@ -179,6 +179,26 @@ describe('custom-kind templates', () => {
       expect(text).toContain('kind: experiment');
     });
 
+    it('a built-in template missing from the vault names kmd init --upgrade as the remedy', async () => {
+      const { mcp, handlers } = captureMcp();
+      registerTemplateResources(mcp, asBinding(dir, CONFIG));
+
+      const handler = handlers.get('wiki://template/project/spec');
+      await expect(handler?.(new URL('wiki://template/project/spec'))).rejects.toThrow(
+        /template file missing: templates\/project-spec\.md .*— run kmd init --upgrade$/
+      );
+    });
+
+    it('a custom kind without its template file does not name --upgrade', async () => {
+      const { mcp, handlers } = captureMcp();
+      registerTemplateResources(mcp, asBinding(dir, CONFIG_WITH_CUSTOM));
+
+      const handler = handlers.get('wiki://template/experiment');
+      await expect(handler?.(new URL('wiki://template/experiment'))).rejects.not.toThrow(
+        /--upgrade/
+      );
+    });
+
     it('a declared kind without its template file errors naming the file', async () => {
       const { mcp, handlers } = captureMcp();
       registerTemplateResources(mcp, asBinding(dir, CONFIG_WITH_CUSTOM));

@@ -148,7 +148,8 @@ function registerTemplate(mcp: McpServer, tmpl: TemplateSpec, binding: Binding):
       try {
         text = await readFile(join(vaultRoot, 'templates', tmpl.file), 'utf8');
       } catch (err) {
-        throw new Error(`template file missing: templates/${tmpl.file} (${tmpl.uri})`, {
+        const remedy = TEMPLATES.includes(tmpl) ? ' — run kmd init --upgrade' : '';
+        throw new Error(`template file missing: templates/${tmpl.file} (${tmpl.uri})${remedy}`, {
           cause: err
         });
       }
