@@ -1,3 +1,30 @@
+## [v0.14.0] - 2026-09-02
+
+### Added
+
+- `intent` is a built-in kind at `projects/{scope}/intent/intent-{slug}.md`; the validate floor requires `origin` and `sightings`; served at `wiki://template/project/intent` with a kind-selector row, and `kmd init` ships the template
+- `created` and `updated` are quoted UTC timestamps `YYYY-MM-DDTHH:MM:SSZ` taken from the clock; validate rules `timestamp-format`, `timestamp-order`, `timestamp-skew` (five minutes against the seat clock), all errors; date-only values stay legal as coarse clocks; `validatePage` accepts `{ now }`
+- sync warning `updated-not-advanced`: content changed under an unchanged clock; the posttool hook surfaces sync warnings beside validate findings
+- scoped notes: any `notes/` folder segment implies `kind: note`, so `projects/{scope}/notes/` is a note home beside the root `notes/` domain; `wiki://template/project/note` serves the note template beside `wiki://template/note`
+- session-start orientation carries the backlog band, read from frontmatter: stale AFK stories (`ready-for-agent`, `active`, zero ticked slices, `updated` thirty days behind) and draft intents; silent when empty, absent after compaction
+- `LocalClient.listTools()` lists the served tools
+- wiki-sdd `handoff` closes the session: the primer is the first write after a retro note newer than the scope's last edit, then the status sweep on approval, the Story Index reconcile, the sync check, and one line naming what the next session starts with; the primer is four sections, about 300 words, in the `signal-dense` register
+- wiki-sdd `intent` (was `grill-with-docs`) writes a sharpened idea as an `origin: user` intent; `to-stories` (was `to-prd`) elaborates a promoted intent into one story under the active plan; both keep their prior trigger phrases
+
+### Changed
+
+- sync indexes `updated` as written
+- the search tool description names `wiki://authoring`, `wiki://templates`, and `kmd resource` as the authoring-protocol route
+- the authoring guide carries the primer contract (Focus, Next, Open, Read order; about 300 words; `signal-dense` register), both note homes, and the clock command; the plan template has no Status Log section
+- wiki-sdd `retro` is a grooming step invocable at any point: three questions, the third a re-read of the slice in progress with every detour classified decision, drift, or done; answers route to intents (at most three per run), sightings bumps, story Decisions entries, and a ten-line section in the scope's dated note, never a story, never the primer; the hot-path override admits a committed failing test as the shape lock for a one-slice fix
+- wiki-sdd `triage` reads state from the vault filesystem; draft intents by sightings lead the buckets, the stale band offers demote, dismiss, or keep, and an intent is promoted, held, dismissed, or merged; `adr-no-*` is reserved for design rejections
+- the hub skill, the project-instructions template, the root README, `AGENTS.md`, and the four adapter READMEs name `/handoff` as the session close and the loop `intent → to-stories → triage → to-issues → tdd → retro → handoff`; the hub description no longer enumerates its siblings
+- render manifest: `intent`, `to-stories`, and `handoff` in the rendered set
+
+### Fixed
+
+- the codex and coco slash rewrite leaves a name followed by `/` untouched: `{scope}/intent/` is a path, `/intent` an invocation
+
 ## [v0.13.0] - 2026-09-01
 
 ### Added
