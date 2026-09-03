@@ -51,6 +51,7 @@ commands:
   search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]
                            CLI mirror of the search tool: ranked candidates, never page bodies
   hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--default-root <path>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
+                           session-start [--defer-orientation]: hold the line for the session's first prompt
                            harness gate engine: JSON event on stdin, decision/context on stdout;
                            the vault resolves through the chain with the event cwd as project
                            signal; posttool auto-runs validate + sync after a vault write;

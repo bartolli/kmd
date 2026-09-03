@@ -5,6 +5,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from 'node:fs';
 import { homedir } from 'node:os';
@@ -837,6 +838,36 @@ export function dedupeMatches<T extends { id: string; dedup?: Trigger['dedup'] }
   return fresh;
 }
 
+/**
+ * The pending-orientation marker: a session-start line held for the session's
+ * first prompt, for harnesses that run SessionStart outside the agent loop.
+ * Lives in the session's dedup dir under a name no dedup key can take —
+ * keys pass through `safeName`, which never emits `#`.
+ */
+const PENDING_ORIENTATION = '#pending-orientation';
+
+export function pendOrientation(stateDir: string, sessionId: string, line: string): void {
+  const dir = join(stateDir, safeName(sessionId));
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, PENDING_ORIENTATION), line);
+  } catch (err) {
+    diag(`orientation not deferred: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** The held line, removed on read; null when nothing is pending. */
+export function takePendingOrientation(stateDir: string, sessionId: string): string | null {
+  const path = join(stateDir, safeName(sessionId), PENDING_ORIENTATION);
+  try {
+    const line = readFileSync(path, 'utf8');
+    unlinkSync(path);
+    return line;
+  } catch {
+    return null;
+  }
+}
+
 function safeName(part: string): string {
   return part.replace(/[^A-Za-z0-9._@-]/g, '_');
 }
@@ -891,6 +922,8 @@ interface HookInvocation {
   /** True under `--dry-run` or `--explain`: no state writes, no side effects. */
   dryRun: boolean;
   explain: boolean;
+  /** `--defer-orientation`: session-start holds its line for the session's first prompt. */
+  deferOrientation: boolean;
 }
 
 function hookInvocation(): HookInvocation {
@@ -904,7 +937,8 @@ function hookInvocation(): HookInvocation {
       triggers: { type: 'string' },
       'default-root': { type: 'string' },
       'dry-run': { type: 'boolean' },
-      explain: { type: 'boolean' }
+      explain: { type: 'boolean' },
+      'defer-orientation': { type: 'boolean' }
     }
   });
   return {
@@ -914,7 +948,8 @@ function hookInvocation(): HookInvocation {
     harness: values.harness,
     triggersFile: values.triggers,
     dryRun: values['dry-run'] === true || values.explain === true,
-    explain: values.explain === true
+    explain: values.explain === true,
+    deferOrientation: values['defer-orientation'] === true
   };
 }
 
@@ -1003,6 +1038,10 @@ export async function runHookPrompt(): Promise<void> {
       Date.now(),
       !invocation.dryRun
     );
+    const pending = invocation.dryRun
+      ? null
+      : takePendingOrientation(hookStateDir(vaultRoot), event.session_id);
+    if (pending !== null) console.log(pending);
     for (const line of renderPrompt(fresh)) {
       console.log(line);
     }
@@ -1325,11 +1364,10 @@ export async function runHookSessionStart(): Promise<void> {
     const band = event.source === 'compact' ? undefined : scanBacklog(vaultRoot, scope, new Date());
     const delta = event.source === 'compact' ? undefined : await diffVault(vaultRoot);
     const behind = delta && isBehind(delta) ? summarizeDelta(delta) : undefined;
-    console.log(
-      sessionStartStdout(
-        renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind)
-      )
-    );
+    const line = renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind);
+    if (invocation.deferOrientation)
+      pendOrientation(hookStateDir(vaultRoot), event.session_id, line);
+    console.log(sessionStartStdout(line));
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }

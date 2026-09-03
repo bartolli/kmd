@@ -511,6 +511,52 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(result.stdout).toContain('1 draft intent');
   }, 30_000);
 
+  it('session-start --defer-orientation: the line rides the first prompt, once; the compact re-fire likewise', async () => {
+    const start = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo', '--defer-orientation'],
+      JSON.stringify({ session_id: 'e2e-defer', cwd: vaultRoot, source: 'startup' }),
+      kmdHome
+    );
+    expect(start.code).toBe(0);
+    expect(start.stdout).toContain('"hookEventName":"SessionStart"');
+
+    const promptArgs = ['hook', 'prompt', vaultRoot, '--scope', 'demo'];
+    const first = await runKmd(promptArgs, promptEvent('e2e-defer', 'hello there'), kmdHome);
+    const second = await runKmd(promptArgs, promptEvent('e2e-defer', 'hello again'), kmdHome);
+    const other = await runKmd(promptArgs, promptEvent('e2e-other', 'hello there'), kmdHome);
+
+    expect(first.stdout.trim()).toMatch(/^Wiki scope "demo": /);
+    expect(first.stdout).not.toContain('hookSpecificOutput');
+    expect(second.stdout).toBe('');
+    expect(other.stdout).toBe('');
+
+    const compact = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo', '--defer-orientation'],
+      JSON.stringify({ session_id: 'e2e-defer', cwd: vaultRoot, source: 'compact' }),
+      kmdHome
+    );
+    expect(compact.code).toBe(0);
+    const continuation = await runKmd(promptArgs, promptEvent('e2e-defer', 'carry on'), kmdHome);
+    expect(continuation.stdout).toContain('context was compacted');
+    expect((await runKmd(promptArgs, promptEvent('e2e-defer', 'and on'), kmdHome)).stdout).toBe('');
+  }, 60_000);
+
+  it('session-start without the flag defers nothing', async () => {
+    const start = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo'],
+      JSON.stringify({ session_id: 'e2e-nodefer', cwd: vaultRoot, source: 'startup' }),
+      kmdHome
+    );
+    expect(start.stdout).toContain('"hookEventName":"SessionStart"');
+
+    const first = await runKmd(
+      ['hook', 'prompt', vaultRoot, '--scope', 'demo'],
+      promptEvent('e2e-nodefer', 'hello there'),
+      kmdHome
+    );
+    expect(first.stdout).toBe('');
+  }, 30_000);
+
   it('posttool: blocks with the fix list and holds sync on validation errors', async () => {
     const page = join(vaultRoot, 'notes', 'bad-note.md');
     await mkdir(join(vaultRoot, 'notes'), { recursive: true });

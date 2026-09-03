@@ -20,6 +20,7 @@ import {
   parsePromptEvent,
   parseSessionStartEvent,
   parseStopEvent,
+  pendOrientation,
   renderPosttool,
   renderPretool,
   renderPrompt,
@@ -28,6 +29,7 @@ import {
   resolveScope,
   scanBacklog,
   sessionStartStdout,
+  takePendingOrientation,
   vaultPathTouched
 } from './hook.js';
 import type { Finding } from './validate.js';
@@ -279,6 +281,36 @@ describe('resolveScope', () => {
 
     expect(resolveScope(loaded, join(homedir(), 'proj/x/sub'))).toBe('home');
     expect(resolveScope(loaded, 'not/absolute/sub')).toBeUndefined();
+  });
+});
+
+describe('pending orientation', () => {
+  let stateDir: string;
+
+  beforeEach(async () => {
+    stateDir = await mkdtemp(join(tmpdir(), 'kmd-hook-state-'));
+  });
+
+  afterEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  it('is taken once for its session, then gone', () => {
+    pendOrientation(stateDir, 's1', 'Wiki scope "demo": prime first.');
+
+    expect(takePendingOrientation(stateDir, 's1')).toBe('Wiki scope "demo": prime first.');
+    expect(takePendingOrientation(stateDir, 's1')).toBeNull();
+    expect(takePendingOrientation(stateDir, 's2')).toBeNull();
+  });
+
+  it('a later pend replaces an unconsumed one, and never collides with a dedup key', () => {
+    pendOrientation(stateDir, 's1', 'orient');
+    pendOrientation(stateDir, 's1', 'reorient');
+    const match = { id: 'pending-orientation', text: 'a trigger with the marker name' };
+
+    expect(dedupeMatches(stateDir, 's1', [match])).toEqual([match]);
+    expect(takePendingOrientation(stateDir, 's1')).toBe('reorient');
+    expect(dedupeMatches(stateDir, 's1', [match])).toEqual([]);
   });
 });
 
