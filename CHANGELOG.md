@@ -1,3 +1,14 @@
+## [v0.16.1] - 2026-09-03
+
+### Fixed
+
+- `kmd hook` resolves the active scope by comparing canonical filesystem paths: the event cwd and each scope's expanded `repo` pass through the native realpath — symlinks followed, on-disk casing, the deepest existing ancestor resolved and the rest re-appended — so `~/projects/x` and `~/Projects/x` on a case-insensitive volume, a symlinked checkout, and `/tmp` against `/private/tmp` resolve to the same scope; a realpath failure falls back to the string. Witnessed on the enterprise Cortex seat, where a case-only difference silenced every scope-bound hook
+- `kmd hook session-start` from a cwd inside none of the declared scope repos prints `kmd hook: cwd <cwd> is inside no declared scope repo — check scopes.*.repo in <vault.yaml>` on stderr and exits 0; the other hook events stay silent on a miss. Claude Code routes exit-0 stderr to its debug log, so the line is read there
+
+### Changed
+
+- the codex adapter README names the upstream request for a workspace signal to plugin MCP servers, openai/codex#37903, and the `mcp_optional_startup_grace_ms = 0` setting for seats whose `npx` launch exceeds Codex's default optional-server grace
+
 ## [v0.16.0] - 2026-09-03
 
 ### Added
