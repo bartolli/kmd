@@ -102,7 +102,7 @@ Let the user pick.
 
 - Read the full story file (frontmatter + body).
 - Read the parent `plan/plan-{name}.md` for context.
-- Read `spec-context.md` for vocabulary.
+- Read `glossary.md` for vocabulary.
 - Read any wikilinked specs/ADRs the story references.
 - Check existing `adr-no-*.md` files in the scope — if a similar enhancement was previously rejected, surface it. (This is the wiki-native equivalent of Matt's `.out-of-scope/` knowledge base.)
 - If the story is `bug` category, attempt reproduction: trace the relevant code, run tests if needed.

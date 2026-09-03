@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "wiki-sdd",
-  "version": "0.19.1",
-  "description": "Wiki-native spec-driven development loop for the llm-wiki agent wiki: bootstrap a project scope, grill intent into spec-context, synthesize PRDs and user stories, triage stories through a state machine, slice into tracker issues, and implement slices via red-green-refactor TDD.",
+  "version": "0.20.0",
+  "description": "Wiki-native spec-driven development loop for the llm-wiki agent wiki: bootstrap a project scope, grill intent into a glossary, synthesize PRDs and user stories, triage stories through a state machine, slice into tracker issues, and implement slices via red-green-refactor TDD.",
   "author": {
     "name": "Angel Bartolli"
   },

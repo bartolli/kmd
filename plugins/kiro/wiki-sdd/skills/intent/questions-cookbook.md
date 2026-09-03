@@ -19,13 +19,13 @@ Common questions per stage with recommended answers. Adapt to the project — do
 | `sdd`, `tdd`, or `hybrid`? | Default `hybrid` for app-layer work (most projects). `sdd` when the surface is contract-first (APIs, protocols, MCP servers, library boundaries). `tdd` when behavior is the dominant signal and specs would lag. State your reasoning. |
 | What's the smallest thing you can ship? | A "hello world" tracer — the thinnest vertical that exercises every layer. Land this before designing the second slice. |
 
-## Stage C — Vocabulary (lazy → spec-context.md)
+## Stage C — Vocabulary (lazy → glossary.md)
 
 When the user introduces a term, ask:
 
 - **Is this term shared with the user?** ("Customer" might mean different things to dev vs. product.)
 - **Is there an existing word that competes?** ("cancellation" vs "void" vs "refund" — pick one.)
-- **Is this a domain concept or a programming concept?** General programming concepts (timeout, retry, error type) don't belong in `spec-context.md`.
+- **Is this a domain concept or a programming concept?** General programming concepts (timeout, retry, error type) don't belong in `glossary.md`.
 
 When two terms compete, propose a canonical pick with reasoning. Push back if the user picks a vague term.
 
@@ -70,7 +70,7 @@ Don't assume which side wins. Ask. Then update the wrong side — usually the sp
 
 End the grill when:
 
-- The user says "I think we're good" — verify the artifacts list (`index.md`, `primer.md`, `spec-context.md` if any terms resolved, ADRs if any decisions surfaced).
+- The user says "I think we're good" — verify the artifacts list (`index.md`, `primer.md`, `glossary.md` if any terms resolved, ADRs if any decisions surfaced).
 - You can't think of another concrete question — that's a signal you've exhausted productive grilling, not a hint to invent filler.
 - Three consecutive questions get short, generic answers — the user is fatigued; stop and let work resume.
 

@@ -1,8 +1,8 @@
 ---
 name: to-stories
-description: 'This skill should be used to write wiki stories — Gherkin scenarios plus a first slice list — from either input: the current conversation, synthesized into a thin `plan/plan-{name}.md` with one `plan/{name}/story-N-{slug}.md` per story; or a promoted intent, elaborated into one story under the active plan with the intent linked and `promoted_to` reported back. Default `triage_state: needs-triage`. Does NOT interview — if intent is unclear it suggests `$intent` and stops. Use when the user says "turn this into a plan", "draft a PRD", "$to-stories", "write up what we discussed", "synthesize this into stories", "write the story for intent X", or "elaborate intent X". Reads `spec-context.md` and existing ADRs to use the project''s vocabulary correctly.'
+description: 'This skill should be used to write wiki stories — Gherkin scenarios plus a first slice list — from either input: the current conversation, synthesized into a thin `plan/plan-{name}.md` with one `plan/{name}/story-N-{slug}.md` per story; or a promoted intent, elaborated into one story under the active plan with the intent linked and `promoted_to` reported back. Default `triage_state: needs-triage`. Does NOT interview — if intent is unclear it suggests `$intent` and stops. Use when the user says "turn this into a plan", "draft a PRD", "$to-stories", "write up what we discussed", "synthesize this into stories", "write the story for intent X", or "elaborate intent X". Reads `glossary.md` and existing ADRs to use the project''s vocabulary correctly.'
 metadata:
-  version: "0.19.1"
+  version: "0.20.0"
 ---
 
 # To Stories — Conversation or Intent into Wiki Stories
@@ -13,7 +13,7 @@ Two inputs, one output shape. From the **current conversation**, a thin orchestr
 
 When `$triage` promotes an intent, or the user names one:
 
-1. Read `projects/<scope>/intent/intent-<slug>.md` in full, then `spec-context.md` and the ADRs it links.
+1. Read `projects/<scope>/intent/intent-<slug>.md` in full, then `glossary.md` and the ADRs it links.
 2. Derive the story from the intent's sections — **Problem** and **Proposed outcome** become the User Story and the Problem line; the **Falsification** path becomes the first scenario, since it already names an observable outcome; **Affected** names the code paths for the slices; **Constraints** and **Open questions** land in the story's Decisions and scenarios respectively.
 3. Write `projects/<scope>/plan/<active-plan>/story-N-<slug>.md` — next N in that plan — with `[[intent-<slug>]]` under References. No new plan for one story.
 4. `triage_state` is what the operator chose at promotion: `ready-for-agent` when the brief is complete, `needs-triage` otherwise.
@@ -46,7 +46,7 @@ Each story file ships with `triage_state: needs-triage`. The user runs `$triage`
 ### 1. Read the wiki context
 
 - Call `prime(<scope>)` via the wiki MCP, or `kmd prime <scope>` where the harness exposes no MCP tools — get identity, primer, active ADRs, top tags, current plan.
-- Read `projects/<scope>/spec/spec-context.md` if it exists — use canonical vocabulary throughout.
+- Read `projects/<scope>/glossary.md` if it exists — use canonical vocabulary throughout.
 - Read recent ADRs under `projects/<scope>/adr/` to respect existing decisions.
 - Note any active plan — the new plan should not duplicate an in-flight one.
 
@@ -56,7 +56,7 @@ From the conversation, extract:
 
 **Plan slug** — kebab-case, descriptive, ≤4 words. e.g. `billing-mvp`, `void-and-amend`, `auth-rewrite`. The slug becomes both the parent file (`plan-{slug}.md`) and the sub-folder (`{slug}/`).
 
-**Problem** — 1-3 sentences from the user's perspective. Use vocabulary from `spec-context.md`. If you can't write this without inventing, the conversation hasn't established the problem — stop and suggest `$intent`.
+**Problem** — 1-3 sentences from the user's perspective. Use vocabulary from `glossary.md`. If you can't write this without inventing, the conversation hasn't established the problem — stop and suggest `$intent`.
 
 **Solution** — 2-3 sentences describing the approach. Reference existing specs/ADRs by wikilink (`[[spec-cart-model]]`, `[[adr-postgres]]`).
 
@@ -79,7 +79,7 @@ Walk the synthesized plan and ask:
 - Does the solution describe a system that doesn't yet have a `spec-{topic}.md`? → propose creating one.
 - Does the solution rely on a hard-to-reverse decision not yet captured in an ADR? → propose creating one (apply Matt's three-test: hard-to-reverse + surprising + real trade-off).
 
-Don't write specs/ADRs in this skill — flag the gaps and reference future skill work. Or, if the gap is small enough to fill inline (a single new term in `spec-context.md`), do it now.
+Don't write specs/ADRs in this skill — flag the gaps and reference future skill work. Or, if the gap is small enough to fill inline (a single new term in `glossary.md`), do it now.
 
 ### 4. Write the parent plan
 
@@ -112,7 +112,7 @@ Write `projects/<scope>/plan/plan-<slug>.md` using `wiki://template/project/plan
 
 ## References
 
-- [[spec-context]] — vocabulary
+- [[glossary]] — vocabulary
 - [[spec-<topic>]] — system overview
 - [[adr-<decision>]] — relevant decision
 ```
@@ -216,7 +216,7 @@ This makes the new plan and stories searchable via `prime` and `search` (MCP too
 
 - **Do not interview.** Synthesize from conversation. If intent is unclear, suggest `$intent`.
 - **Do not auto-trigger `$triage`.** Stories ship at `needs-triage` and wait for the user to invoke triage explicitly.
-- **Use canonical vocabulary** from `spec-context.md`. Don't invent terms.
+- **Use canonical vocabulary** from `glossary.md`. Don't invent terms.
 - **Reference existing specs and ADRs** via wikilinks rather than restating their content.
 - **One story file per user story.** Even if a story has just one slice, it gets its own file (architectural consistency).
 - **Quote prose-bearing frontmatter scalars** (`summary: "..."`) to avoid breaking the sync walker.

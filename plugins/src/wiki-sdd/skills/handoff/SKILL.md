@@ -39,8 +39,8 @@ first avoids a denied write mid-ceremony.
 Write the primer first — the gate compares the retro note against the scope's newest page, and the sweep and reconcile below move story clocks past it. The primer's reader is an agent: `prime` inlines it into the next
 session's context. Write for that reader. Activate the `signal-dense`
 register (`/signal-dense`) before drafting, and read
-`projects/<scope>/spec/spec-context.md` first — every term the primer
-uses is a canonical handle from there, typed the way spec-context
+`projects/<scope>/glossary.md` first — every term the primer
+uses is a canonical handle from there, typed the way the glossary
 types it, never a synonym or a narrative paraphrase. Direct
 predicates, no hedging, no register shifts.
 
@@ -106,7 +106,7 @@ line. No separate report.
   the rot the budget exists to prevent.
 - **Primer in prose register.** Synonyms, paraphrase, and hedges dilute
   the signal an agent reads; the canonical-dense register and
-  spec-context's handles are the primer's language.
+  the glossary's handles are the primer's language.
 - **Open questions without intents.** The primer points; it does not
   carry.
 - **Writes the resync cannot see.** A primer written through a shell

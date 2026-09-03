@@ -2,7 +2,7 @@
 name: handoff
 description: This skill should be used to close a session so the next one starts cold from corrected truth. Operator-invoked, gated on a retro note newer than the scope's last edit. Rewrites the primer within its budget first, then runs the status sweep (fully-resolved stories proposed for archiving, flipped only on approval) and reconciles every plan's Story Index — Focus, Next, Open, Read order, about 300 words, nothing another surface derives — confirms the index synced, and prints the one line the next session starts with. Use when the user says "/handoff", "hand off", "close the session", "wrap up the session", "prep the primer", "get the primer ready", "cold session prep", or "what does the next session start with".
 metadata:
-  version: "0.19.1"
+  version: "0.20.0"
 ---
 
 # Handoff — Close the Session from Corrected Truth
@@ -41,8 +41,8 @@ first avoids a denied write mid-ceremony.
 Write the primer first — the gate compares the retro note against the scope's newest page, and the sweep and reconcile below move story clocks past it. The primer's reader is an agent: `prime` inlines it into the next
 session's context. Write for that reader. Activate the `signal-dense`
 register (`/signal-dense`) before drafting, and read
-`projects/<scope>/spec/spec-context.md` first — every term the primer
-uses is a canonical handle from there, typed the way spec-context
+`projects/<scope>/glossary.md` first — every term the primer
+uses is a canonical handle from there, typed the way the glossary
 types it, never a synonym or a narrative paraphrase. Direct
 predicates, no hedging, no register shifts.
 
@@ -108,7 +108,7 @@ line. No separate report.
   the rot the budget exists to prevent.
 - **Primer in prose register.** Synonyms, paraphrase, and hedges dilute
   the signal an agent reads; the canonical-dense register and
-  spec-context's handles are the primer's language.
+  the glossary's handles are the primer's language.
 - **Open questions without intents.** The primer points; it does not
   carry.
 - **Writes the resync cannot see.** A primer written through a shell

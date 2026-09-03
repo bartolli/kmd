@@ -33,7 +33,7 @@ Slices may be **AFK** (autonomous-runnable) or **HITL** (needs human interaction
 
 - Read the target story file: frontmatter + body (User Story, Scenarios, existing Slices, References).
 - Read the parent `plan/plan-{name}.md` for context.
-- Read `spec-context.md` for vocabulary; ADRs and specs referenced by the story for technical constraints.
+- Read `glossary.md` for vocabulary; ADRs and specs referenced by the story for technical constraints.
 - Check `WIKI_ISSUE_TRACKER` to determine remote-mirror behavior.
 
 ### 2. Explore the codebase (optional)

@@ -30,3 +30,22 @@ describe('primer contract across the skill sources', () => {
     expect(headings).toEqual(['Focus', 'Next', 'Open', 'Read order']);
   });
 });
+
+/** Shape lock for story-glossary-scope-root-vocabulary slice 3. */
+describe('glossary contract across the skill sources', () => {
+  it('no skill source names spec-context as the vocabulary file', () => {
+    const offenders = markdownUnder(SKILLS)
+      .filter((f) => /spec-context/.test(readFileSync(f, 'utf8')))
+      .map((f) => f.slice(SKILLS.length));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('the intent skill writes the glossary from its served template at the scope root', () => {
+    const intent = readFileSync(join(SKILLS, 'intent', 'SKILL.md'), 'utf8');
+
+    expect(intent).toContain('wiki://template/project/glossary');
+    expect(intent).toContain('projects/<scope>/glossary.md');
+    expect(intent).not.toContain('wiki://template/project/spec');
+  });
+});

@@ -61,8 +61,8 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 
 | Skill | Reads | Writes |
 |---|---|---|
-| `/intent` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `spec-context.md`, lazy `adr-{topic}.md` |
-| `/to-stories` | conversation; `spec-context.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
+| `/intent` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `glossary.md`, lazy `adr-{topic}.md` |
+| `/to-stories` | conversation; `glossary.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
 | `/triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
 | `/to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
 | `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |

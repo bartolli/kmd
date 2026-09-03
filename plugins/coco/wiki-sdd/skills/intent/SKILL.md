@@ -1,8 +1,8 @@
 ---
 name: intent
-description: Interview-style grilling that captures intent, sharpens vocabulary, and scaffolds wiki structure for a project scope. Use when the user wants to start a new workstream, refine an existing scope's intent, stress-test a plan against the project's domain language, or write a `spec-context.md` (glossary + relationships). Walks one question at a time, recommends an answer for each, and creates artifacts (`index.md`, `primer.md`, `spec-context.md`, lazy ADRs) inline as decisions crystallize. Auto-detects greenfield (scope folder missing → scaffold) vs brownfield (scope exists → refine + cross-reference code). Triggers on phrases like "grill me", "grill the plan", "let's nail down what we're building", "set up a new scope", "refine the intent", "capture the intent", "write an intent", or `$intent`.
+description: Interview-style grilling that captures intent, sharpens vocabulary, and scaffolds wiki structure for a project scope. Use when the user wants to start a new workstream, refine an existing scope's intent, stress-test a plan against the project's domain language, or write a `glossary.md` (terms + relationships). Walks one question at a time, recommends an answer for each, and creates artifacts (`index.md`, `primer.md`, `glossary.md`, lazy ADRs) inline as decisions crystallize. Auto-detects greenfield (scope folder missing → scaffold) vs brownfield (scope exists → refine + cross-reference code). Triggers on phrases like "grill me", "grill the plan", "let's nail down what we're building", "set up a new scope", "refine the intent", "capture the intent", "write an intent", or `$intent`.
 metadata:
-  version: "0.19.1"
+  version: "0.20.0"
 ---
 
 # Intent — Grill the Idea Against the Wiki
@@ -22,7 +22,7 @@ Before grilling, the project must declare `WIKI_SCOPE: <scope>` in its project i
 Read `projects/<scope>/index.md` in the vault:
 
 - **Greenfield** — file does not exist. Scaffold the scope from scratch (intent capture → identity → primer stub → methodology → vocabulary → lazy ADRs).
-- **Brownfield** — file exists. Refine intent, cross-reference code (if any), surface contradictions between user's stated model and code/spec reality, sharpen `spec-context.md` and ADRs as the conversation reveals them.
+- **Brownfield** — file exists. Refine intent, cross-reference code (if any), surface contradictions between user's stated model and code/spec reality, sharpen `glossary.md` and ADRs as the conversation reveals them.
 
 Announce the mode you're running in before starting.
 
@@ -77,7 +77,7 @@ updated: "<same clock>"
 
 Use `wiki://template/project/primer` (MCP resource, or `kmd resource <uri>`) for the canonical shape. `created` is **write-once** — set it at creation and never bump it; only `updated` changes on later edits. The four sections are the whole shape, about 300 words at most; nothing a query or another surface derives goes in. `$handoff` rewrites it at every session close.
 
-### Step 3 — Vocabulary (lands in `spec/spec-context.md`, **lazy creation**)
+### Step 3 — Vocabulary (lands in `glossary.md` at the scope root, **lazy creation**)
 
 As the user describes the system, watch for:
 
@@ -85,12 +85,10 @@ As the user describes the system, watch for:
 - **Synonym conflicts** — same concept, multiple words ("cancellation" vs "void" vs "refund")
 - **Overloaded terms** — same word, multiple meanings ("account" = `Customer` or `User`?)
 
-When the **first term gets resolved**, create `projects/<scope>/spec/spec-context.md` in the vault using `wiki://template/project/spec` (MCP resource, or `kmd resource <uri>`). Body shape:
+When the **first term gets resolved**, create `projects/<scope>/glossary.md` in the vault using `wiki://template/project/glossary` (MCP resource, or `kmd resource <uri>`). `prime` inlines the Language section verbatim under `Vocabulary`, so keep that section the term list alone; the other three stay on disk. Body shape:
 
 ```markdown
-# <Scope> — Domain Context
-
-<One to two sentences: what this domain is and why it exists.>
+# <Scope> glossary
 
 ## Language
 
@@ -117,7 +115,7 @@ _Avoid_: aliases.
 - "account" was used to mean both **Customer** and **User** — resolved: distinct concepts.
 ```
 
-Update `spec-context.md` **inline** as more terms resolve. Don't batch.
+Update `glossary.md` **inline** as more terms resolve. Don't batch.
 
 **Vocabulary rules:**
 
@@ -173,7 +171,7 @@ The greenfield grill is done when:
 
 1. `index.md` exists with methodology declared.
 2. `primer.md` exists (stub at minimum, with Focus filled and Open pointing at intents or empty).
-3. `spec-context.md` exists IF any domain terms were resolved (skip if the conversation was about pure infrastructure with no project-specific vocabulary).
+3. `glossary.md` exists IF any domain terms were resolved (skip if the conversation was about pure infrastructure with no project-specific vocabulary).
 4. At least one ADR exists IF a hard-to-reverse decision surfaced. Skip if none did.
 
 State the termination explicitly when reached:
@@ -185,14 +183,14 @@ State the termination explicitly when reached:
 ### Step 1 — Orient
 
 - Run `prime(<scope>)` via the wiki MCP, or `kmd prime <scope>` where the harness exposes no MCP tools, to load identity, primer, active ADRs.
-- Read `spec-context.md` if it exists.
+- Read `glossary.md` if it exists.
 - Read recent ADRs and the current plan.
 
 ### Step 2 — Cross-reference code
 
 Walk the codebase using the project's domain glossary. Look for contradictions:
 
-- Code uses a term that conflicts with `spec-context.md` Language section → flag it.
+- Code uses a term that conflicts with `glossary.md` Language section → flag it.
 - Code structure implies a relationship the user didn't mention → ask.
 - Spec says X happens but code does Y → surface the contradiction.
 
@@ -202,7 +200,7 @@ When the user states how something works, check whether the code agrees. If you 
 
 Based on the conversation:
 
-- **New term** → add to `spec-context.md` Language section inline.
+- **New term** → add to `glossary.md` Language section inline.
 - **Term redefinition** → update Language entry; add a "Flagged ambiguities" entry recording the change.
 - **Hard-to-reverse decision** → offer an ADR per the three-test.
 - **Spec correction** → land it inline in the relevant `spec/spec-{topic}.md`. Don't queue corrections in the plan — that creates doc-debt.
@@ -226,7 +224,7 @@ elaborates it into a story. A workstream continues below.
 The brownfield grill is done when:
 
 1. All flagged ambiguities are resolved or explicitly deferred.
-2. New domain terms are captured in `spec-context.md`.
+2. New domain terms are captured in `glossary.md`.
 3. Hard-to-reverse decisions have ADRs.
 4. Code/spec contradictions are either fixed in the spec or recorded as known divergences.
 
@@ -236,7 +234,7 @@ The brownfield grill is done when:
 - **If a question can be answered by reading code or wiki**, do that instead of asking.
 - **Never invent scopes outside `vault.yaml`.** Stop and ask if the user names a new scope.
 - **Don't write `primer.md` prose without user approval.** Stub headers are fine; narrative is co-authored.
-- **Update `spec-context.md` inline**, not in batches.
+- **Update `glossary.md` inline**, not in batches.
 - **Skip ADRs unless all three tests pass.** Most decisions don't deserve one.
 - **Always update frontmatter `updated:` field** on any edit.
 - **Keep questions concrete.** "What's the methodology?" is fine; "How should we approach this?" is too vague.

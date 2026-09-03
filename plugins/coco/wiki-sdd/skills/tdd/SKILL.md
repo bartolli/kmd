@@ -1,8 +1,8 @@
 ---
 name: tdd
-description: Implement a single `ready-for-agent` slice from a wiki user story using disciplined red-green-refactor with vertical tracer bullets. Reads the slice description, the story's Gherkin scenarios (as the test specification), `spec-context.md` (for vocabulary), and the referenced specs/ADRs. Refuses horizontal slicing (write-all-tests-then-all-impl). Ticks the slice checkbox when done. Use when the user says "let's TDD slice X", "implement slice 2 of story Y", "$tdd", "red-green-refactor this", or wants to start vertical-slice implementation on a wiki-tracked story.
+description: Implement a single `ready-for-agent` slice from a wiki user story using disciplined red-green-refactor with vertical tracer bullets. Reads the slice description, the story's Gherkin scenarios (as the test specification), `glossary.md` (for vocabulary), and the referenced specs/ADRs. Refuses horizontal slicing (write-all-tests-then-all-impl). Ticks the slice checkbox when done. Use when the user says "let's TDD slice X", "implement slice 2 of story Y", "$tdd", "red-green-refactor this", or wants to start vertical-slice implementation on a wiki-tracked story.
 metadata:
-  version: "0.19.1"
+  version: "0.20.0"
 ---
 
 # TDD — Vertical Tracer-Bullet Test-Driven Development
@@ -54,7 +54,7 @@ If you find yourself writing test #2 before test #1's implementation passes, **s
 
 - Read the story file: User Story, Scenarios, Slices, References.
 - Identify the target slice (user names it, or pick the next unchecked slice).
-- Read `spec-context.md` for vocabulary — test names, variable names, interface vocabulary should match the project's domain language.
+- Read `glossary.md` for vocabulary — test names, variable names, interface vocabulary should match the project's domain language.
 - Read each referenced `[[spec-X]]` and `[[adr-Y]]` for technical constraints.
 - Read recent ADRs in the scope's `adr/` for testing strategy decisions (look for `adr-testing-strategy.md` or similar).
 - Identify whether prior tests in the codebase establish a pattern (test framework, structure, helpers). Match the existing style.

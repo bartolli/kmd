@@ -7,7 +7,7 @@ Wiki-native spec-driven development loop for the `~/llm-wiki` agent wiki.
 | Skill | Role |
 |---|---|
 | `wiki` | Bootstrap a project into the agent wiki; on-ramp for the constellation. |
-| `intent` | Interview intent into `spec-context.md` + scaffold scope, or write one idea as an intent. |
+| `intent` | Interview intent into `glossary.md` + scaffold scope, or write one idea as an intent. |
 | `to-stories` | Stories from a conversation (plan + per-story files) or from a promoted intent (one story). |
 | `triage` | Move stories through the triage state machine. |
 | `to-issues` | Slice stories into tracker issues. |
