@@ -12,7 +12,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook session-start",
+            "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook session-start --defer-orientation",
             "timeout": 30
           }
         ]

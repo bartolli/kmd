@@ -151,3 +151,27 @@ describe('coco bundle is npx-free', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/** The coco route for orientation: Cortex runs SessionStart before the agent
+ * connects, so the line is held for the first prompt (spec-gate-model,
+ * Harness delivery). Only SessionStart carries the flag. */
+describe('cortex manifest orientation deferral', () => {
+  it('passes --defer-orientation on SessionStart alone', () => {
+    const raw = readFileSync(COCO_MANIFEST, 'utf8');
+    const manifest = JSON.parse(raw) as {
+      hooks: Record<string, { hooks: { command: string }[] }[]>;
+    };
+    const commands = (event: string) =>
+      manifest.hooks[event]?.flatMap((m) => m.hooks.map((h) => h.command)) ?? [];
+
+    expect(
+      commands('SessionStart').every((c) => c.includes('hook session-start --defer-orientation'))
+    ).toBe(true);
+    for (const event of Object.keys(manifest.hooks).filter((e) => e !== 'SessionStart')) {
+      expect(
+        commands(event).some((c) => c.includes('--defer-orientation')),
+        event
+      ).toBe(false);
+    }
+  });
+});

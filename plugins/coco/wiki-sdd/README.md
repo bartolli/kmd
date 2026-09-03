@@ -67,7 +67,7 @@ Configure at least one. With none of them resolvable, the server exits at bind t
 
 Registers the `kmd hook` gate engine on five events — no manual wiring:
 
-- **SessionStart** — wiki orientation for the bound scope.
+- **SessionStart** — wiki orientation for the bound scope. CoCo runs SessionStart before the agent connects and shows hook output without delivering it, so the command carries `--defer-orientation`: the line is held and the session's first `UserPromptSubmit` injects it, once; the post-compaction re-orientation rides the same route.
 - **UserPromptSubmit** — prompt-time reminders from your vault's `triggers_extra` (`vault.yaml`), injected once per session per trigger.
 - **PreToolUse** — vault-declared gates on tool calls: deny with a reason, warn, or inject context, including state-aware preconditions (`when: newer-than`).
 - **PostToolUse** — auto validate + sync: after a mutation inside the vault — an `edit`/`write`/`apply_patch`, or a `bash` command whose string names a vault path, including `rm`, `mv`, redirections, and glob deletions — `kmd validate` runs; findings return into the session for the agent to fix and the index holds until they are; a clean write syncs silently. Tool calls outside the vault cost nothing.
