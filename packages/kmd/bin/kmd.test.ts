@@ -541,6 +541,20 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect((await runKmd(promptArgs, promptEvent('e2e-defer', 'and on'), kmdHome)).stdout).toBe('');
   }, 60_000);
 
+  it('session-start names a scope miss on stderr when the vault declares repos', async () => {
+    const result = await runKmd(
+      ['hook', 'session-start', vaultRoot],
+      JSON.stringify({ session_id: 'e2e-miss', cwd: '/kmd-e2e-elsewhere', source: 'startup' }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain(
+      'kmd hook: cwd /kmd-e2e-elsewhere is inside no declared scope repo'
+    );
+  }, 30_000);
+
   it('session-start without the flag defers nothing', async () => {
     const start = await runKmd(
       ['hook', 'session-start', vaultRoot, '--scope', 'demo'],

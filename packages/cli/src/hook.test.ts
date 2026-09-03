@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -274,6 +282,27 @@ describe('resolveScope', () => {
 
     expect(resolveScope(loaded, '/p/codanna/src')).toBe('codanna');
     expect(resolveScope(loaded, '/p/other')).toBe('umbrella');
+  });
+
+  it('matches the same directory reached through a symlink or another casing (intent-scope-resolution-compares-repo-paths-as-strings)', () => {
+    const base = mkdtempSync(join(tmpdir(), 'kmd-scope-'));
+    try {
+      const real = join(base, 'real', 'Projects', 'kg-poc');
+      mkdirSync(real, { recursive: true });
+      symlinkSync(join(base, 'real'), join(base, 'link'));
+      const loaded = config({ 'kg-poc': real });
+
+      expect(resolveScope(loaded, join(base, 'link', 'Projects', 'kg-poc', 'sub'))).toBe('kg-poc');
+      expect(resolveScope(loaded, join(base, 'link', 'Projects', 'kg-poc-web'))).toBeUndefined();
+
+      const lower = join(base, 'real', 'projects', 'kg-poc');
+      if (existsSync(lower)) {
+        // case-insensitive filesystem (macOS default, Windows): one directory, two spellings
+        expect(resolveScope(loaded, lower)).toBe('kg-poc');
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 
   it('expands ~ in repo values and ignores relative ones', () => {

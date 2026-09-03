@@ -3,13 +3,14 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
   writeFileSync
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
 import { resolveStateDir } from '@llm-wiki/db/database';
@@ -135,25 +136,61 @@ function expandHome(path: string): string {
 }
 
 /**
+ * A path as the filesystem spells it: symlinks followed, on-disk casing, no
+ * trailing separator. The deepest existing ancestor is resolved and the rest
+ * re-appended, so a not-yet-cloned repo under a symlinked parent, or a fake
+ * path in a unit test, still compares by the same rule as an existing one.
+ */
+function canonicalPath(path: string): string {
+  let head = path;
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync.native(head);
+      return join(real, ...tail.reverse());
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) return join(path);
+      tail.push(basename(head));
+      head = parent;
+    }
+  }
+}
+
+/** Case-insensitive on win32, where two spellings of one directory can miss realpath. */
+function pathKey(path: string): string {
+  return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
+/**
  * Scope from the event's working directory: the scope whose `repo` contains
- * cwd, longest declared path winning. `~` expands to the home directory;
- * non-absolute repo values never match.
+ * cwd, longest declared path winning. Both sides are canonical filesystem
+ * paths, so a symlinked checkout or another casing of the same directory
+ * still resolves. `~` expands to the home directory; non-absolute repo
+ * values never match.
  */
 export function resolveScope(config: VaultConfig, cwd: string | undefined): string | undefined {
   if (cwd === undefined || cwd === '') return undefined;
+  const here = pathKey(canonicalPath(cwd));
   let best: string | undefined;
   let bestLength = -1;
   for (const [name, scope] of Object.entries(config.scopes)) {
     if (scope.repo === undefined) continue;
-    const repo = expandHome(scope.repo).replace(/\/+$/, '');
-    if (!repo.startsWith('/')) continue;
-    if (cwd !== repo && !cwd.startsWith(`${repo}/`)) continue;
+    const expanded = expandHome(scope.repo);
+    if (!isAbsolute(expanded)) continue;
+    const repo = pathKey(canonicalPath(expanded));
+    if (here !== repo && !here.startsWith(`${repo}${sep}`)) continue;
     if (repo.length > bestLength) {
       best = name;
       bestLength = repo.length;
     }
   }
   return best;
+}
+
+/** True when any scope declares a repo — the case where a scope miss is worth one line. */
+export function declaresRepos(config: VaultConfig): boolean {
+  return Object.values(config.scopes).some((scope) => scope.repo !== undefined);
 }
 
 type InjectTrigger = Trigger & { text: string };
@@ -1360,7 +1397,14 @@ export async function runHookSessionStart(): Promise<void> {
     if (vaultRoot === null) return;
     const config = await loadVaultConfig(vaultRoot);
     const scope = invocation.scope ?? resolveScope(config, event.cwd);
-    if (scope === undefined) return;
+    if (scope === undefined) {
+      if (event.cwd !== undefined && declaresRepos(config)) {
+        diag(
+          `cwd ${event.cwd} is inside no declared scope repo — check scopes.*.repo in ${join(vaultRoot, 'vault.yaml')}`
+        );
+      }
+      return;
+    }
     const band = event.source === 'compact' ? undefined : scanBacklog(vaultRoot, scope, new Date());
     const delta = event.source === 'compact' ? undefined : await diffVault(vaultRoot);
     const behind = delta && isBehind(delta) ? summarizeDelta(delta) : undefined;
