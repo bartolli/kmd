@@ -1,3 +1,22 @@
+## [v0.16.0] - 2026-09-03
+
+### Added
+
+- `glossary` is a built-in kind at `projects/{scope}/glossary.md` — the scope's vocabulary beside the index and the primer; the validate floor requires `title`, `kind`, `scope`, `status`, `summary`, `updated`; the folder pattern binds it to the scope root; a kind-selector row teaches it; `project-glossary.md` ships in the starter with four sections — Language, Relationships, Example dialogue, Flagged ambiguities — and is served at `wiki://template/project/glossary`. `kmd init --upgrade` reports the kind and the template on an older vault and `--apply` writes both
+- `prime` and `kmd prime` carry the glossary's Language section verbatim under `Vocabulary`, after the vault's kinds, statuses, and tags; no section and no warning when the scope has no glossary; `spec/spec-context.md` is never inlined, with or without a glossary beside it. `PrimeData.glossary`; `languageSection` exported from the prime module
+- `kmd hook session-start --defer-orientation` holds the rendered orientation as a pending marker in the session's hook state dir and prints the envelope as before; `kmd hook prompt` prints a pending marker first, plain, once, ahead of any trigger line, on every harness; the `source: "compact"` re-fire holds the re-orientation the same way; `--dry-run` and `--explain` leave a marker in place. Without the flag nothing is held and prompt output is unchanged
+
+### Changed
+
+- the authoring rule for the primer and the primer template name `glossary.md` handles where they named `spec-context`
+- wiki-sdd 0.20.0: every skill reads and writes `projects/<scope>/glossary.md` and no skill source names `spec-context`; the `intent` skill's Step 3 creates the glossary from `wiki://template/project/glossary` at the scope root, the Language section the term list alone; plan References link `[[glossary]]`; adapter READMEs and manifest descriptions say glossary. Render lock: no skill source names `spec-context`; the intent skill names the glossary template and path, never the spec template
+- the cortex manifest's SessionStart command carries `--defer-orientation`, locked by a render test to that event alone; the coco README's gate-hooks section states the route
+- wrapper floor `MIN_HOOK_VERSION` `[0, 16, 0]` in the shared claude/codex wrapper and the coco chrome, paired with this engine; plugin stamps 0.20.0
+
+### Fixed
+
+- Cortex Code sessions receive the wiki orientation and the post-compaction re-orientation. Cortex runs SessionStart hooks at startup before the agent connects and shows their output without delivering it, while UserPromptSubmit injects plugin-hook stdout in either shape; the deferred marker rides the first prompt. Witnessed on Cortex Code CLI v1.1.78
+
 ## [v0.15.1] - 2026-09-02
 
 ### Fixed
