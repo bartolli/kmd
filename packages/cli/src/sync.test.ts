@@ -22,6 +22,15 @@ describe('buildPageFields scope authority', () => {
     expect(fields?.scope).toBe('sotto');
   });
 
+  it('indexes the scope-root glossary, scope from the path', () => {
+    const { raw, parsed } = parsePage('title: X\nkind: glossary\nstatus: active');
+
+    const fields = buildPageFields('projects/sotto/glossary.md', raw, parsed, known);
+
+    expect(fields?.scope).toBe('sotto');
+    expect(fields?.kind).toBe('glossary');
+  });
+
   it('keeps the intent provenance and outcome fields in meta, scope from the path', () => {
     const { raw, parsed } = parsePage(
       'title: X\nkind: intent\nstatus: archived\norigin: retro\nsightings: 2\npromoted_to: story-4-x\ndismissed: ""'

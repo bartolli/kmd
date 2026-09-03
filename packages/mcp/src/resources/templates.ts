@@ -41,6 +41,13 @@ export const TEMPLATES: ReadonlyArray<TemplateSpec> = [
       'Session-close orientation for an agent reader. Four sections — Focus, Next, Open, Read order — about 300 words, nothing another surface derives. Inlined into the prime tool response; rewritten by /handoff.'
   },
   {
+    uri: 'wiki://template/project/glossary',
+    name: 'Project glossary',
+    file: 'project-glossary.md',
+    description:
+      "The scope's vocabulary at projects/{scope}/glossary.md, beside the index and the primer. Four sections — Language, Relationships, Example dialogue, Flagged ambiguities; prime inlines Language verbatim. Supersedes spec/spec-context.md."
+  },
+  {
     uri: 'wiki://template/project/spec',
     name: 'Project spec',
     file: 'project-spec.md',

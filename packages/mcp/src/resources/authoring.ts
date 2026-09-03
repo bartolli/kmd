@@ -17,6 +17,14 @@ const KIND_PEDAGOGY: ReadonlyMap<string, KindPedagogy> = new Map([
     }
   ],
   [
+    'glossary',
+    {
+      signal:
+        "The scope's vocabulary — terms, relationships, ambiguities; Language inlined by prime",
+      where: '`projects/{scope}/glossary.md`'
+    }
+  ],
+  [
     'spec',
     {
       signal: 'How a system works (state of world, not decision)',
@@ -122,7 +130,7 @@ const DEFAULT_AUTHORING_RULES = [
   '',
   '- **ADR and ops pages are predicate-only.** No definitional preambles for established vocabulary, no narrative, no marketing. The audience is the project team — assume fluency.',
   "- **Spec / ADR edits land inline with the change that surfaces them.** Don't queue corrections in plans — the spec reflects current code at every commit.",
-  '- **The primer carries only what nothing else derives.** Four sections — Focus, Next, Open, Read order — about 300 words, in the `signal-dense` register with `spec-context` handles; invariants live in the project instructions, versions in the changelog, counts in `prime`, work items in the Story Index and the intents. Written once per session close by `/handoff`.',
+  '- **The primer carries only what nothing else derives.** Four sections — Focus, Next, Open, Read order — about 300 words, in the `signal-dense` register with `glossary.md` handles; invariants live in the project instructions, versions in the changelog, counts in `prime`, work items in the Story Index and the intents. Written once per session close by `/handoff`.',
   '',
   '**Linking**',
   '',

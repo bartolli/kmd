@@ -28,7 +28,8 @@ const CFG: VaultConfig = {
     'note',
     'artifact',
     'prompt',
-    'intent'
+    'intent',
+    'glossary'
   ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],
@@ -719,6 +720,38 @@ describe('intent kind', () => {
     const missing = findings.filter((f) => f.rule === 'required-fields').map((f) => f.message);
     expect(missing.some((m) => m.includes('"origin"'))).toBe(true);
     expect(missing.some((m) => m.includes('"sightings"'))).toBe(true);
+  });
+});
+
+// Glossary frontmatter satisfying the built-in floor — a scope-root page like
+// the index, kinded so validate and search see it (the primer is not).
+const wellFormedGlossary = (over = '') =>
+  `---\ntitle: X\nkind: glossary\nscope: sotto\nstatus: active\nsummary: y\ntags: [x]\ncreated: "2026-09-02"\nupdated: 2026-09-02\n${over}---\nbody\n`;
+
+describe('glossary kind', () => {
+  it('accepts a well-formed glossary page at projects/{scope}/glossary.md', () => {
+    expect(validatePage('projects/sotto/glossary.md', wellFormedGlossary(), CFG, REF)).toEqual([]);
+  });
+
+  it('flags a glossary outside the scope root with folder-slug', () => {
+    const findings = validatePage(
+      'projects/sotto/spec/glossary.md',
+      wellFormedGlossary(),
+      CFG,
+      REF
+    );
+
+    expect(findings.some((f) => f.rule === 'folder-slug' && f.severity === 'error')).toBe(true);
+  });
+
+  it('flags a glossary missing its summary', () => {
+    const raw = wellFormedGlossary().replace('summary: y\n', '');
+
+    const findings = validatePage('projects/sotto/glossary.md', raw, CFG, REF);
+
+    expect(
+      findings.some((f) => f.rule === 'required-fields' && f.message.includes('"summary"'))
+    ).toBe(true);
   });
 });
 

@@ -54,8 +54,8 @@ async function readResource(
 }
 
 describe('TEMPLATES array', () => {
-  it('has exactly 13 entries — 12 vault template files, the note file under both domains', () => {
-    expect(TEMPLATES).toHaveLength(13);
+  it('has exactly 14 entries — 13 vault template files, the note file under both domains', () => {
+    expect(TEMPLATES).toHaveLength(14);
   });
 
   it('serves the note template under the project domain too — scoped notes share the file', () => {
@@ -72,6 +72,12 @@ describe('TEMPLATES array', () => {
     expect(intent?.file).toBe('project-intent.md');
   });
 
+  it('serves the glossary template in the project domain', () => {
+    const glossary = TEMPLATES.find((t) => t.uri === 'wiki://template/project/glossary');
+
+    expect(glossary?.file).toBe('project-glossary.md');
+  });
+
   it('every URI follows wiki://template/{domain}/{kind} or wiki://template/{kind}', () => {
     for (const tmpl of TEMPLATES) {
       expect(tmpl.uri).toMatch(/^wiki:\/\/template\/[\w-]+(\/[\w-]+)?$/);
@@ -85,11 +91,11 @@ describe('TEMPLATES array', () => {
 });
 
 describe('wiki://templates index resource', () => {
-  it('is registered alongside the 13 individual templates', () => {
+  it('is registered alongside the 14 individual templates', () => {
     const { mcp } = captureMcp();
     registerTemplateResources(mcp, asBinding('/fake-vault', CONFIG));
 
-    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
+    expect(mcp.registerResource).toHaveBeenCalledTimes(15);
   });
 
   it('returns markdown listing every template name and URI', async () => {
@@ -139,7 +145,7 @@ describe('custom-kind templates', () => {
 
     registerTemplateResources(mcp, asBinding('/fake-vault', intentObjectForm));
 
-    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
+    expect(mcp.registerResource).toHaveBeenCalledTimes(15);
   });
 
   it('does not register a custom template for an object-form built-in kind', () => {
@@ -151,7 +157,7 @@ describe('custom-kind templates', () => {
     registerTemplateResources(mcp, asBinding('/fake-vault', reworded));
 
     expect(handlers.has('wiki://template/adr')).toBe(false);
-    expect(mcp.registerResource).toHaveBeenCalledTimes(14);
+    expect(mcp.registerResource).toHaveBeenCalledTimes(15);
   });
 
   describe('serving from disk', () => {

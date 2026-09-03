@@ -24,7 +24,8 @@ const CONFIG: VaultConfig = {
     'note',
     'artifact',
     'prompt',
-    'intent'
+    'intent',
+    'glossary'
   ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],
@@ -111,6 +112,15 @@ describe('wiki://authoring resource', () => {
 
     expect(text).toContain('**intent**');
     expect(text).toContain('`projects/{scope}/intent/intent-{slug}.md`');
+  });
+
+  it('teaches the glossary kind at the scope root', async () => {
+    const { mcp, handlers } = captureMcp();
+    registerAuthoringResource(mcp, asBinding('/fake-vault', CONFIG));
+    const text = await readAuthoring(handlers);
+
+    expect(text).toContain('**glossary**');
+    expect(text).toContain('`projects/{scope}/glossary.md`');
   });
 
   it('kind selector is config-driven — only configured kinds appear', async () => {

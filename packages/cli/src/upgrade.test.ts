@@ -7,14 +7,19 @@ import { scaffoldVault } from './init.js';
 import { VAULT_TEMPLATES } from './init-templates.js';
 import { applyVaultDelta, diffVault, isBehind, upgradeVault } from './upgrade.js';
 
-/** A vault scaffolded before `artifact`, `prompt`, and `intent` reached the starter. */
+/** A vault scaffolded before `artifact`, `prompt`, `intent`, and `glossary` reached the starter. */
 async function ageVault(root: string): Promise<void> {
   const yaml = await readFile(join(root, 'vault.yaml'), 'utf8');
   await writeFile(
     join(root, 'vault.yaml'),
-    yaml.replace('  - artifact\n', '').replace('  - prompt\n', '').replace('  - intent\n', '')
+    yaml
+      .replace('  - artifact\n', '')
+      .replace('  - prompt\n', '')
+      .replace('  - intent\n', '')
+      .replace('  - glossary\n', '')
   );
   await unlink(join(root, 'templates', 'project-intent.md'));
+  await unlink(join(root, 'templates', 'project-glossary.md'));
 }
 
 describe('diffVault', () => {
@@ -34,8 +39,8 @@ describe('diffVault', () => {
 
     const delta = await diffVault(root);
 
-    expect(delta.kinds).toEqual(['artifact', 'prompt', 'intent']);
-    expect(delta.templates).toEqual(['project-intent.md']);
+    expect(delta.kinds).toEqual(['artifact', 'prompt', 'intent', 'glossary']);
+    expect(delta.templates).toEqual(['project-glossary.md', 'project-intent.md']);
     expect(delta.statuses).toEqual([]);
     expect(delta.methodologies).toEqual([]);
     expect(delta.templatesDiffer).toEqual([]);
@@ -64,7 +69,7 @@ describe('applyVaultDelta', () => {
     await applyVaultDelta(root, await diffVault(root));
 
     const config = await loadVaultConfig(root);
-    expect(config.kinds.slice(-3)).toEqual(['artifact', 'prompt', 'intent']);
+    expect(config.kinds.slice(-4)).toEqual(['artifact', 'prompt', 'intent', 'glossary']);
     const yaml = await readFile(join(root, 'vault.yaml'), 'utf8');
     expect(yaml.split('\n')[0]).toMatch(/^# yaml-language-server: \$schema=/);
     expect(yaml).toContain('# keep me');
@@ -143,7 +148,7 @@ describe('upgradeVault', () => {
     const result = await upgradeVault(root, { apply: false });
 
     expect(result.code).toBe(1);
-    expect(result.lines[0]).toBe('vault behind the starter: 3 kinds, 1 template');
+    expect(result.lines[0]).toBe('vault behind the starter: 4 kinds, 2 templates');
     expect(result.lines).toContain('  kind: intent');
     expect(result.lines).toContain('  template: project-intent.md');
     expect(result.lines.at(-1)).toBe('run kmd init --upgrade --apply to write the delta');
@@ -204,6 +209,6 @@ describe("applyVaultDelta preserves the operator's formatting", () => {
     await applyVaultDelta(root, await diffVault(root));
 
     const after = await readFile(join(root, 'vault.yaml'), 'utf8');
-    expect(after.replace('  - artifact\n  - prompt\n  - intent\n', '')).toBe(before);
+    expect(after.replace('  - artifact\n  - prompt\n  - intent\n  - glossary\n', '')).toBe(before);
   });
 });

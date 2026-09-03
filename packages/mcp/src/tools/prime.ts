@@ -37,6 +37,8 @@ export interface PrimeData {
   phase: number | null;
   summary: string;
   primer: string;
+  /** The glossary's Language section, verbatim; empty when the scope has no glossary. */
+  glossary: string;
   counts: Record<string, number>;
   active_adrs: Array<{ path: string; slug: string; title: string; summary: string | null }>;
   current_plan: { path: string; slug: string; title: string } | null;
@@ -77,6 +79,22 @@ async function readPrimer(vaultRoot: string, scope: string): Promise<string> {
   }
 }
 
+/** The body of the `## Language` section — heading excluded, up to the next
+ * `## ` heading — or empty when the file or the section is absent. */
+export function languageSection(markdown: string): string {
+  const match = /^## Language[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(markdown);
+  return match?.[1]?.trim() ?? '';
+}
+
+async function readGlossary(vaultRoot: string, scope: string): Promise<string> {
+  try {
+    const raw = await readFile(join(vaultRoot, 'projects', scope, 'glossary.md'), 'utf8');
+    return languageSection(parseFrontmatter(raw).content);
+  } catch {
+    return '';
+  }
+}
+
 export async function prime(
   deps: PrimeDeps,
   input: PrimeInput
@@ -84,9 +102,10 @@ export async function prime(
   const { db, vaultRoot, vaultConfig } = deps;
   const { scope, task } = input;
 
-  const [fm, primer] = await Promise.all([
+  const [fm, primer, glossary] = await Promise.all([
     readIndexFm(vaultRoot, scope),
-    readPrimer(vaultRoot, scope)
+    readPrimer(vaultRoot, scope),
+    readGlossary(vaultRoot, scope)
   ]);
 
   const counts = db
@@ -174,6 +193,7 @@ export async function prime(
     phase: typeof fm.phase === 'number' ? fm.phase : null,
     summary: fm.summary ?? '',
     primer,
+    glossary,
     counts: countsRecord,
     active_adrs: adrs.map((r) => ({
       path: r.path,
@@ -255,6 +275,7 @@ export function renderMarkdown(
   lines.push(`kinds: ${config.kinds.map(kindName).join(', ')}`);
   lines.push(`statuses: ${config.statuses.join(', ')}`);
   lines.push(`tags: ${config.tags.canonical.join(', ')}`);
+  if (d.glossary) lines.push('', d.glossary);
 
   if (d.top_tags.length > 0) {
     lines.push('', '## Tags');

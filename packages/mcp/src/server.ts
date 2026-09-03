@@ -27,7 +27,7 @@ export function buildServer(args: BuildServerArgs): McpServer {
 
   mcp.tool(
     'prime',
-    'Orient on a project. Returns a markdown briefing with: identity (scope, phase, methodology, summary), the human-authored primer.md inlined, active ADRs, current plan, page counts, top tags, hub pages (most-linked-to), recent events, cross-scope references, and — when `task` is provided — the top 3 tsvector-ranked relevant pages. Call once at session start. Empty sections are omitted to keep the surface lean.',
+    'Orient on a project. Returns a markdown briefing with: identity (scope, phase, methodology, summary), the human-authored primer.md inlined, the glossary Language section under Vocabulary, active ADRs, current plan, page counts, top tags, hub pages (most-linked-to), recent events, cross-scope references, and — when `task` is provided — the top 3 tsvector-ranked relevant pages. Call once at session start. Empty sections are omitted to keep the surface lean.',
     PrimeInputSchema.shape,
     async (input) => {
       logger.debug({ tool: 'prime', input }, 'tool call');

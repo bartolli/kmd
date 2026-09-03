@@ -17,6 +17,7 @@ import { hasErrors, validateVault } from './validate.js';
 const TEMPLATE_FILES = [
   'note.md',
   'project-adr.md',
+  'project-glossary.md',
   'project-index.md',
   'project-intent.md',
   'project-ops.md',
@@ -47,6 +48,21 @@ describe('primer and plan templates', () => {
     }
     expect(primer).toContain('300 words');
     expect(VAULT_TEMPLATES['project-plan.md']).not.toContain('Status Log');
+  });
+});
+
+describe('glossary template', () => {
+  it('carries the four sections, Language first, kinded at the scope root', () => {
+    const glossary = VAULT_TEMPLATES['project-glossary.md'] ?? '';
+    expect(glossary).toContain('kind: glossary');
+    const at = [
+      '## Language',
+      '## Relationships',
+      '## Example dialogue',
+      '## Flagged ambiguities'
+    ].map((h) => glossary.indexOf(h));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((x, y) => x - y)).toEqual(at);
   });
 });
 

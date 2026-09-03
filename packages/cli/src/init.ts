@@ -49,7 +49,8 @@ export const STARTER_CONFIG: VaultConfig = {
     'note',
     'artifact',
     'prompt',
-    'intent'
+    'intent',
+    'glossary'
   ],
   statuses: ['draft', 'active', 'superseded', 'archived'],
   methodologies: ['sdd', 'tdd', 'hybrid'],

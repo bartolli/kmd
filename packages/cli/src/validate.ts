@@ -88,6 +88,7 @@ const REQUIRED_FIELDS: Record<string, readonly string[]> = {
     'sources'
   ],
   intent: ['title', 'kind', 'scope', 'status', 'summary', 'updated', 'origin', 'sightings'],
+  glossary: ['title', 'kind', 'scope', 'status', 'summary', 'updated'],
   topic: ['title', 'kind', 'status', 'summary', 'updated', 'confidence'],
   article: ['title', 'kind', 'status', 'updated'],
   src: ['title', 'kind', 'topic', 'status', 'summary', 'updated'],
@@ -110,6 +111,7 @@ const FOLDER_PATTERNS: Record<string, RegExp> = {
   story: /^projects\/[^/]+\/plan\/[^/]+\/story-[^/]+\.md$/,
   intent: /^projects\/[^/]+\/intent\/intent-[^/]+\.md$/,
   project: /^projects\/[^/]+\/index\.md$/,
+  glossary: /^projects\/[^/]+\/glossary\.md$/,
   topic: /^research\/[^/]+\/index\.md$/,
   src: /^research\/[^/]+\/src-[^/]+\.md$/
 };
@@ -635,7 +637,7 @@ export interface LinkPage {
 /**
  * Cross-page ambiguity warning. A **bare** `[[wikilink]]` whose basename is owned by
  * more than one file is ambiguous only when none of those owners shares the linking
- * page's scope: a same-scope copy resolves it locally (the per-scope `spec-context`/
+ * page's scope: a same-scope copy resolves it locally (the per-scope `glossary`/
  * `primer`/`index` pattern), and a path-qualified link (`[[a/b/c]]`) is already
  * disambiguated. Warning, not error — the link resolves, just not uniquely.
  */
