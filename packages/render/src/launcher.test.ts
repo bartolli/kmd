@@ -171,7 +171,7 @@ describe('the launcher resolves a global kmd', () => {
     expect(tiers()).toEqual([]);
   });
 
-  it('exits 0 on a hook run whatever happens — a launcher failure never blocks a harness event', async () => {
+  it('degrades a hook run open on an engine crash and on its own failures — never blocking a harness event', async () => {
     const crashed = await run(
       ['hook', 'pretool', '--harness', 'kiro'],
       [shim('pnpm', CURRENT, { exit: 3 })]
@@ -195,5 +195,23 @@ describe('the launcher resolves a global kmd', () => {
         .join('.');
     expect(declared(LAUNCHER, 'MIN_KMD_VERSION')).toBe(CURRENT);
     expect(declared(WRAPPER, 'MIN_HOOK_VERSION')).toBe(CURRENT);
+  });
+
+  // intent-launcher-swallows-kiro-deny-exit: the engine's exit 2 is the only
+  // deny channel Kiro has; a launcher that flattens it to 0 turns every block
+  // gate on that seat into an allow.
+  it("passes the engine's exit 2 through on a hook run, and degrades every other exit open", async () => {
+    const denied = await run(
+      ['hook', 'pretool', '--harness', 'kiro'],
+      [shim('deny', CURRENT, { exit: 2 })]
+    );
+    expect(denied.code).toBe(2);
+    expect(denied.stderr).toBe('');
+
+    const crashed = await run(
+      ['hook', 'pretool', '--harness', 'kiro'],
+      [shim('crash', CURRENT, { exit: 3 })]
+    );
+    expect(crashed.code).toBe(0);
   });
 });
