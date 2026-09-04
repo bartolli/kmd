@@ -23,11 +23,6 @@ flavors:
       kind: coco
       slashAliases: [dense]
       replacements: []
-  kiro:
-    dest: plugins/kiro/wiki-sdd
-    dialect:
-      kind: kiro
-      replacements: []
 shared:
   exact:
     - skills/wiki/references/vault-yaml.md
@@ -40,7 +35,7 @@ lintAllow:
 chrome:
   claude: [README.md]
 retired:
-  - plugins/kiro/wiki-sdd/POWER.md
+  - plugins/kiro/wiki-sdd/
 `;
 
 describe('loadManifest', () => {
@@ -64,7 +59,7 @@ describe('loadManifest', () => {
   it('rejects an unknown dialect kind', () => {
     const dir = mkdtempSync(join(tmpdir(), 'manifest-'));
     const p = join(dir, 'render-manifest.yaml');
-    writeFileSync(p, MANIFEST.replace('kind: kiro', 'kind: mystery'));
+    writeFileSync(p, MANIFEST.replace('kind: coco', 'kind: mystery'));
     expect(() => loadManifest(p)).toThrow();
   });
 });

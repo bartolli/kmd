@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { loadManifest } from './manifest.js';
 import { validatePackage } from './package.js';
 import { render } from './render.js';
@@ -86,5 +87,17 @@ describe('the source is harness-neutral', () => {
       );
     expect(skill('claude')).toContain('`/wiki`');
     expect(skill('codex')).toContain('`$wiki`');
+  });
+});
+
+describe('the Kiro copy is retired', () => {
+  it('has no kiro flavor, no plugins/kiro tree, the folder on the retired list, and the README at the Package root', () => {
+    const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const manifestPath = join(repoRoot, 'plugins', 'render-manifest.yaml');
+    expect(Object.keys(loadManifest(manifestPath).flavors)).toEqual(['claude', 'codex', 'coco']);
+    const raw = parse(readFileSync(manifestPath, 'utf8')) as { retired: string[] };
+    expect(raw.retired).toContain('plugins/kiro/wiki-sdd/');
+    expect(existsSync(join(repoRoot, 'plugins', 'kiro'))).toBe(false);
+    expect(existsSync(join(SOURCE, 'README.md'))).toBe(true);
   });
 });

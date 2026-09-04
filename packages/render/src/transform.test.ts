@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { transformCoco, transformCodex, transformKiro } from './transform.js';
+import { transformCoco, transformCodex } from './transform.js';
 
 describe('transformCodex', () => {
   it('rewrites slash invocations to dollar', () => {
@@ -43,13 +43,6 @@ describe('transformCodex', () => {
       replacements: []
     });
     expect(out).toBe('Triggers on $dense and $signal-dense.');
-  });
-});
-
-describe('transformKiro', () => {
-  it('keeps slash invocations', () => {
-    const text = 'Run `/wiki` when the agent asks.';
-    expect(transformKiro(text, { slashNames: ['wiki'], replacements: [] })).toBe(text);
   });
 });
 

@@ -1,6 +1,0 @@
-{
-  "wiki": {
-    "command": "npx",
-    "args": ["-y", "@bartolli/kmd", "mcp", "--default-root", "/absolute/path/to/vault"]
-  }
-}

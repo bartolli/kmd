@@ -40,8 +40,7 @@ function manifest(): RenderManifest {
       coco: {
         dest: 'plugins/coco/wiki-sdd',
         dialect: { kind: 'coco', slashAliases: [], replacements: [] }
-      },
-      kiro: { dest: 'plugins/kiro/wiki-sdd', dialect: { kind: 'kiro', replacements: [] } }
+      }
     },
     shared: { exact: [], rendered: ['skills/foo/SKILL.md'] }
   };
@@ -78,9 +77,6 @@ describe('render', () => {
     expect(read('plugins/coco/wiki-sdd/skills/foo/SKILL.md')).toContain(
       'Run `$foo` when the agent asks.'
     );
-    expect(read('plugins/kiro/wiki-sdd/skills/foo/SKILL.md')).toContain(
-      'Run `/foo` when the agent asks.'
-    );
 
     const again = render(root, manifest(), 'write');
     expect(again.problems).toEqual([]);
@@ -96,10 +92,10 @@ describe('render', () => {
   });
 
   it('removes stale files from a dest skills tree — adapters are build output', () => {
-    write('plugins/kiro/wiki-sdd/skills/stale/SKILL.md', 'gone after render');
+    write('plugins/codex/wiki-sdd/skills/stale/SKILL.md', 'gone after render');
     render(root, manifest(), 'write');
-    expect(existsSync(join(root, 'plugins/kiro/wiki-sdd/skills/stale'))).toBe(false);
-    expect(read('plugins/kiro/wiki-sdd/skills/foo/SKILL.md')).toContain('Run `/foo`');
+    expect(existsSync(join(root, 'plugins/codex/wiki-sdd/skills/stale'))).toBe(false);
+    expect(read('plugins/codex/wiki-sdd/skills/foo/SKILL.md')).toContain('Run `$foo`');
   });
 
   it('fails the render when CLAUDE.md survives a dialect transform, writing nothing', () => {
@@ -112,7 +108,10 @@ describe('render', () => {
   });
 
   it('lets an allowed CLAUDE.md reach the coco flavor — CoCo reads it as project instructions', () => {
-    write('src/wiki-sdd/skills/foo/SKILL.md', 'Edit `CLAUDE.md` directly.\n');
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      '---\nname: foo\ndescription: Ok.\n---\n\nEdit `CLAUDE.md` directly.\n'
+    );
     const cocoOnly: RenderManifest = {
       sourceRoot: 'src/wiki-sdd',
       flavors: {
@@ -129,22 +128,6 @@ describe('render', () => {
     expect(read('plugins/coco/wiki-sdd/skills/foo/SKILL.md')).toContain(
       'Edit `CLAUDE.md` directly.'
     );
-  });
-
-  it('fails the render when a kiro description exceeds 1024 parsed chars', () => {
-    const long = 'x'.repeat(1030);
-    write(
-      'src/wiki-sdd/skills/foo/SKILL.md',
-      `---\nname: foo\ndescription: >\n  ${long}\n---\n\nBody.\n`
-    );
-    const result = render(root, manifest(), 'write');
-    expect(result.problems.some((p) => p.includes('1024') && p.includes('foo'))).toBe(true);
-  });
-
-  it('fails the render when a SKILL.md name does not match its folder', () => {
-    write('src/wiki-sdd/skills/foo/SKILL.md', '---\nname: other\ndescription: Ok.\n---\n\nBody.\n');
-    const result = render(root, manifest(), 'write');
-    expect(result.problems.some((p) => p.includes('other') && p.includes('foo'))).toBe(true);
   });
 
   it('check mode passes a fresh render and reports tampering and stale files', () => {
@@ -187,7 +170,7 @@ describe('render', () => {
     m.versionSource = 'plugins/claude/wiki-sdd/.claude-plugin/plugin.json';
     expect(render(root, m, 'write').problems).toEqual([]);
 
-    for (const flavor of ['claude', 'codex', 'kiro']) {
+    for (const flavor of ['claude', 'codex', 'coco']) {
       const out = read(`plugins/${flavor}/wiki-sdd/skills/foo/SKILL.md`);
       expect(out).toMatch(/metadata:\n {2}version: "0\.2\.0"\n---/);
     }
@@ -213,7 +196,7 @@ describe('render', () => {
     render(root, m, 'write');
     expect(read('plugins/claude/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
     expect(read('plugins/codex/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
-    expect(existsSync(join(root, 'plugins/kiro/wiki-sdd/hooks/run-kmd-hook.mjs'))).toBe(false);
+    expect(existsSync(join(root, 'plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs'))).toBe(false);
   });
 });
 
@@ -288,6 +271,30 @@ describe('allowed harness-placement section', () => {
     expect(named).toEqual([
       expect.stringMatching(/harness name `Kiro` /),
       expect.stringMatching(/harness name `CLAUDE\.md` /)
+    ]);
+  });
+});
+
+describe('Agent Skills caps on the source', () => {
+  it('fails the render on any flavor set when a source skill breaks the name or description limits', () => {
+    const claudeOnly: RenderManifest = {
+      sourceRoot: 'src/wiki-sdd',
+      flavors: { claude: { dest: 'plugins/claude/wiki-sdd', dialect: { kind: 'claude' } } },
+      shared: { exact: [], rendered: ['skills/foo/SKILL.md'] }
+    };
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      `---\nname: foo\ndescription: >\n  ${'x'.repeat(1030)}\n---\n\nBody.\n`
+    );
+    expect(render(root, claudeOnly, 'write').problems).toEqual([
+      expect.stringMatching(
+        /^skills\/foo\/SKILL\.md: description is 1030 chars — the Agent Skills cap is 1024/
+      )
+    ]);
+
+    write('src/wiki-sdd/skills/foo/SKILL.md', '---\nname: other\ndescription: Ok.\n---\n\nBody.\n');
+    expect(render(root, claudeOnly, 'write').problems).toEqual([
+      expect.stringMatching(/^skills\/foo\/SKILL\.md: name 'other' must match folder 'foo'/)
     ]);
   });
 });

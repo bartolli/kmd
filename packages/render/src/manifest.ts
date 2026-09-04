@@ -17,10 +17,6 @@ const dialectSchema = z.union([
     kind: z.literal('coco'),
     slashAliases: z.array(z.string()).default([]),
     replacements: z.array(replacementPair).default([])
-  }),
-  z.object({
-    kind: z.literal('kiro'),
-    replacements: z.array(replacementPair).default([])
   })
 ]);
 

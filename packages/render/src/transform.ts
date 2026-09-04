@@ -16,21 +16,13 @@ function rewriteSlashes(text: string, slashNames: string[], replacement: string)
 }
 
 // The source is harness-neutral (the render lint enforces it), so a dialect
-// is the wording replacements plus, where the harness invokes skills as
-// `$name`, the invocation token.
-function transformDialect(
-  text: string,
-  cfg: DialectConfig,
-  slashReplacement: string | null
-): string {
+// is the wording replacements plus the harness's invocation token.
+function transformDialect(text: string, cfg: DialectConfig, slashReplacement: string): string {
   let out = text;
   for (const [from, to] of cfg.replacements) {
     out = out.replaceAll(from, to);
   }
-  if (slashReplacement !== null) {
-    out = rewriteSlashes(out, cfg.slashNames, slashReplacement);
-  }
-  return out;
+  return rewriteSlashes(out, cfg.slashNames, slashReplacement);
 }
 
 export function transformCodex(text: string, cfg: DialectConfig): string {
@@ -42,10 +34,4 @@ export function transformCodex(text: string, cfg: DialectConfig): string {
 // does not apply — see the reader set in render.ts.
 export function transformCoco(text: string, cfg: DialectConfig): string {
   return transformDialect(text, cfg, '$$$1');
-}
-
-// Kiro skills are slash-invocable — the invocation token survives; only the
-// wording replacements apply.
-export function transformKiro(text: string, cfg: DialectConfig): string {
-  return transformDialect(text, cfg, null);
 }

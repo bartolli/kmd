@@ -2,13 +2,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import { validatePackage } from './package.js';
-import { type DialectConfig, transformCoco, transformCodex, transformKiro } from './transform.js';
+import { type DialectConfig, transformCoco, transformCodex } from './transform.js';
 
 export type Dialect =
   | { kind: 'claude' }
   | { kind: 'codex'; slashAliases: string[]; replacements: [string, string][] }
-  | { kind: 'coco'; slashAliases: string[]; replacements: [string, string][] }
-  | { kind: 'kiro'; replacements: [string, string][] };
+  | { kind: 'coco'; slashAliases: string[]; replacements: [string, string][] };
 
 export interface FlavorConfig {
   dest: string;
@@ -52,30 +51,31 @@ function skillNames(sourceRoot: string): string[] {
     .sort();
 }
 
-// Kiro's Agent Skills limits: name = folder, lowercase/numbers/hyphens <= 64;
-// description <= 1024 chars measured on the YAML-parsed value.
-function assertKiroSkillCaps(rel: string, rendered: string): string[] {
+// Agent Skills limits, on the source: name = folder, lowercase/numbers/hyphens
+// <= 64; description <= 1024 chars measured on the YAML-parsed value. A
+// conformant client installs the source, so the source is what must conform.
+function assertSkillCaps(rel: string, source: string): string[] {
   const match = rel.match(/^skills\/([^/]+)\/SKILL\.md$/);
   if (!match) return [];
   const folder = match[1] as string;
-  const fmMatch = rendered.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return [`kiro: ${rel}: no YAML frontmatter to verify against skill caps`];
+  const fmMatch = source.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return [`${rel}: no YAML frontmatter to verify against the Agent Skills caps`];
   let fm: { name?: unknown; description?: unknown };
   try {
     fm = parse(fmMatch[1] as string) as { name?: unknown; description?: unknown };
   } catch {
-    return [`kiro: ${rel}: frontmatter does not parse as YAML`];
+    return [`${rel}: frontmatter does not parse as YAML`];
   }
   const problems: string[] = [];
   if (fm.name !== folder) {
-    problems.push(`kiro: ${rel}: name '${String(fm.name)}' must match folder '${folder}'`);
+    problems.push(`${rel}: name '${String(fm.name)}' must match folder '${folder}'`);
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(folder) || folder.length > 64) {
-    problems.push(`kiro: ${rel}: folder '${folder}' breaks the lowercase-hyphen <=64 rule`);
+    problems.push(`${rel}: folder '${folder}' breaks the lowercase-hyphen <=64 rule`);
   }
   const desc = typeof fm.description === 'string' ? fm.description.trimEnd() : '';
   if (desc.length > 1024) {
-    problems.push(`kiro: ${rel}: description is ${desc.length} chars — the kiro cap is 1024`);
+    problems.push(`${rel}: description is ${desc.length} chars — the Agent Skills cap is 1024`);
   }
   return problems;
 }
@@ -151,15 +151,11 @@ const CLAUDE_MD_READERS = new Set<Dialect['kind']>(['claude', 'coco']);
 function applyDialect(text: string, dialect: Dialect, names: string[]): string {
   // The source is harness-neutral; the claude flavor renders it as is.
   if (dialect.kind === 'claude') return text;
-  if (dialect.kind === 'codex' || dialect.kind === 'coco') {
-    const cfg: DialectConfig = {
-      slashNames: [...names, ...dialect.slashAliases],
-      replacements: dialect.replacements
-    };
-    return dialect.kind === 'codex' ? transformCodex(text, cfg) : transformCoco(text, cfg);
-  }
-  const cfg: DialectConfig = { slashNames: [], replacements: dialect.replacements };
-  return transformKiro(text, cfg);
+  const cfg: DialectConfig = {
+    slashNames: [...names, ...dialect.slashAliases],
+    replacements: dialect.replacements
+  };
+  return dialect.kind === 'codex' ? transformCodex(text, cfg) : transformCoco(text, cfg);
 }
 
 function walkFiles(dir: string): string[] {
@@ -216,6 +212,7 @@ function buildPayloads(
     const source = readFileSync(join(sourceRoot, rel), 'utf8');
     sources.set(rel, source);
     problems.push(...lintHarnessNames(rel, withoutAllowed(source, manifest.lintAllow ?? [])));
+    problems.push(...assertSkillCaps(rel, source));
   }
   for (const entry of manifest.shared.exact) {
     if (!entry.path.startsWith('skills/')) continue;
@@ -238,9 +235,6 @@ function buildPayloads(
         problems.push(
           `${name}: ${rel}: \`CLAUDE.md\` survives the ${name} transform — extend the manifest replacements`
         );
-      }
-      if (flavor.dialect.kind === 'kiro') {
-        problems.push(...assertKiroSkillCaps(rel, out));
       }
       payload.set(rel, out);
     }

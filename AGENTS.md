@@ -22,7 +22,7 @@ Companion skills for vault file editing: `obsidian-markdown` (wikilinks/callouts
 
 ## Layout
 
-`packages/{db,cli,mcp}` compose into `packages/kmd` — the esbuild-bundled npm package, the only published artifact. `plugins/src/wiki-sdd` is the shared plugin source; `plugins/{claude,codex,coco,kiro}/wiki-sdd` are rendered adapter copies plus per-harness chrome, all authored here ([[adr-plugin-authoring-surface]], [[adr-kiro-delivery-agent-skills]]). TypeScript strict, pnpm workspace, Biome, Vitest, `node:sqlite`.
+`packages/{db,cli,mcp}` compose into `packages/kmd` — the esbuild-bundled npm package, the only published artifact. `plugins/src/wiki-sdd` is the shared plugin source, laid out as an Agent Plugins 1.0.0 package that Kiro installs as is; `plugins/{claude,codex,coco}/wiki-sdd` are rendered adapter copies plus per-harness chrome, all authored here ([[adr-plugin-authoring-surface]], [[adr-agent-plugins-package-source]]). TypeScript strict, pnpm workspace, Biome, Vitest, `node:sqlite`.
 
 ## Invariants
 

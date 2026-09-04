@@ -56,10 +56,6 @@ flavors:
             "      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@bartolli/kmd\", \"mcp\", \"--default-root\", \"/absolute/path/to/vault\"],\n      \"env\": {},",
             "      \"command\": \"kmd\",\n      \"args\": [\"mcp\", \"--default-root\", \"/absolute/path/to/vault\"],\n      \"env\": {},"
           ]
-  kiro:
-    dest: plugins/kiro/wiki-sdd
-    dialect:
-      kind: kiro # kiro skills are slash commands — the invocation token survives
 
 shared:
   exact: # byte-copied to every listed flavor (all flavors when unrestricted)
@@ -70,7 +66,7 @@ shared:
     # likely to block npx outright. coco authors its own npx-free resolver
     # as chrome.
     - path: hooks/run-kmd-hook.mjs
-      flavors: [claude, codex] # kiro pending hook pairing
+      flavors: [claude, codex]
   rendered: # one source; per-flavor dialect
     - skills/intent/SKILL.md
     - skills/handoff/SKILL.md
@@ -120,22 +116,14 @@ chrome:
     - README.md
     - hooks/hooks.json
     - scripts/start-wiki-mcp.mjs
-  kiro:
-    - README.md
-    - path: hooks/
-      status: pending-hook-pairing
 
 retired:
   # coco subdir plugin chrome, collapsed into the repo-root manifest
   - plugins/coco/wiki-sdd/.cortex-plugin/
   - plugins/coco/wiki-sdd/hooks/hooks.json
   - plugins/coco/wiki-sdd/.mcp.json
-  # kiro power layout, deleted at the skills-layout repackage
-  - plugins/kiro/wiki-sdd/POWER.md
-  - plugins/kiro/wiki-sdd/mcp.json
-  - plugins/kiro/wiki-sdd/steering/
-  - plugins/kiro/wiki-sdd/grill-with-docs/
-  - plugins/kiro/wiki-sdd/wiki/
+  # kiro adapter: Kiro installs the source as an Agent Plugins package
+  - plugins/kiro/wiki-sdd/
 
 excluded:
   - plugins/codex/wiki-sdd/.DS_Store

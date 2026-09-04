@@ -170,7 +170,7 @@ Now every Codex launch carries its project directory, and `prime`/`search` follo
 
 ### Kiro
 
-Kiro consumes the same skills as [Agent Skills](plugins/kiro/wiki-sdd/README.md). Copy the skill folders into `~/.kiro/skills/` or `.kiro/skills/`, and register the MCP server in `.kiro/settings/mcp.json` from the bundled template. Both Kiro seats (IDE and CLI) read the same layout.
+Kiro installs the shared source as an [Agent Plugins](https://agent-plugins.org) package: `plugins/src/wiki-sdd` carries `plugin.json`, the skills, and the `wiki` server's `mcp.json`. Import the folder as a power from the Powers panel; the [package README](plugins/src/wiki-sdd/README.md) has the steps. Both Kiro seats (IDE and CLI) read the same power.
 
 ### Manual wiring
 
