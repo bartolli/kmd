@@ -13,6 +13,9 @@ description: Use /foo when Claude needs it.
 Run \`/foo\` when Claude asks. Claude Code stays.
 `;
 
+const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json';
+
 let root: string;
 
 function write(rel: string, content: string): void {
@@ -47,6 +50,20 @@ function manifest(): RenderManifest {
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'render-'));
   write('src/wiki-sdd/skills/foo/SKILL.md', SKILL);
+  write(
+    'src/wiki-sdd/plugin.json',
+    JSON.stringify({ $schema: PLUGIN_SCHEMA, name: 'wiki-sdd', version: '1.2.3' })
+  );
+  write(
+    'src/wiki-sdd/mcp.json',
+    JSON.stringify({
+      $schema: MCP_SCHEMA,
+      mcpServers: {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: the Agent Plugins placeholder is literal
+        wiki: { type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/x.mjs', 'mcp'] }
+      }
+    })
+  );
 });
 
 describe('render', () => {
@@ -162,6 +179,10 @@ describe('render', () => {
 
   it('stamps metadata.version into rendered SKILL.md files from the version source', () => {
     write('plugins/claude/wiki-sdd/.claude-plugin/plugin.json', '{"version": "0.2.0"}');
+    write(
+      'src/wiki-sdd/plugin.json',
+      JSON.stringify({ $schema: PLUGIN_SCHEMA, name: 'wiki-sdd', version: '0.2.0' })
+    );
     const m = manifest();
     m.versionSource = 'plugins/claude/wiki-sdd/.claude-plugin/plugin.json';
     expect(render(root, m, 'write').problems).toEqual([]);
@@ -193,5 +214,37 @@ describe('render', () => {
     expect(read('plugins/claude/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
     expect(read('plugins/codex/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
     expect(existsSync(join(root, 'plugins/kiro/wiki-sdd/hooks/run-kmd-hook.mjs'))).toBe(false);
+  });
+});
+
+describe('the source package', () => {
+  it('stops the render on an invalid source manifest, writing nothing', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify({ $schema: PLUGIN_SCHEMA, name: 'Bad Name' }));
+    const result = render(root, manifest(), 'write');
+    expect(result.problems).toEqual([expect.stringMatching(/^plugin\.json: \/name /)]);
+    expect(existsSync(join(root, 'plugins/claude/wiki-sdd/skills/foo/SKILL.md'))).toBe(false);
+  });
+});
+
+describe('one version', () => {
+  it('fails when the root manifest version differs from versionSource', () => {
+    write(
+      'plugins/claude/wiki-sdd/.claude-plugin/plugin.json',
+      JSON.stringify({ version: '0.20.0' })
+    );
+    const m = {
+      ...manifest(),
+      versionSource: 'plugins/claude/wiki-sdd/.claude-plugin/plugin.json'
+    };
+    const result = render(root, m, 'check');
+    expect(result.problems).toEqual([
+      'plugin.json: version 1.2.3 differs from versionSource 0.20.0 — one version ships everywhere'
+    ]);
+
+    write(
+      'src/wiki-sdd/plugin.json',
+      JSON.stringify({ $schema: PLUGIN_SCHEMA, name: 'wiki-sdd', version: '0.20.0' })
+    );
+    expect(render(root, m, 'write').problems).toEqual([]);
   });
 });

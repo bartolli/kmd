@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
+import { validatePackage } from './package.js';
 import { type DialectConfig, transformCoco, transformCodex, transformKiro } from './transform.js';
 
 export type Dialect =
@@ -120,7 +121,8 @@ function buildPayloads(
 ): { payloads: Map<string, Map<string, string | Buffer>>; problems: string[] } {
   const sourceRoot = join(repoRoot, manifest.sourceRoot);
   const names = skillNames(sourceRoot);
-  const problems: string[] = [];
+  const pkg = validatePackage(sourceRoot);
+  const problems: string[] = [...pkg.problems];
   const payloads = new Map<string, Map<string, string | Buffer>>();
 
   let stampVer: string | null = null;
@@ -131,6 +133,11 @@ function buildPayloads(
       };
       if (typeof raw.version === 'string') stampVer = raw.version;
       else problems.push(`versionSource ${manifest.versionSource}: no string "version" field`);
+      if (stampVer !== null && pkg.manifest !== null && pkg.manifest.version !== stampVer) {
+        problems.push(
+          `plugin.json: version ${pkg.manifest.version} differs from versionSource ${stampVer} — one version ships everywhere`
+        );
+      }
     } catch {
       problems.push(`versionSource ${manifest.versionSource}: unreadable or invalid JSON`);
     }
