@@ -15,9 +15,11 @@
 // exits non-zero (a prompt block on UserPromptSubmit), and a hook-capable but
 // older engine silently runs behavior this wiring no longer expects. Falling
 // back is only possible before the payload on stdin is consumed, so the spawn
-// is terminal. A hook run exits 0 on every path — a launcher failure must
-// never block a harness event. Any other subcommand propagates the exit, so a
-// client sees a server that failed to start.
+// is terminal. A hook run exits 0 on every path but one — a launcher failure
+// must never block a harness event — and the one is the engine's exit 2, the
+// deny the kiro codec renders, which passes through untouched. Any other
+// subcommand propagates the exit, so a client sees a server that failed to
+// start.
 import { spawn, spawnSync } from 'node:child_process';
 import {
   accessSync,
@@ -43,7 +45,8 @@ function diagnose(message) {
 }
 
 function finish(code) {
-  process.exit(degradeOpen ? 0 : code);
+  if (!degradeOpen) return process.exit(code);
+  process.exit(code === 2 ? 2 : 0);
 }
 
 function meetsFloor(raw) {
@@ -158,6 +161,7 @@ function attach(child, name, onStartError) {
       diagnose(`${name} ended by ${signal}`);
       return finish(1);
     }
+    if (degradeOpen && code === 2) return finish(2);
     if (code !== 0) diagnose(`${name} exited ${code}${degradeOpen ? ' — degrading open' : ''}`);
     finish(code);
   });
