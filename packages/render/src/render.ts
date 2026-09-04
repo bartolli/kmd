@@ -5,7 +5,7 @@ import { validatePackage } from './package.js';
 import { type DialectConfig, transformCoco, transformCodex, transformKiro } from './transform.js';
 
 export type Dialect =
-  | { kind: 'identity' }
+  | { kind: 'claude' }
   | { kind: 'codex'; slashAliases: string[]; replacements: [string, string][] }
   | { kind: 'coco'; slashAliases: string[]; replacements: [string, string][] }
   | { kind: 'kiro'; replacements: [string, string][] };
@@ -20,14 +20,17 @@ export interface ExactEntry {
   flavors?: string[];
 }
 
+// A site the harness-name lints skip: a literal phrase, or a whole section
+// named by its heading line (through the next heading of the same or a higher
+// level). An entry that stops matching the source goes stale loudly: the
+// lint fires.
+export type LintAllow = string | { section: string };
+
 export interface RenderManifest {
   sourceRoot: string;
   flavors: Record<string, FlavorConfig>;
   shared: { exact: ExactEntry[]; rendered: string[] };
-  // Literals allowed to survive dialect transforms — harness-neutral content
-  // (e.g. cross-harness comparison tables) that legitimately names CLAUDE.md.
-  // An entry that stops matching the source goes stale loudly: the lint fires.
-  lintAllow?: string[];
+  lintAllow?: LintAllow[];
   // JSON file whose "version" field stamps metadata.version into every
   // rendered SKILL.md — skills travel standalone, so provenance rides the
   // folder. The renderer owns the field; sources must not declare metadata.
@@ -79,6 +82,60 @@ function assertKiroSkillCaps(rel: string, rendered: string): string[] {
 
 const SKILL_MD = /^skills\/[^/]+\/SKILL\.md$/;
 
+// Harness names and harness-owned instruction files a neutral source never
+// names outside an allowed site. Longest first, so `Claude Code` reports once.
+const HARNESS_NAMES = [
+  'Claude Code',
+  'Cortex Code',
+  'CLAUDE.md',
+  'CORTEX.md',
+  'Claude',
+  'Codex',
+  'CoCo',
+  'Cortex',
+  'Kiro'
+];
+const HARNESS_NAME = new RegExp(
+  `(?<![\\w.])(${HARNESS_NAMES.map((n) => n.replace(/[.]/g, '\\.')).join('|')})(?!\\w)`,
+  'g'
+);
+
+function lintHarnessNames(rel: string, text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(HARNESS_NAME)) seen.add(m[1] as string);
+  return [...seen].map(
+    (name) =>
+      `${rel}: harness name \`${name}\` — the source is harness-neutral; reword it, or list the site in lintAllow`
+  );
+}
+
+function withoutSection(text: string, heading: string): string {
+  const level = heading.match(/^#+/)?.[0].length ?? 0;
+  const lines = text.split('\n');
+  const start = lines.indexOf(heading);
+  if (start < 0) return text;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const m = (lines[i] as string).match(/^(#+) /);
+    if (m && (m[1] as string).length <= level) {
+      end = i;
+      break;
+    }
+  }
+  return [...lines.slice(0, start), ...lines.slice(end)].join('\n');
+}
+
+function withoutAllowed(text: string, lintAllow: LintAllow[]): string {
+  let out = text;
+  for (const allowed of lintAllow) {
+    out =
+      typeof allowed === 'string'
+        ? out.replaceAll(allowed, '')
+        : withoutSection(out, allowed.section);
+  }
+  return out;
+}
+
 function stampVersion(text: string, version: string): string {
   const fm = text.match(/^---\n[\s\S]*?\n---/);
   if (!fm) return text;
@@ -89,10 +146,11 @@ function stampVersion(text: string, version: string): string {
 // Harnesses that read `CLAUDE.md` as a project-instructions file. A surviving
 // `CLAUDE.md` is drift everywhere else; here it is the correct instruction.
 // CoCo's reader list is `AGENTS.md, CLAUDE.md, CORTEX.md, RULES.md, .cursorrules`.
-const CLAUDE_MD_READERS = new Set<Dialect['kind']>(['identity', 'coco']);
+const CLAUDE_MD_READERS = new Set<Dialect['kind']>(['claude', 'coco']);
 
 function applyDialect(text: string, dialect: Dialect, names: string[]): string {
-  if (dialect.kind === 'identity') return text;
+  // The source is harness-neutral; the claude flavor renders it as is.
+  if (dialect.kind === 'claude') return text;
   if (dialect.kind === 'codex' || dialect.kind === 'coco') {
     const cfg: DialectConfig = {
       slashNames: [...names, ...dialect.slashAliases],
@@ -153,18 +211,29 @@ function buildPayloads(
     }
   }
 
+  const sources = new Map<string, string>();
+  for (const rel of manifest.shared.rendered) {
+    const source = readFileSync(join(sourceRoot, rel), 'utf8');
+    sources.set(rel, source);
+    problems.push(...lintHarnessNames(rel, withoutAllowed(source, manifest.lintAllow ?? [])));
+  }
+  for (const entry of manifest.shared.exact) {
+    if (!entry.path.startsWith('skills/')) continue;
+    const source = readFileSync(join(sourceRoot, entry.path), 'utf8');
+    problems.push(
+      ...lintHarnessNames(entry.path, withoutAllowed(source, manifest.lintAllow ?? []))
+    );
+  }
+
   for (const [name, flavor] of Object.entries(manifest.flavors)) {
     const payload = new Map<string, string | Buffer>();
     for (const rel of manifest.shared.rendered) {
-      const source = readFileSync(join(sourceRoot, rel), 'utf8');
+      const source = sources.get(rel) as string;
       let out = applyDialect(source, flavor.dialect, names);
       if (stampVer !== null && SKILL_MD.test(rel)) {
         out = stampVersion(out, stampVer);
       }
-      let lintable = out;
-      for (const allowed of manifest.lintAllow ?? []) {
-        lintable = lintable.replaceAll(allowed, '');
-      }
+      const lintable = withoutAllowed(out, manifest.lintAllow ?? []);
       if (!CLAUDE_MD_READERS.has(flavor.dialect.kind) && lintable.includes('CLAUDE.md')) {
         problems.push(
           `${name}: ${rel}: \`CLAUDE.md\` survives the ${name} transform — extend the manifest replacements`

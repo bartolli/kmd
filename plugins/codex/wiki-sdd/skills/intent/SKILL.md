@@ -15,7 +15,7 @@ If a question can be answered by exploring the codebase or wiki, explore instead
 
 ## Prerequisites
 
-Before grilling, the project must declare `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or equivalent). If missing, suggest `$wiki` first and stop.
+Before grilling, the project must declare `WIKI_SCOPE: <scope>` in its project instructions (`AGENTS.md` or the harness's equivalent). If missing, suggest `$wiki` first and stop.
 
 ## Mode detection
 

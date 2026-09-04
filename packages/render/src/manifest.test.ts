@@ -9,7 +9,7 @@ sourceRoot: plugins/src/wiki-sdd
 flavors:
   claude:
     dest: plugins/claude/wiki-sdd
-    dialect: identity
+    dialect: claude
   codex:
     dest: plugins/codex/wiki-sdd
     dialect:
@@ -50,7 +50,7 @@ describe('loadManifest', () => {
     writeFileSync(p, MANIFEST);
     const m = loadManifest(p);
     expect(m.sourceRoot).toBe('plugins/src/wiki-sdd');
-    expect(m.flavors.claude?.dialect).toEqual({ kind: 'identity' });
+    expect(m.flavors.claude?.dialect).toEqual({ kind: 'claude' });
     expect(m.flavors.codex?.dialect).toMatchObject({ kind: 'codex', slashAliases: ['dense'] });
     expect(m.flavors.coco?.dialect).toMatchObject({ kind: 'coco', slashAliases: ['dense'] });
     expect(m.shared.exact).toEqual([

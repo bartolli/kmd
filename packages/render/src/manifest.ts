@@ -6,8 +6,8 @@ import type { RenderManifest } from './render.js';
 const replacementPair = z.tuple([z.string(), z.string()]);
 
 const dialectSchema = z.union([
-  z.literal('identity').transform(() => ({ kind: 'identity' }) as const),
-  z.object({ kind: z.literal('identity') }),
+  z.literal('claude').transform(() => ({ kind: 'claude' }) as const),
+  z.object({ kind: z.literal('claude') }),
   z.object({
     kind: z.literal('codex'),
     slashAliases: z.array(z.string()).default([]),
@@ -36,7 +36,7 @@ const manifestSchema = z.object({
     exact: z.array(exactEntrySchema).default([]),
     rendered: z.array(z.string()).default([])
   }),
-  lintAllow: z.array(z.string()).optional(),
+  lintAllow: z.array(z.union([z.string(), z.object({ section: z.string() })])).optional(),
   versionSource: z.string().optional()
 });
 

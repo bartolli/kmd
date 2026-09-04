@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { loadManifest } from './manifest.js';
 import { validatePackage } from './package.js';
+import { render } from './render.js';
 
 const SOURCE = fileURLToPath(new URL('../../../plugins/src/wiki-sdd/', import.meta.url));
 const CLAUDE_MANIFEST = fileURLToPath(
@@ -69,5 +71,20 @@ describe('the source is an Agent Plugins 1.0.0 package', () => {
     expect(validatePackage(missing).problems).toEqual([
       'mcp.json: missing — the source is the package'
     ]);
+  });
+});
+
+describe('the source is harness-neutral', () => {
+  it('renders from the real manifest without a harness-name finding', () => {
+    const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const manifest = loadManifest(join(repoRoot, 'plugins', 'render-manifest.yaml'));
+    expect(render(repoRoot, manifest, 'check').problems).toEqual([]);
+    const skill = (flavor: string): string =>
+      readFileSync(
+        join(repoRoot, 'plugins', flavor, 'wiki-sdd', 'skills', 'intent', 'SKILL.md'),
+        'utf8'
+      );
+    expect(skill('claude')).toContain('`/wiki`');
+    expect(skill('codex')).toContain('`$wiki`');
   });
 });

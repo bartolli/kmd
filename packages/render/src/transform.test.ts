@@ -23,18 +23,13 @@ describe('transformCodex', () => {
     expect(transformCodex('Run `/intent` first.', cfg)).toBe('Run `$intent` first.');
   });
 
-  it('rewrites bare Claude on word boundaries, preserving CLAUDE.md and Claude Code', () => {
+  it('rewrites nothing but the token — the source names no harness', () => {
     const none = { slashNames: [], replacements: [] as [string, string][] };
-    expect(transformCodex('When Claude edits, solo+Claude applies.', none)).toBe(
-      'When Codex edits, solo+Codex applies.'
-    );
-    expect(transformCodex('`CLAUDE.md` stays.', none)).toBe('`CLAUDE.md` stays.');
-    expect(transformCodex('Claude Code uses `.mcp.json`; Claude reads it.', none)).toBe(
-      'Claude Code uses `.mcp.json`; Codex reads it.'
-    );
+    const text = 'When the agent edits, the project instructions apply.';
+    expect(transformCodex(text, none)).toBe(text);
   });
 
-  it('applies literal replacements before the slash and Claude rules', () => {
+  it('applies literal replacements before the slash rule', () => {
     const out = transformCodex('Read `CLAUDE.md` or `AGENTS.md`.', {
       slashNames: [],
       replacements: [['Read `CLAUDE.md` or `AGENTS.md`.', 'Read `AGENTS.md`.']]
@@ -52,22 +47,19 @@ describe('transformCodex', () => {
 });
 
 describe('transformKiro', () => {
-  it('keeps slash invocations and rewrites bare Claude to Kiro', () => {
-    const out = transformKiro('Run `/wiki`; Claude Code stays, Claude changes.', {
-      slashNames: ['wiki'],
-      replacements: []
-    });
-    expect(out).toBe('Run `/wiki`; Claude Code stays, Kiro changes.');
+  it('keeps slash invocations', () => {
+    const text = 'Run `/wiki` when the agent asks.';
+    expect(transformKiro(text, { slashNames: ['wiki'], replacements: [] })).toBe(text);
   });
 });
 
 describe('transformCoco', () => {
-  it('rewrites slash invocations to dollar and bare Claude to CoCo', () => {
-    const out = transformCoco('Run `/wiki`; Claude Code stays, Claude changes.', {
+  it('rewrites slash invocations to dollar', () => {
+    const out = transformCoco('Run `/wiki` when the agent asks.', {
       slashNames: ['wiki'],
       replacements: []
     });
-    expect(out).toBe('Run `$wiki`; Claude Code stays, CoCo changes.');
+    expect(out).toBe('Run `$wiki` when the agent asks.');
   });
 
   it('leaves CLAUDE.md alone — CoCo reads it as a project-instructions file', () => {

@@ -33,7 +33,7 @@ Two **category** roles (story has exactly one):
 Five **state** roles (story has exactly one, lives in `triage_state` frontmatter):
 
 - `needs-triage` — story needs evaluation
-- `needs-info` — agent waits on user clarification (in solo+Codex context: Codex is blocked on a user decision)
+- `needs-info` — agent waits on user clarification (in a solo-operator context: the agent is blocked on a user decision)
 - `ready-for-agent` — fully specified, AFK-ready (an agent can pick it up with no human context)
 - `ready-for-human` — needs human implementation (judgment, external access, hardware, design review)
 - `wontfix` — will not be actioned

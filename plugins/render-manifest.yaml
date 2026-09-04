@@ -3,10 +3,11 @@
 # every flavor) or chrome (per-flavor passthrough). Consumed by
 # @llm-wiki/render; the release-time shasum identity check is the
 # renderer's check mode. Shared paths are relative to sourceRoot and each
-# flavor dest. Replacement pairs are ordered and run before the
-# invocation-token and bare-Claude rules; a pair whose from-string leaves
-# the source stops firing — the CLAUDE.md-survival lint catches the
-# harmful class at render time.
+# flavor dest. The source is harness-neutral — the harness-name lint fails
+# the render on a bare harness name outside a lintAllow site — so a dialect
+# is the invocation token plus wording replacements. Pairs are ordered and
+# run before the invocation-token rule; a pair whose from-string leaves the
+# source stops firing.
 
 sourceRoot: plugins/src/wiki-sdd
 
@@ -18,52 +19,23 @@ versionSource: plugins/claude/wiki-sdd/.claude-plugin/plugin.json
 flavors:
   claude:
     dest: plugins/claude/wiki-sdd
-    # source text is claude-flavored; claude renders as identity
-    dialect: identity
+    dialect: claude # the neutral source, no rewrites
   codex:
     dest: plugins/codex/wiki-sdd
     dialect:
-      kind: codex # /name -> $name over skill folder names + slashAliases; bare Claude -> Codex
+      kind: codex # /name -> $name over skill folder names + slashAliases
       slashAliases: [dense]
-      replacements:
-        - [
-            "Writes three sections to the project instructions from a bundled template",
-            "Writes three sections to `AGENTS.md` or equivalent project instructions from a bundled template"
-          ]
-        - ["(`CLAUDE.md`, `AGENTS.md`, or equivalent)", "(`AGENTS.md` or equivalent)"]
-        - [
-            "- Read `CLAUDE.md` or `AGENTS.md` at the project root (whichever exists). Is there already a `## Wiki` block?",
-            "- Read `AGENTS.md` at the project root, or identify the equivalent project-instructions file. Is there already a `## Wiki` block?"
-          ]
-        - [
-            "### 7. Confirm and write the project CLAUDE.md / AGENTS.md",
-            "### 7. Confirm and write the project AGENTS.md"
-          ]
-        - [
-            "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
-            "- If `AGENTS.md` exists at the project root, edit it.\n- Else if an equivalent Codex project-instructions file exists, edit it.\n- If neither exists, ask whether to create `AGENTS.md`."
-          ]
-        - [
-            "- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`**",
-            "- **Never overwrite a non-empty `AGENTS.md` or equivalent project-instructions file**"
-          ]
   coco:
     dest: plugins/coco/wiki-sdd
     dialect:
-      kind: coco # /name -> $name, same token as codex; bare Claude -> CoCo
+      kind: coco # /name -> $name, same token as codex
       slashAliases: [dense]
       # CoCo reads CLAUDE.md as a project-instructions file (reader list:
-      # AGENTS.md, CLAUDE.md, CORTEX.md, RULES.md, .cursorrules), so the sites
-      # codex and kiro must rewrite are already correct here — the
+      # AGENTS.md, CLAUDE.md, CORTEX.md, RULES.md, .cursorrules), so the
       # CLAUDE.md-survival lint is skipped for this dialect. What does differ:
-      # CoCo has no user-config prompt, so the bundled registration carries no
-      # vault root, and the standalone form uses the globally installed kmd
-      # rather than npx.
+      # the standalone registration uses the globally installed kmd rather
+      # than npx — CoCo gives plugin MCP servers a scrubbed environment.
       replacements:
-        - [
-            "the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register.",
-            "the plugin bundles its own `.mcp.json` with the server registration. It passes no vault root, so the whole resolution chain stays live — the project vault first, then `$WIKI_VAULT`, then the machine default from `kmd config set default_vault <path>`. Nothing to register, as long as one of those resolves."
-          ]
         - [
             "Shows the canonical `npx @bartolli/kmd mcp --default-root <vault-path>` JSON and lets the user place it.",
             "Shows the canonical `kmd mcp --default-root <vault-path>` JSON and lets the user place it."
@@ -87,33 +59,7 @@ flavors:
   kiro:
     dest: plugins/kiro/wiki-sdd
     dialect:
-      kind: kiro # kiro skills are slash commands — the invocation token survives; bare Claude -> Kiro
-      replacements:
-        - ["(`CLAUDE.md`, `AGENTS.md`, or equivalent)", "(`AGENTS.md` or equivalent)"]
-        - [
-            "- Read `CLAUDE.md` or `AGENTS.md` at the project root (whichever exists). Is there already a `## Wiki` block?",
-            "- Read `AGENTS.md` at the project root (Kiro picks it up automatically). Is there already a `## Wiki` block?"
-          ]
-        - [
-            "### 7. Confirm and write the project CLAUDE.md / AGENTS.md",
-            "### 7. Confirm and write the project AGENTS.md"
-          ]
-        - [
-            "- If `CLAUDE.md` exists at the project root, edit it.\n- Else if `AGENTS.md` exists, edit it (same template applies).\n- If neither exists, ask which one to create — don't pick for the user.",
-            "- If `AGENTS.md` exists at the project root, edit it.\n- Else if a `.kiro/steering/` project-instructions file exists, edit it.\n- If neither exists, ask whether to create `AGENTS.md`."
-          ]
-        - [
-            "- **Never overwrite a non-empty `CLAUDE.md` or `AGENTS.md`**",
-            "- **Never overwrite a non-empty `AGENTS.md` or `.kiro/steering/` file**"
-          ]
-        - [
-            "**If a `wiki-sdd` plugin is installed:** the plugin bundles its own `.mcp.json` with the server registration — pointed at the configured default vault, with the project tier resolving ahead of it. Nothing to register. One harness note before skipping to step 7: on Codex, a *project* vault additionally needs `export KMD_PROJECT_DIR=\"$PWD\"` in the shell that launches the session (§ Harness placement) — without it, `prime`/`search` serve the default vault while the hooks correctly follow the project one.",
-            "**If the `wiki` MCP server is already registered** (workspace or user `.kiro/settings/mcp.json`): nothing to do — skip to step 7. A project vault takes the workspace-level file pointing at it (§ Harness placement)."
-          ]
-        - [
-            "If the `wiki-sdd` plugin is installed, its `.mcp.json` already handles registration.",
-            "On Kiro, registration lives in `.kiro/settings/mcp.json` (workspace or user) — see `templates/mcp-entry-kiro.json.template`."
-          ]
+      kind: kiro # kiro skills are slash commands — the invocation token survives
 
 shared:
   exact: # byte-copied to every listed flavor (all flavors when unrestricted)
@@ -140,12 +86,13 @@ shared:
     - skills/wiki/templates/mcp-entry.json.template
     - skills/wiki/templates/mcp-entry-kiro.json.template
 
-# Harness-neutral literals allowed to survive dialect transforms — the wiki
-# skill's harness-placement table names Claude Code's convention in its own
-# column. A stale entry goes loud: the CLAUDE.md lint fires again.
+# Sites the harness-name lints skip: a literal phrase, or a whole section by
+# its heading line. The wiki skill's harness-placement appendix is the one
+# place the source names harnesses — the per-harness table, registration
+# placement, and the wrong-vault remedies. A stale entry goes loud: the lint
+# fires again.
 lintAllow:
-  - "`CLAUDE.md` or `AGENTS.md` (step 7)"
-  - "`AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read"
+  - section: "### Harness placement"
 
 # ── documentation: classification record (not consumed by the loader) ──
 

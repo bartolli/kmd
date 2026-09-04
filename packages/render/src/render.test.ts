@@ -7,10 +7,10 @@ import { render } from './render.js';
 
 const SKILL = `---
 name: foo
-description: Use /foo when Claude needs it.
+description: Use /foo when the agent needs it.
 ---
 
-Run \`/foo\` when Claude asks. Claude Code stays.
+Run \`/foo\` when the agent asks. The token stays a path in skills/foo/SKILL.md.
 `;
 
 const PLUGIN_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
@@ -32,7 +32,7 @@ function manifest(): RenderManifest {
   return {
     sourceRoot: 'src/wiki-sdd',
     flavors: {
-      claude: { dest: 'plugins/claude/wiki-sdd', dialect: { kind: 'identity' } },
+      claude: { dest: 'plugins/claude/wiki-sdd', dialect: { kind: 'claude' } },
       codex: {
         dest: 'plugins/codex/wiki-sdd',
         dialect: { kind: 'codex', slashAliases: [], replacements: [] }
@@ -73,15 +73,14 @@ describe('render', () => {
 
     expect(read('plugins/claude/wiki-sdd/skills/foo/SKILL.md')).toBe(SKILL);
     expect(read('plugins/codex/wiki-sdd/skills/foo/SKILL.md')).toContain(
-      'Run `$foo` when Codex asks.'
+      'Run `$foo` when the agent asks. The token stays a path in skills/foo/SKILL.md.'
     );
     expect(read('plugins/coco/wiki-sdd/skills/foo/SKILL.md')).toContain(
-      'Run `$foo` when CoCo asks.'
+      'Run `$foo` when the agent asks.'
     );
     expect(read('plugins/kiro/wiki-sdd/skills/foo/SKILL.md')).toContain(
-      'Run `/foo` when Kiro asks.'
+      'Run `/foo` when the agent asks.'
     );
-    expect(read('plugins/kiro/wiki-sdd/skills/foo/SKILL.md')).toContain('Claude Code stays.');
 
     const again = render(root, manifest(), 'write');
     expect(again.problems).toEqual([]);
@@ -112,7 +111,7 @@ describe('render', () => {
     expect(existsSync(join(root, 'plugins/codex/wiki-sdd/skills/foo/SKILL.md'))).toBe(false);
   });
 
-  it('lets CLAUDE.md survive the coco transform — CoCo reads it as project instructions', () => {
+  it('lets an allowed CLAUDE.md reach the coco flavor — CoCo reads it as project instructions', () => {
     write('src/wiki-sdd/skills/foo/SKILL.md', 'Edit `CLAUDE.md` directly.\n');
     const cocoOnly: RenderManifest = {
       sourceRoot: 'src/wiki-sdd',
@@ -122,7 +121,8 @@ describe('render', () => {
           dialect: { kind: 'coco', slashAliases: [], replacements: [] }
         }
       },
-      shared: { exact: [], rendered: ['skills/foo/SKILL.md'] }
+      shared: { exact: [], rendered: ['skills/foo/SKILL.md'] },
+      lintAllow: ['Edit `CLAUDE.md` directly.']
     };
     const result = render(root, cocoOnly, 'write');
     expect(result.problems).toEqual([]);
@@ -166,7 +166,7 @@ describe('render', () => {
       '---\nname: foo\ndescription: Ok.\n---\n\n| Claude Code | `CLAUDE.md` or `AGENTS.md` (step 6) |\n'
     );
     const m = manifest();
-    m.lintAllow = ['`CLAUDE.md` or `AGENTS.md` (step 6)'];
+    m.lintAllow = ['| Claude Code | `CLAUDE.md` or `AGENTS.md` (step 6) |'];
     expect(render(root, m, 'write').problems).toEqual([]);
     expect(read('plugins/codex/wiki-sdd/skills/foo/SKILL.md')).toContain(
       '`CLAUDE.md` or `AGENTS.md` (step 6)'
@@ -246,5 +246,48 @@ describe('one version', () => {
       JSON.stringify({ $schema: PLUGIN_SCHEMA, name: 'wiki-sdd', version: '0.20.0' })
     );
     expect(render(root, m, 'write').problems).toEqual([]);
+  });
+});
+
+describe('harness-neutral source', () => {
+  it('stops the render on a bare harness name in a skill body, writing nothing', () => {
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      '---\nname: foo\ndescription: Ok.\n---\n\nRun `/foo` when Claude asks; Kiro reads `CLAUDE.md`.\n'
+    );
+    const result = render(root, manifest(), 'write');
+    const named = result.problems.filter((p) => p.includes('harness name'));
+    expect(named).toEqual([
+      expect.stringMatching(/^skills\/foo\/SKILL\.md: harness name `Claude` /),
+      expect.stringMatching(/^skills\/foo\/SKILL\.md: harness name `Kiro` /),
+      expect.stringMatching(/^skills\/foo\/SKILL\.md: harness name `CLAUDE\.md` /)
+    ]);
+    expect(existsSync(join(root, 'plugins/codex/wiki-sdd/skills/foo/SKILL.md'))).toBe(false);
+  });
+});
+
+describe('allowed harness-placement section', () => {
+  const TABLE =
+    '| | Claude Code | Codex | CoCo | Kiro |\n| Project instructions | `CLAUDE.md` | `AGENTS.md` | `CORTEX.md` | `AGENTS.md` |\n';
+
+  it('exempts one section by heading from both lints, and nothing outside it', () => {
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      `---\nname: foo\ndescription: Ok.\n---\n\n## Mental model\n\nThe agent reads the project instructions.\n\n### Harness placement\n\n${TABLE}\n### Gate hooks\n\nGates read the project from each event.\n`
+    );
+    const m = manifest();
+    m.lintAllow = [{ section: '### Harness placement' }];
+    expect(render(root, m, 'write').problems).toEqual([]);
+    expect(read('plugins/codex/wiki-sdd/skills/foo/SKILL.md')).toContain(TABLE);
+
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      `---\nname: foo\ndescription: Ok.\n---\n\n### Harness placement\n\n${TABLE}\n### Gate hooks\n\nKiro reads \`CLAUDE.md\` here.\n`
+    );
+    const named = render(root, m, 'write').problems.filter((p) => p.includes('harness name'));
+    expect(named).toEqual([
+      expect.stringMatching(/harness name `Kiro` /),
+      expect.stringMatching(/harness name `CLAUDE\.md` /)
+    ]);
   });
 });
