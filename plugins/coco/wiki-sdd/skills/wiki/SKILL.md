@@ -2,7 +2,7 @@
 name: wiki
 description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and per-harness file placement when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.21.0"
+  version: "0.21.1"
 ---
 
 # Wiki — Project Bootstrap
@@ -113,7 +113,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 
 **Project instructions:** Kiro picks up `AGENTS.md` automatically (always included, no inclusion modes); a `.kiro/steering/` file is the native alternative when the user wants conditional inclusion — the same three sections apply.
 
-**Gate hooks on Kiro:** the power carries no hook wiring — the standard has none, and Kiro loads none from a power — so this is the one harness where the bootstrap writes a file for the gates. Write `~/.kiro/hooks/wiki-sdd.json` from the installed power's `dev.kiro/hooks/wiki-sdd.json.template`, replacing `{{PACKAGE_ROOT}}` with the power's absolute path (the Powers panel shows it; for a folder import it is the imported folder). Write nothing under `.kiro/settings/` — a project vault's entry there is the operator's, and the seat's permissions deny the agent that path. The outcome, once the workspace is trusted and the session restarted: the gates live on the seat — prompt-time reminders, tool denies, validate + sync after vault writes, the handoff gate — through the engine on `PATH` at 0.17.0 or newer (`npm i -g @bartolli/kmd`).
+**Gate hooks on Kiro:** the power carries no hook wiring — the standard has none, and Kiro loads none from a power — so this is the one harness where the bootstrap writes a file for the gates. Write `~/.kiro/hooks/wiki-sdd.json` from the installed power's `dev.kiro/hooks/wiki-sdd.json.template`, replacing `{{PACKAGE_ROOT}}` with the installed power's absolute path — Kiro copies an imported folder into `~/.kiro/powers/installed/<name>/`, so for this power it is `~/.kiro/powers/installed/wiki-sdd`, and the template lives there too. Write nothing under `.kiro/settings/` — a project vault's entry there is the operator's, and the seat's permissions deny the agent that path. The outcome, once the workspace is trusted and the session restarted: the gates live on the seat — prompt-time reminders, tool denies, validate + sync after vault writes, the handoff gate — through the engine on `PATH` at 0.17.1 or newer (`npm i -g @bartolli/kmd`).
 
 ### Gate hooks
 

@@ -3,11 +3,11 @@ import { transformCoco, transformCodex } from './transform.js';
 
 describe('transformCodex', () => {
   it('rewrites slash invocations to dollar', () => {
-    const out = transformCodex('Run `/wiki` then `/grill-with-docs`.', {
-      slashNames: ['wiki', 'grill-with-docs'],
+    const out = transformCodex('Run `/wiki` then `/intent`.', {
+      slashNames: ['wiki', 'intent'],
       replacements: []
     });
-    expect(out).toBe('Run `$wiki` then `$grill-with-docs`.');
+    expect(out).toBe('Run `$wiki` then `$intent`.');
   });
 
   it('leaves path segments and compound names untouched', () => {

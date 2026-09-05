@@ -118,6 +118,41 @@ function lintHarnessNames(rel: string, text: string): string[] {
   );
 }
 
+// Skill invocation tokens must name a skill folder or a dialect's slash
+// alias: `$name` — the codex and coco form, the shape the manifest's prompts
+// and the extension dirs' prose carry — in every Package markdown and JSON
+// file, and backticked `/name` — the source form — in skill bodies, where a
+// harness's own slash commands sit only inside lintAllow sites. A retired
+// skill's token otherwise survives in chrome the body lints never read.
+// `$schema` is JSON's, not a skill.
+const DOLLAR_TOKEN = /(?<![\w$])\$([a-z][a-z0-9-]*)/g;
+const SLASH_TOKEN = /`\/([a-z][a-z0-9-]*)`/g;
+
+function lintSkillTokens(
+  rel: string,
+  text: string,
+  known: ReadonlySet<string>,
+  slashForm: boolean
+): string[] {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(DOLLAR_TOKEN)) {
+    const name = m[1] as string;
+    if (name !== 'schema' && !known.has(name)) seen.add(`$${name}`);
+  }
+  if (slashForm) {
+    for (const m of text.matchAll(SLASH_TOKEN)) {
+      const name = m[1] as string;
+      if (!known.has(name)) seen.add(`/${name}`);
+    }
+  }
+  return [...seen].map(
+    (token) =>
+      `${rel}: skill token \`${token}\` names no Package skill — rename it, or add the skill`
+  );
+}
+
+const TOKEN_LINT_FILES = /\.(md|json)$/;
+
 function withoutSection(text: string, heading: string): string {
   const level = heading.match(/^#+/)?.[0].length ?? 0;
   const lines = text.split('\n');
@@ -310,19 +345,40 @@ function buildPayloads(
     }
   }
 
+  const known = new Set<string>(names);
+  for (const flavor of Object.values(manifest.flavors)) {
+    if (flavor.dialect.kind !== 'claude') {
+      for (const alias of flavor.dialect.slashAliases) known.add(alias);
+    }
+  }
   const sources = new Map<string, string>();
   for (const rel of manifest.shared.rendered) {
     const source = readFileSync(join(sourceRoot, rel), 'utf8');
     sources.set(rel, source);
-    problems.push(...lintHarnessNames(rel, withoutAllowed(source, manifest.lintAllow ?? [])));
+    const lintable = withoutAllowed(source, manifest.lintAllow ?? []);
+    problems.push(...lintHarnessNames(rel, lintable));
+    problems.push(...lintSkillTokens(rel, lintable, known, rel.startsWith('skills/')));
     problems.push(...assertSkillCaps(rel, source));
   }
   for (const entry of manifest.shared.exact) {
     if (!entry.path.startsWith('skills/')) continue;
     const source = readFileSync(join(sourceRoot, entry.path), 'utf8');
-    problems.push(
-      ...lintHarnessNames(entry.path, withoutAllowed(source, manifest.lintAllow ?? []))
-    );
+    const lintable = withoutAllowed(source, manifest.lintAllow ?? []);
+    problems.push(...lintHarnessNames(entry.path, lintable));
+    problems.push(...lintSkillTokens(entry.path, lintable, known, true));
+  }
+  for (const rel of ['plugin.json', 'README.md']) {
+    const abs = join(sourceRoot, rel);
+    if (existsSync(abs)) {
+      problems.push(...lintSkillTokens(rel, readFileSync(abs, 'utf8'), known, false));
+    }
+  }
+  for (const namespace of Object.keys(EXTENSION_DIRS)) {
+    for (const abs of walkFiles(join(sourceRoot, namespace))) {
+      if (!TOKEN_LINT_FILES.test(abs)) continue;
+      const rel = relative(sourceRoot, abs);
+      problems.push(...lintSkillTokens(rel, readFileSync(abs, 'utf8'), known, false));
+    }
   }
 
   for (const [name, flavor] of Object.entries(manifest.flavors)) {

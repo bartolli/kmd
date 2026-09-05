@@ -2,7 +2,7 @@
 name: tdd
 description: Implement a single `ready-for-agent` slice from a wiki user story using disciplined red-green-refactor with vertical tracer bullets. Reads the slice description, the story's Gherkin scenarios (as the test specification), `glossary.md` (for vocabulary), and the referenced specs/ADRs. Refuses horizontal slicing (write-all-tests-then-all-impl). Ticks the slice checkbox when done. Use when the user says "let's TDD slice X", "implement slice 2 of story Y", "/tdd", "red-green-refactor this", or wants to start vertical-slice implementation on a wiki-tracked story.
 metadata:
-  version: "0.21.0"
+  version: "0.21.1"
 ---
 
 # TDD — Vertical Tracer-Bullet Test-Driven Development

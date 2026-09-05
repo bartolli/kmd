@@ -248,6 +248,45 @@ describe('harness-neutral source', () => {
   });
 });
 
+/** Shape lock for intent-codex-manifest-default-prompt-names-retired-skills. */
+describe('skill tokens name Package skills', () => {
+  it('stops the render on a `$name` in the manifest or an extension dir, and a `/name` in a skill body, that names no skill', () => {
+    write(
+      'src/wiki-sdd/plugin.json',
+      JSON.stringify({
+        $schema: PLUGIN_SCHEMA,
+        name: 'wiki-sdd',
+        version: '1.2.3',
+        extensions: {
+          'com.openai.codex': {
+            interface: {
+              displayName: 'Wiki SDD',
+              defaultPrompt: ['Use $foo to start.', 'Use $grill-with-docs to refine this.']
+            }
+          }
+        }
+      })
+    );
+    write('src/wiki-sdd/com.snowflake.cortex/activation.md', 'Ask for `$foo` or `$to-prd`.\n');
+    write(
+      'src/wiki-sdd/skills/foo/SKILL.md',
+      '---\nname: foo\ndescription: Ok.\n---\n\nRun `/foo`, then `/bar`; `/dense` is an alias.\n'
+    );
+    const m = manifest();
+    m.flavors.codex = {
+      dest: 'plugins/codex/wiki-sdd',
+      dialect: { kind: 'codex', slashAliases: ['dense'], replacements: [] }
+    };
+    const tokens = render(root, m, 'write').problems.filter((p) => p.includes('skill token'));
+    expect(tokens).toEqual([
+      expect.stringMatching(/^skills\/foo\/SKILL\.md: skill token `\/bar` /),
+      expect.stringMatching(/^plugin\.json: skill token `\$grill-with-docs` /),
+      expect.stringMatching(/^com\.snowflake\.cortex\/activation\.md: skill token `\$to-prd` /)
+    ]);
+    expect(existsSync(join(root, 'plugins/codex/wiki-sdd/.codex-plugin/plugin.json'))).toBe(false);
+  });
+});
+
 describe('allowed harness-placement section', () => {
   const TABLE =
     '| | Claude Code | Codex | CoCo | Kiro |\n| Project instructions | `CLAUDE.md` | `AGENTS.md` | `CORTEX.md` | `AGENTS.md` |\n';

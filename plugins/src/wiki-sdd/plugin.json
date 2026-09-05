@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "wiki-sdd",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "description": "Wiki-native spec-driven development loop for the llm-wiki agent wiki: bootstrap a project scope, grill intent into a glossary, synthesize PRDs and user stories, triage stories through a state machine, slice into tracker issues, and implement slices via red-green-refactor TDD.",
   "author": {
     "name": "Angel Bartolli"
@@ -48,8 +48,8 @@
         "capabilities": ["Read", "Write", "Interactive"],
         "defaultPrompt": [
           "Use $wiki to connect this project to my agent wiki.",
-          "Use $grill-with-docs to refine this workstream.",
-          "Use $to-prd to turn our discussion into stories."
+          "Use $intent to refine this workstream.",
+          "Use $to-stories to turn our discussion into stories."
         ]
       }
     }

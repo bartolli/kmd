@@ -26,7 +26,7 @@ const COCO_RESOLVER = fileURLToPath(
   new URL('../../../plugins/src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', import.meta.url)
 );
 
-const CURRENT = '0.17.0';
+const CURRENT = '0.17.1';
 const STALE = '0.6.0';
 
 let base: string;
@@ -164,8 +164,8 @@ describe('the launcher resolves a global kmd', () => {
     expect(r.code).toBe(1);
     expect(r.stdout).toBe('');
     expect(r.stderr.trim().split('\n')).toEqual([
-      expect.stringMatching(
-        /^kmd launcher: no kmd at or above 0\.17\.0 on PATH, and npx failed to start/
+      expect.stringContaining(
+        `kmd launcher: no kmd at or above ${CURRENT} on PATH, and npx failed to start`
       )
     ]);
     expect(tiers()).toEqual([]);

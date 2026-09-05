@@ -34,7 +34,7 @@ import {
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const MIN_KMD_VERSION = [0, 17, 0];
+const MIN_KMD_VERSION = [0, 17, 1];
 const FLOOR = MIN_KMD_VERSION.join('.');
 const IMPORTABLE = /\.(mjs|cjs|js)$/;
 const args = process.argv.slice(2);

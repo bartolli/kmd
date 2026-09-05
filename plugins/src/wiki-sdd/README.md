@@ -40,7 +40,9 @@ git clone --depth 1 https://github.com/bartolli/kmd /tmp/kmd
 ```
 
 Then **Powers** panel → **Add Custom Power** → **Import power from a folder** →
-`/tmp/kmd/plugins/src/wiki-sdd`. Kiro loads the power's skills and its MCP server
+`/tmp/kmd/plugins/src/wiki-sdd` — this folder exactly, the one holding `plugin.json`;
+Kiro's folder check looks for that file and nothing else. Kiro copies the folder into
+`~/.kiro/powers/installed/wiki-sdd/`. It loads the power's skills and its MCP server
 when a prompt matches one of the manifest's keywords (`wiki`, `sdd`, `kmd`, …);
 the skills invoke as `/wiki`, `/intent`, and so on. An update is a re-import after
 a release; each `SKILL.md` carries its package version in `metadata.version`.
@@ -55,7 +57,7 @@ npm i -g @bartolli/kmd
 ## The `wiki` server
 
 `mcp.json` runs `node ${PLUGIN_ROOT}/scripts/run-kmd.mjs mcp`. The launcher runs a
-global `kmd` at or above 0.17.0 in-process, falls back to `npx -y @bartolli/kmd@latest`
+global `kmd` at or above 0.17.1 in-process, falls back to `npx -y @bartolli/kmd@latest`
 where `npx` exists, and otherwise prints one line on stderr. The server exposes two
 tools, `prime` and `search`.
 
