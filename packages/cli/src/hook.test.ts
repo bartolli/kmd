@@ -1706,4 +1706,14 @@ describe('session-start stdout is the JSON context envelope', () => {
     expect(out.trim().startsWith('{')).toBe(true);
     expect(out.trim().endsWith('}')).toBe(true);
   });
+
+  // intent-session-start-envelope-on-kiro: Kiro adds SessionStart stdout to
+  // context as text, envelope included, so the kiro codec prints the line bare.
+  it('prints the line plain under the kiro codec; claude and neutral keep the envelope', () => {
+    const line = renderSessionStart('llm-wiki', 'startup');
+
+    expect(sessionStartStdout(line, 'kiro')).toBe(line);
+    expect(sessionStartStdout(line, 'claude')).toBe(sessionStartStdout(line));
+    expect(sessionStartStdout(line, 'neutral')).toBe(sessionStartStdout(line));
+  });
 });

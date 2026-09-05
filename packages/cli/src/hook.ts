@@ -1422,24 +1422,29 @@ export function renderSessionStart(
 }
 
 /**
- * The SessionStart stdout envelope. Claude Code injects plain stdout and the
- * JSON form alike; Cortex Code injects only `hookSpecificOutput.additionalContext`
- * and shows plain text in the transcript without delivering it to the model.
- * One line, so a line-oriented reader still parses it.
+ * The SessionStart stdout codec. Claude Code injects plain stdout and the
+ * JSON envelope alike; Cortex Code injects only `hookSpecificOutput.additionalContext`
+ * and shows plain text in the transcript without delivering it to the model;
+ * Kiro adds stdout to context as text, envelope included, so its codec prints
+ * the line bare. One line either way, so a line-oriented reader still parses it.
  */
-export function sessionStartStdout(line: string): string {
+export type SessionStartFormat = 'neutral' | 'claude' | 'kiro';
+
+export function sessionStartStdout(line: string, format: SessionStartFormat = 'neutral'): string {
+  if (format === 'kiro') return line;
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line }
   });
 }
 
 /**
- * `kmd hook session-start [<vault-root>] [--scope <s>]`. Fixed-function
- * orientation: a session starting inside a declared scope repo receives one
- * stdout context line — the prime instruction, or the post-compaction
- * re-orientation when the harness reports `source: "compact"`. No resolved
- * scope means silence; no dedup state is read or written. Fails open and
- * exits 0 on every path like the other hook events.
+ * `kmd hook session-start [<vault-root>] [--scope <s>] [--harness claude|kiro]`.
+ * Fixed-function orientation: a session starting inside a declared scope repo
+ * receives one stdout context line — the prime instruction, or the
+ * post-compaction re-orientation when the harness reports `source: "compact"`.
+ * `--harness` selects the stdout codec. No resolved scope means silence; no
+ * dedup state is read or written. Fails open and exits 0 on every path like
+ * the other hook events.
  */
 export async function runHookSessionStart(): Promise<void> {
   try {
@@ -1447,6 +1452,15 @@ export async function runHookSessionStart(): Promise<void> {
     if (invocation.dryRun) {
       diag('--dry-run/--explain support prompt and pretool events only');
       return;
+    }
+    let format: SessionStartFormat = 'neutral';
+    if (invocation.harness === 'claude' || invocation.harness === 'kiro') {
+      format = invocation.harness;
+    } else if (
+      invocation.harness !== undefined &&
+      !NEUTRAL_INPUT_HARNESSES.has(invocation.harness)
+    ) {
+      diag(`unknown harness "${String(invocation.harness)}" — emitting the envelope`);
     }
     const event = parseSessionStartEvent(await readStdin());
     if (event === null) {
@@ -1471,7 +1485,7 @@ export async function runHookSessionStart(): Promise<void> {
     const line = renderSessionStart(scope, event.source, config.builtin_hooks ?? {}, band, behind);
     if (invocation.deferOrientation)
       pendOrientation(hookStateDir(vaultRoot), event.session_id, line);
-    console.log(sessionStartStdout(line));
+    console.log(sessionStartStdout(line, format));
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }

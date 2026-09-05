@@ -735,6 +735,43 @@ describe('kmd hook prompt (end-to-end)', () => {
     expect(first.stdout).toBe('');
   }, 30_000);
 
+  it('session-start --harness kiro prints the line plain; claude and no flag keep the envelope', async () => {
+    const event = JSON.stringify({
+      session_id: 'sess_kiro_start',
+      hook_event_name: 'SessionStart',
+      cwd: vaultRoot
+    });
+    const kiro = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      event,
+      kmdHome
+    );
+    expect(kiro.code).toBe(0);
+    expect(kiro.stderr).toBe('');
+    expect(kiro.stdout.trimEnd().split('\n')).toHaveLength(1);
+    expect(kiro.stdout).toMatch(/^Wiki scope "demo": /);
+    expect(kiro.stdout).not.toContain('hookSpecificOutput');
+
+    const claude = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo', '--harness', 'claude'],
+      event,
+      kmdHome
+    );
+    expect(claude.code).toBe(0);
+    expect(
+      JSON.parse(claude.stdout) as { hookSpecificOutput: { hookEventName: string } }
+    ).toMatchObject({
+      hookSpecificOutput: { hookEventName: 'SessionStart' }
+    });
+
+    const bare = await runKmd(
+      ['hook', 'session-start', vaultRoot, '--scope', 'demo'],
+      event,
+      kmdHome
+    );
+    expect(bare.stdout).toContain('"hookEventName":"SessionStart"');
+  }, 60_000);
+
   it('posttool: blocks with the fix list and holds sync on validation errors', async () => {
     const page = join(vaultRoot, 'notes', 'bad-note.md');
     await mkdir(join(vaultRoot, 'notes'), { recursive: true });
