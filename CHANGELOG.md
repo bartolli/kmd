@@ -1,3 +1,13 @@
+## [v0.17.2] - 2026-09-05
+
+### Fixed
+
+- the kiro tool-name table carries the 2.x `fs_read` and `fs_write` beside `execute_bash` and `read_file`: gates authored on `Read` and `Write` match a 2.x seat's read and write calls; before, both names passed through unmatched. The rows are the hooks docs' canonical 2.x names; no 2.x seat has run them
+
+### Changed
+
+- plugin train wiki-sdd 0.21.2 rides this release: the wiki skill's Kiro placement names `kmd config set default_vault` as the seat's precondition — with no machine default the power's server dies at bind and lists no tools — and the loop's pedagogy fixes small testable findings in the current commit instead of filing them (the retro, tdd, handoff, and wiki skills; a fully ticked story archives at the last tick). The floors stay `[0, 17, 1]`: the rows widen matching on a seat generation no wiring targets, and the wiring depends on nothing new
+
 ## [v0.17.1] - 2026-09-05
 
 ### Fixed
