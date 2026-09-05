@@ -20,9 +20,23 @@ export interface PluginManifest {
   extensions?: Record<string, Record<string, unknown>>;
 }
 
+export interface StdioServer {
+  type: 'stdio';
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
+export interface McpConfig {
+  $schema: string;
+  mcpServers: Record<string, StdioServer | { type: string; [key: string]: unknown }>;
+}
+
 export interface PackageResult {
   problems: string[];
   manifest: PluginManifest | null;
+  mcp: McpConfig | null;
 }
 
 // ajv ships CommonJS: the default import is module.exports, the class rides .default.
@@ -65,6 +79,7 @@ export function validatePackage(sourceRoot: string): PackageResult {
   const mcp = checkFile(sourceRoot, 'mcp.json', validateMcp);
   return {
     problems: [...plugin.problems, ...mcp.problems],
-    manifest: plugin.value as PluginManifest | null
+    manifest: plugin.value as PluginManifest | null,
+    mcp: mcp.value as McpConfig | null
   };
 }

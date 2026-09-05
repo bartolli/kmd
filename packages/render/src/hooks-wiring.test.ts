@@ -18,10 +18,10 @@ const COCO_MANIFEST = fileURLToPath(
 );
 const COCO_ROOT = fileURLToPath(new URL('../../../plugins/coco/wiki-sdd', import.meta.url));
 const COCO_WRAPPER = fileURLToPath(
-  new URL('../../../plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs', import.meta.url)
+  new URL('../../../plugins/src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', import.meta.url)
 );
 const SHARED_WRAPPER = fileURLToPath(
-  new URL('../../../plugins/src/wiki-sdd/hooks/run-kmd-hook.mjs', import.meta.url)
+  new URL('../../../plugins/src/wiki-sdd/scripts/run-kmd.mjs', import.meta.url)
 );
 
 describe('hook wiring chrome', () => {
@@ -92,8 +92,11 @@ describe('coco hook wiring chrome (inline in the root manifest)', () => {
     expect(raw).not.toContain('--default-root');
     expect(raw).not.toMatch(/hook (session-start|prompt|pretool|posttool|stop) [^-]/);
     const wiki = parsed.mcpServers.wiki;
-    expect(wiki?.command).toBe('kmd');
-    expect(wiki?.args).toEqual(['mcp']);
+    expect(wiki?.command).toBe('node');
+    expect(wiki?.args).toEqual([
+      `\${CORTEX_PLUGIN_ROOT}/plugins/src/wiki-sdd/scripts/run-kmd.mjs`,
+      'mcp'
+    ]);
     // The plugin env is scrubbed to HOME/LOGNAME/PATH/SHELL/TERM/USER, so the
     // two vault signals only reach the server if the entry forwards them.
     expect(wiki?.env.WIKI_VAULT).toBe(`\${WIKI_VAULT:-}`);

@@ -1,0 +1,65 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook session-start --default-root \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\"",
+            "timeout": 30,
+            "statusMessage": "wiki orientation"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook prompt --default-root \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\"",
+            "timeout": 30,
+            "statusMessage": "wiki gate triggers"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook pretool --default-root \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\" --harness claude",
+            "timeout": 30,
+            "statusMessage": "wiki tool gates"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|apply_patch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook posttool --default-root \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\" --harness claude",
+            "timeout": 60,
+            "statusMessage": "wiki validate + sync"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/hooks/run-kmd-hook.mjs\" hook stop --default-root \"${WIKI_VAULT:-$HOME/llm-wiki/vault}\"",
+            "timeout": 60,
+            "statusMessage": "wiki handoff gate"
+          }
+        ]
+      }
+    ]
+  }
+}

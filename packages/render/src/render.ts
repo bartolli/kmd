@@ -4,8 +4,11 @@ import { parse } from 'yaml';
 import { validatePackage } from './package.js';
 import {
   claudeManifest,
+  claudeMcp,
   codexManifest,
+  codexMcp,
   cortexManifest,
+  cortexMcp,
   marketplaceManifest
 } from './projections.js';
 import { type DialectConfig, transformCoco, transformCodex } from './transform.js';
@@ -169,16 +172,93 @@ function applyDialect(text: string, dialect: Dialect, names: string[]): string {
 const CORTEX_MANIFEST = '.cortex-plugin/plugin.json';
 const MARKETPLACE = '.claude-plugin/marketplace.json';
 
-function committedBlocks(path: string): { hooks?: unknown; mcpServers?: unknown } {
-  try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-    return {
-      ...(raw.hooks !== undefined && { hooks: raw.hooks }),
-      ...(raw.mcpServers !== undefined && { mcpServers: raw.mcpServers })
-    };
-  } catch {
-    return {};
+// The Package launcher; a flavor's hook wrapper is a copy of it.
+const LAUNCHER = 'scripts/run-kmd.mjs';
+
+// One Extension dir per harness, named by the vendor's reverse domain, holding
+// that harness's hook wiring and chrome; the renderer places each file where
+// the harness reads it. A file the map does not name is not placed.
+// A destination starting with `/` is repo-root-relative; the rest land in the
+// flavor's dest. `wrapper` names where a copy of the launcher goes; a harness
+// with its own resolver lists it under `files` instead.
+interface ExtensionDir {
+  kind: Dialect['kind'] | null;
+  files: Record<string, string>;
+  wrapper?: string;
+}
+
+const EXTENSION_DIRS: Record<string, ExtensionDir> = {
+  'com.anthropic.claude-code': {
+    kind: 'claude',
+    files: { 'hooks.json': 'hooks/hooks.json', 'README.md': 'README.md' },
+    wrapper: 'hooks/run-kmd-hook.mjs'
+  },
+  'com.openai.codex': {
+    kind: 'codex',
+    files: { 'hooks.json': 'hooks/hooks.json', 'README.md': 'README.md' },
+    wrapper: 'hooks/run-kmd-hook.mjs'
+  },
+  // hooks.json here is the manifest's inline `hooks` block, not a placed file
+  'com.snowflake.cortex': {
+    kind: 'coco',
+    files: {
+      'README.md': 'README.md',
+      'run-kmd-hook.mjs': 'hooks/run-kmd-hook.mjs',
+      'activation.md': '/.cortex-plugin/activation.md'
+    }
+  },
+  // Kiro reads the portable fields; its directory carries the hook-file
+  // template the wiki skill's onboarding writes, placed by no flavor
+  'dev.kiro': { kind: null, files: {} }
+};
+
+const PACKAGE_DIRS = new Set(['skills', 'scripts']);
+
+// The Package root is the standard's layout plus the launcher: anything else
+// is a check error, so a stray directory never ships to a conformant client.
+function lintPackageLayout(sourceRoot: string): string[] {
+  const problems: string[] = [];
+  for (const entry of readdirSync(sourceRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || PACKAGE_DIRS.has(entry.name)) continue;
+    if (!entry.name.includes('.')) {
+      problems.push(
+        `${entry.name}/: not a Package directory — skills/, scripts/, or an extension namespace`
+      );
+    } else if (!(entry.name in EXTENSION_DIRS)) {
+      problems.push(
+        `${entry.name}/: unknown extension namespace — the renderer places nothing from it`
+      );
+    }
   }
+  return problems;
+}
+
+function placeExtension(
+  repoRoot: string,
+  sourceRoot: string,
+  dest: string,
+  namespace: string,
+  extension: ExtensionDir,
+  payload: Map<string, string | Buffer>
+): void {
+  for (const [file, target] of Object.entries(extension.files)) {
+    const src = join(sourceRoot, namespace, file);
+    if (!existsSync(src)) continue;
+    const key = target.startsWith('/')
+      ? relative(join(repoRoot, dest), join(repoRoot, target.slice(1)))
+      : target;
+    payload.set(key, readFileSync(src));
+  }
+  const launcher = join(sourceRoot, LAUNCHER);
+  if (extension.wrapper !== undefined && existsSync(launcher)) {
+    payload.set(extension.wrapper, readFileSync(launcher));
+  }
+}
+
+function extensionHooks(sourceRoot: string, namespace: string): unknown {
+  const path = join(sourceRoot, namespace, 'hooks.json');
+  if (!existsSync(path)) return undefined;
+  return JSON.parse(readFileSync(path, 'utf8'));
 }
 
 function walkFiles(dir: string): string[] {
@@ -199,7 +279,7 @@ function buildPayloads(
   const sourceRoot = join(repoRoot, manifest.sourceRoot);
   const names = skillNames(sourceRoot);
   const pkg = validatePackage(sourceRoot);
-  const problems: string[] = [...pkg.problems];
+  const problems: string[] = [...pkg.problems, ...lintPackageLayout(sourceRoot)];
   const payloads = new Map<string, Map<string, string | Buffer>>();
 
   let stampVer: string | null = null;
@@ -265,8 +345,14 @@ function buildPayloads(
       if (entry.flavors && !entry.flavors.includes(name)) continue;
       payload.set(entry.path, readFileSync(join(sourceRoot, entry.path)));
     }
+    for (const [namespace, extension] of Object.entries(EXTENSION_DIRS)) {
+      if (extension.kind === flavor.dialect.kind) {
+        placeExtension(repoRoot, sourceRoot, flavor.dest, namespace, extension, payload);
+      }
+    }
     if (flavor.dialect.kind === 'claude' && pkg.manifest !== null) {
       payload.set('.claude-plugin/plugin.json', claudeManifest(pkg.manifest));
+      if (pkg.mcp !== null) payload.set('.mcp.json', claudeMcp(pkg.manifest, pkg.mcp));
       const marketplace = marketplaceManifest(pkg.manifest, flavor.dest);
       if (marketplace !== null) {
         payload.set(
@@ -277,15 +363,17 @@ function buildPayloads(
     }
     if (flavor.dialect.kind === 'codex' && pkg.manifest !== null) {
       payload.set('.codex-plugin/plugin.json', codexManifest(pkg.manifest));
+      if (pkg.mcp !== null) payload.set('.mcp.json', codexMcp(pkg.mcp));
     }
     if (flavor.dialect.kind === 'coco' && pkg.manifest !== null) {
-      // The inline hook and server blocks are carried from the committed
-      // manifest until their own projections land.
-      const cortexPath = join(repoRoot, CORTEX_MANIFEST);
-      const committed = committedBlocks(cortexPath);
+      const hooks = extensionHooks(sourceRoot, 'com.snowflake.cortex');
+      const blocks = {
+        ...(hooks !== undefined && { hooks }),
+        ...(pkg.mcp !== null && { mcpServers: cortexMcp(pkg.mcp, manifest.sourceRoot) })
+      };
       payload.set(
-        relative(join(repoRoot, flavor.dest), cortexPath),
-        cortexManifest(pkg.manifest, `${flavor.dest}/skills`, committed)
+        relative(join(repoRoot, flavor.dest), join(repoRoot, CORTEX_MANIFEST)),
+        cortexManifest(pkg.manifest, `${flavor.dest}/skills`, blocks)
       );
     }
     payloads.set(name, payload);

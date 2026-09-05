@@ -1,0 +1,94 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "session-start",
+              "--default-root",
+              "${user_config.vault_path}"
+            ]
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "prompt",
+              "--default-root",
+              "${user_config.vault_path}"
+            ]
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "pretool",
+              "--default-root",
+              "${user_config.vault_path}",
+              "--harness",
+              "claude"
+            ]
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "posttool",
+              "--default-root",
+              "${user_config.vault_path}",
+              "--harness",
+              "claude"
+            ]
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/run-kmd-hook.mjs",
+              "hook",
+              "stop",
+              "--default-root",
+              "${user_config.vault_path}"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

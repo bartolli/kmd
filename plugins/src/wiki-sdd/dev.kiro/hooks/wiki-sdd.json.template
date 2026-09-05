@@ -1,0 +1,45 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "wiki-sdd-session-start",
+      "trigger": "SessionStart",
+      "action": {
+        "type": "command",
+        "command": "node \"{{PACKAGE_ROOT}}/scripts/run-kmd.mjs\" hook session-start --harness kiro"
+      }
+    },
+    {
+      "name": "wiki-sdd-prompt",
+      "trigger": "UserPromptSubmit",
+      "action": {
+        "type": "command",
+        "command": "node \"{{PACKAGE_ROOT}}/scripts/run-kmd.mjs\" hook prompt --harness kiro"
+      }
+    },
+    {
+      "name": "wiki-sdd-pretool",
+      "trigger": "PreToolUse",
+      "action": {
+        "type": "command",
+        "command": "node \"{{PACKAGE_ROOT}}/scripts/run-kmd.mjs\" hook pretool --harness kiro"
+      }
+    },
+    {
+      "name": "wiki-sdd-posttool",
+      "trigger": "PostToolUse",
+      "action": {
+        "type": "command",
+        "command": "node \"{{PACKAGE_ROOT}}/scripts/run-kmd.mjs\" hook posttool --harness kiro"
+      }
+    },
+    {
+      "name": "wiki-sdd-stop",
+      "trigger": "Stop",
+      "action": {
+        "type": "command",
+        "command": "node \"{{PACKAGE_ROOT}}/scripts/run-kmd.mjs\" hook stop --harness kiro"
+      }
+    }
+  ]
+}

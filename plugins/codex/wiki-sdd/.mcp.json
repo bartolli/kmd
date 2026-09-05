@@ -4,13 +4,14 @@
       "type": "stdio",
       "command": "node",
       "args": [
-        "./scripts/start-wiki-mcp.mjs"
+        "./scripts/run-kmd.mjs",
+        "mcp"
       ],
       "cwd": ".",
       "env_vars": [
         "WIKI_VAULT",
         "KMD_PROJECT_DIR",
-        "WIKI_MCP_LOG_LEVEL"
+        "LOG_LEVEL"
       ]
     }
   }

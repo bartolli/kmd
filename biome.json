@@ -27,6 +27,16 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "packages/render/src/projections.ts",
+        "packages/render/src/render.test.ts",
+        "packages/render/src/package.test.ts"
+      ],
+      "linter": { "rules": { "suspicious": { "noTemplateCurlyInString": "off" } } }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "single",

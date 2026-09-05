@@ -49,3 +49,16 @@ describe('glossary contract across the skill sources', () => {
     expect(intent).not.toContain('wiki://template/project/spec');
   });
 });
+
+/** Shape lock for story-4-extension-dirs-hook-wiring slice 2: the Kiro step. */
+describe('the wiki skill on Kiro', () => {
+  const wiki = readFileSync(join(SKILLS, 'wiki', 'SKILL.md'), 'utf8');
+
+  it('installs the power, writes the hook file from the template, and never copies skills or writes settings', () => {
+    expect(wiki).toContain('dev.kiro/hooks/wiki-sdd.json.template');
+    expect(wiki).toContain('~/.kiro/hooks/wiki-sdd.json');
+    expect(wiki).toContain('{{PACKAGE_ROOT}}');
+    expect(wiki).not.toMatch(/\.kiro\/skills\//);
+    expect(wiki).not.toMatch(/writes? (to |into )?`?\.kiro\/settings/);
+  });
+});

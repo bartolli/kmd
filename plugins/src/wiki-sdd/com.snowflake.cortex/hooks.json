@@ -1,0 +1,58 @@
+{
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook session-start --defer-orientation",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "UserPromptSubmit": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook prompt",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook pretool --harness claude",
+          "timeout": 30
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "edit|write|apply_patch|bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook posttool --harness claude",
+          "timeout": 60
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "node \"${CORTEX_PLUGIN_ROOT}/plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs\" hook stop",
+          "timeout": 60
+        }
+      ]
+    }
+  ]
+}

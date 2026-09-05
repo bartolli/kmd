@@ -22,16 +22,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 // install with or without a build stamp, a stub npx that shadows any real one —
 // and reads back which tier ran, with the payload and args it received.
 
+// The Package launcher is the shared wrapper: the claude and codex flavors
+// carry a copy of it at hooks/run-kmd-hook.mjs. Coco keeps its own npx-free
+// resolver in its extension dir.
 const SHARED = fileURLToPath(
-  new URL('../../../plugins/src/wiki-sdd/hooks/run-kmd-hook.mjs', import.meta.url)
+  new URL('../../../plugins/src/wiki-sdd/scripts/run-kmd.mjs', import.meta.url)
 );
 const COCO = fileURLToPath(
-  new URL('../../../plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs', import.meta.url)
+  new URL('../../../plugins/src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', import.meta.url)
 );
 
-const FLOOR_DECL = /MIN_HOOK_VERSION = \[(\d+), (\d+), (\d+)\]/;
+const FLOOR_DECL = /MIN_KMD_VERSION = \[(\d+), (\d+), (\d+)\]/;
+const COCO_FLOOR_DECL = /MIN_HOOK_VERSION = \[(\d+), (\d+), (\d+)\]/;
 const floor = FLOOR_DECL.exec(readFileSync(SHARED, 'utf8'));
-if (floor === null) throw new Error('shared wrapper declares no MIN_HOOK_VERSION');
+if (floor === null) throw new Error('the launcher declares no MIN_KMD_VERSION');
 const CURRENT = `${floor[1]}.${floor[2]}.${floor[3]}`;
 // hook-capable, below every floor since: the class the exit code cannot catch
 const STALE = '0.6.0';
@@ -228,8 +232,8 @@ afterEach(() => {
 });
 
 describe('resolver floor', () => {
-  it('is declared identically in the shared and coco wrappers', () => {
-    expect(FLOOR_DECL.exec(readFileSync(COCO, 'utf8'))?.[0]).toBe(floor?.[0]);
+  it('is declared identically in the launcher and the coco resolver', () => {
+    expect(COCO_FLOOR_DECL.exec(readFileSync(COCO, 'utf8'))?.slice(1)).toEqual(floor?.slice(1));
   });
 });
 

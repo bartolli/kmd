@@ -62,11 +62,13 @@ shared:
   exact: # byte-copied to every listed flavor (all flavors when unrestricted)
     - skills/intent/questions-cookbook.md
     - skills/wiki/references/vault-yaml.md
-    # coco is deliberately absent: the shared wrapper's fallback is
+    # The Package launcher, which the projected registrations run; the claude
+    # and codex hook wrappers are copies of it placed from their extension
+    # dirs. coco is deliberately absent: the launcher's fallback is
     # `npx @bartolli/kmd@latest`, and CoCo deployments are the ones most
-    # likely to block npx outright. coco authors its own npx-free resolver
-    # as chrome.
-    - path: hooks/run-kmd-hook.mjs
+    # likely to block npx outright — its extension dir carries an npx-free
+    # resolver.
+    - path: scripts/run-kmd.mjs
       flavors: [claude, codex]
   rendered: # one source; per-flavor dialect
     - skills/intent/SKILL.md
@@ -93,29 +95,11 @@ lintAllow:
 
 # ── documentation: classification record (not consumed by the loader) ──
 
-chrome:
-  coco:
-    - README.md
-    - hooks/run-kmd-hook.mjs # npx-free resolver, not the shared wrapper
-    # /.cortex-plugin/plugin.json is a projection of the root plugin.json:
-    # identity derived, skills by rule, the inline hooks and mcpServers
-    # blocks carried from the committed file until their projections land.
-    # It lives at the repo root, not in dest: a managed `cortex plugin
-    # install` resolves it at the clone root, and ${CORTEX_PLUGIN_ROOT}
-    # expands to that root.
-    - /.cortex-plugin/activation.md
-  claude:
-    # .claude-plugin/plugin.json and the repo-root .claude-plugin/marketplace.json
-    # are projections of the root plugin.json, not chrome
-    - .mcp.json
-    - README.md
-    - hooks/hooks.json
-  codex:
-    # .codex-plugin/plugin.json is a projection of the root plugin.json, not chrome
-    - .mcp.json
-    - README.md
-    - hooks/hooks.json
-    - scripts/start-wiki-mcp.mjs
+# Every adapter file is now rendered output — manifests and registrations
+# projected from the Package's root manifests, hook wiring, READMEs, and
+# resolvers placed from the Extension dirs (com.anthropic.claude-code,
+# com.openai.codex, com.snowflake.cortex). Nothing is chrome.
+chrome: {}
 
 retired:
   # coco subdir plugin chrome, collapsed into the repo-root manifest
@@ -124,6 +108,11 @@ retired:
   - plugins/coco/wiki-sdd/.mcp.json
   # kiro adapter: Kiro installs the source as an Agent Plugins package
   - plugins/kiro/wiki-sdd/
+  # the codex npx launcher, replaced by the Package launcher the projected registration runs
+  - plugins/codex/wiki-sdd/scripts/start-wiki-mcp.mjs
+  # the shared hook wrapper at the Package root: the launcher is the wrapper,
+  # and each harness's copy is placed from its extension dir
+  - plugins/src/wiki-sdd/hooks/
 
 excluded:
   - plugins/codex/wiki-sdd/.DS_Store

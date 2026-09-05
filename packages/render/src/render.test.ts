@@ -58,7 +58,6 @@ beforeEach(() => {
     JSON.stringify({
       $schema: MCP_SCHEMA,
       mcpServers: {
-        // biome-ignore lint/suspicious/noTemplateCurlyInString: the Agent Plugins placeholder is literal
         wiki: { type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/x.mjs', 'mcp'] }
       }
     })
@@ -85,10 +84,10 @@ describe('render', () => {
 
   it('never touches per-harness chrome', () => {
     write('plugins/codex/wiki-sdd/hooks/hooks.json', 'codex-specific');
-    write('plugins/codex/wiki-sdd/.mcp.json', '{"codex": true}');
+    write('plugins/codex/wiki-sdd/README.md', 'codex readme');
     render(root, manifest(), 'write');
     expect(read('plugins/codex/wiki-sdd/hooks/hooks.json')).toBe('codex-specific');
-    expect(read('plugins/codex/wiki-sdd/.mcp.json')).toBe('{"codex": true}');
+    expect(read('plugins/codex/wiki-sdd/README.md')).toBe('codex readme');
   });
 
   it('removes stale files from a dest skills tree — adapters are build output', () => {
@@ -190,13 +189,13 @@ describe('render', () => {
   });
 
   it('writes flavor-restricted exact files only into their listed flavors', () => {
-    write('src/wiki-sdd/hooks/run-kmd-hook.mjs', 'wrapper bytes');
+    write('src/wiki-sdd/scripts/run-kmd.mjs', 'launcher bytes');
     const m = manifest();
-    m.shared.exact = [{ path: 'hooks/run-kmd-hook.mjs', flavors: ['claude', 'codex'] }];
+    m.shared.exact = [{ path: 'scripts/run-kmd.mjs', flavors: ['claude', 'codex'] }];
     render(root, m, 'write');
-    expect(read('plugins/claude/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
-    expect(read('plugins/codex/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('wrapper bytes');
-    expect(existsSync(join(root, 'plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs'))).toBe(false);
+    expect(read('plugins/claude/wiki-sdd/scripts/run-kmd.mjs')).toBe('launcher bytes');
+    expect(read('plugins/codex/wiki-sdd/scripts/run-kmd.mjs')).toBe('launcher bytes');
+    expect(existsSync(join(root, 'plugins/coco/wiki-sdd/scripts/run-kmd.mjs'))).toBe(false);
   });
 });
 
@@ -378,54 +377,32 @@ describe('claude manifest projection', () => {
     );
   });
 
-  it('derives the repo-root Cortex manifest: identity from the root, skills by rule, the inline blocks carried from the committed file', () => {
+  it('derives the repo-root Cortex manifest: identity from the root, skills by rule, the hook block from the cortex extension', () => {
     write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT_MANIFEST));
     write(
-      '.cortex-plugin/plugin.json',
-      JSON.stringify({
-        name: 'stale',
-        version: '0.0.1',
-        description: 'stale',
-        author: { name: 'stale' },
-        skills: ['./stale'],
-        hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node x.mjs hook stop' }] }] },
-        mcpServers: { wiki: { type: 'stdio', command: 'kmd', args: ['mcp'] } }
-      })
+      'src/wiki-sdd/com.snowflake.cortex/hooks.json',
+      JSON.stringify({ Stop: [{ hooks: [{ type: 'command', command: 'node x.mjs hook stop' }] }] })
     );
+    write('.cortex-plugin/plugin.json', JSON.stringify({ name: 'stale', skills: ['./stale'] }));
     expect(render(root, manifest(), 'write').problems).toEqual([]);
-    expect(read('.cortex-plugin/plugin.json')).toBe(`{
-  "name": "wiki-sdd",
-  "version": "1.2.3",
-  "description": "Loop.",
-  "author": {
-    "name": "A. Author"
-  },
-  "skills": [
-    "./plugins/coco/wiki-sdd/skills"
-  ],
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node x.mjs hook stop"
-          }
-        ]
-      }
-    ]
-  },
-  "mcpServers": {
-    "wiki": {
-      "type": "stdio",
-      "command": "kmd",
-      "args": [
-        "mcp"
-      ]
-    }
-  }
-}
-`);
+    const cortex = JSON.parse(read('.cortex-plugin/plugin.json')) as Record<string, unknown>;
+    expect(Object.keys(cortex)).toEqual([
+      'name',
+      'version',
+      'description',
+      'author',
+      'skills',
+      'hooks',
+      'mcpServers'
+    ]);
+    expect(cortex).toMatchObject({
+      name: 'wiki-sdd',
+      version: '1.2.3',
+      description: 'Loop.',
+      author: { name: 'A. Author' },
+      skills: ['./plugins/coco/wiki-sdd/skills'],
+      hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node x.mjs hook stop' }] }] }
+    });
     expect(render(root, manifest(), 'check').mismatches).toEqual([]);
   });
 
@@ -521,5 +498,166 @@ describe('claude manifest projection', () => {
     expect(render(root, manifest(), 'write').problems).toEqual([]);
     expect(read('plugins/claude/wiki-sdd/.claude-plugin/plugin.json')).toBe(CLAUDE_MANIFEST);
     expect(existsSync(join(root, 'plugins/codex/wiki-sdd/.claude-plugin'))).toBe(false);
+  });
+});
+
+describe('server registration projections', () => {
+  const PORTABLE_MCP = {
+    $schema: MCP_SCHEMA,
+    mcpServers: {
+      wiki: { type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/scripts/run-kmd.mjs', 'mcp'] }
+    }
+  };
+  const ROOT = {
+    $schema: PLUGIN_SCHEMA,
+    name: 'wiki-sdd',
+    version: '1.2.3',
+    author: { name: 'A. Author' },
+    extensions: {
+      'com.anthropic.claude-code': {
+        userConfig: { vault_path: { type: 'directory', title: 'Vault path', required: true } }
+      }
+    }
+  };
+
+  it('projects the claude .mcp.json: the Claude root token, the userConfig vault as --default-root, the project dir and log level in env', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT));
+    write('src/wiki-sdd/mcp.json', JSON.stringify(PORTABLE_MCP));
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/claude/wiki-sdd/.mcp.json')).toBe(`{
+  "mcpServers": {
+    "wiki": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "\${CLAUDE_PLUGIN_ROOT}/scripts/run-kmd.mjs",
+        "mcp",
+        "--default-root",
+        "\${user_config.vault_path}"
+      ],
+      "env": {
+        "KMD_PROJECT_DIR": "\${CLAUDE_PROJECT_DIR}",
+        "LOG_LEVEL": "info"
+      }
+    }
+  }
+}
+`);
+    write('plugins/claude/wiki-sdd/.mcp.json', 'hand edit');
+    expect(render(root, manifest(), 'check').mismatches).toContain(
+      'claude: .mcp.json: differs from rendered output'
+    );
+  });
+
+  it('projects the cortex mcpServers block into the repo-root manifest: the source tree under the Cortex root, no vault root, the pass-through env', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT));
+    write('src/wiki-sdd/mcp.json', JSON.stringify(PORTABLE_MCP));
+    write(
+      '.cortex-plugin/plugin.json',
+      JSON.stringify({
+        name: 'stale',
+        hooks: { Stop: [] },
+        mcpServers: { wiki: { type: 'stdio', command: 'kmd', args: ['mcp'] } }
+      })
+    );
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    const cortex = JSON.parse(read('.cortex-plugin/plugin.json')) as Record<string, unknown>;
+    expect(cortex.mcpServers).toEqual({
+      wiki: {
+        type: 'stdio',
+        command: 'node',
+        args: ['${CORTEX_PLUGIN_ROOT}/src/wiki-sdd/scripts/run-kmd.mjs', 'mcp'],
+        env: {
+          WIKI_VAULT: '${WIKI_VAULT:-}',
+          KMD_PROJECT_DIR: '${KMD_PROJECT_DIR:-}',
+          LOG_LEVEL: '${WIKI_MCP_LOG_LEVEL:-info}'
+        }
+      }
+    });
+  });
+
+  it('projects the codex .mcp.json: the launcher beside the manifest with cwd ".", the env allowlist, no vault root', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT));
+    write('src/wiki-sdd/mcp.json', JSON.stringify(PORTABLE_MCP));
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/codex/wiki-sdd/.mcp.json')).toBe(`{
+  "mcpServers": {
+    "wiki": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "./scripts/run-kmd.mjs",
+        "mcp"
+      ],
+      "cwd": ".",
+      "env_vars": [
+        "WIKI_VAULT",
+        "KMD_PROJECT_DIR",
+        "LOG_LEVEL"
+      ]
+    }
+  }
+}
+`);
+    write('plugins/codex/wiki-sdd/.mcp.json', 'hand edit');
+    expect(render(root, manifest(), 'check').mismatches).toContain(
+      'codex: .mcp.json: differs from rendered output'
+    );
+  });
+});
+
+describe('extension dirs', () => {
+  it('places the claude extension: hooks.json and README into the flavor, the wrapper a copy of the launcher', () => {
+    write('src/wiki-sdd/scripts/run-kmd.mjs', 'launcher bytes\n');
+    write('src/wiki-sdd/com.anthropic.claude-code/hooks.json', '{"hooks":{"Stop":[]}}\n');
+    write('src/wiki-sdd/com.anthropic.claude-code/README.md', '# claude adapter\n');
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/claude/wiki-sdd/hooks/hooks.json')).toBe('{"hooks":{"Stop":[]}}\n');
+    expect(read('plugins/claude/wiki-sdd/README.md')).toBe('# claude adapter\n');
+    expect(read('plugins/claude/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('launcher bytes\n');
+    expect(existsSync(join(root, 'plugins/codex/wiki-sdd/hooks/hooks.json'))).toBe(false);
+
+    write('plugins/claude/wiki-sdd/hooks/hooks.json', 'hand edit');
+    expect(render(root, manifest(), 'check').mismatches).toContain(
+      'claude: hooks/hooks.json: differs from rendered output'
+    );
+  });
+
+  it('places the codex extension the same way', () => {
+    write('src/wiki-sdd/scripts/run-kmd.mjs', 'launcher bytes\n');
+    write('src/wiki-sdd/com.openai.codex/hooks.json', '{"hooks":{"Stop":[]}}\n');
+    write('src/wiki-sdd/com.openai.codex/README.md', '# codex adapter\n');
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/codex/wiki-sdd/hooks/hooks.json')).toBe('{"hooks":{"Stop":[]}}\n');
+    expect(read('plugins/codex/wiki-sdd/README.md')).toBe('# codex adapter\n');
+    expect(read('plugins/codex/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('launcher bytes\n');
+  });
+
+  it('places the cortex extension: hooks inline in the repo-root manifest, activation at the repo root, its own resolver and README in the flavor', () => {
+    write(
+      'src/wiki-sdd/com.snowflake.cortex/hooks.json',
+      '{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}\n'
+    );
+    write('src/wiki-sdd/com.snowflake.cortex/activation.md', '# inactive\n');
+    write('src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', 'npx-free resolver\n');
+    write('src/wiki-sdd/com.snowflake.cortex/README.md', '# coco adapter\n');
+    write('.cortex-plugin/plugin.json', JSON.stringify({ name: 'stale', hooks: { Carried: [] } }));
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    const cortex = JSON.parse(read('.cortex-plugin/plugin.json')) as Record<string, unknown>;
+    expect(cortex.hooks).toEqual({ Stop: [{ hooks: [{ type: 'command', command: 'x' }] }] });
+    expect(read('.cortex-plugin/activation.md')).toBe('# inactive\n');
+    expect(read('plugins/coco/wiki-sdd/hooks/run-kmd-hook.mjs')).toBe('npx-free resolver\n');
+    expect(read('plugins/coco/wiki-sdd/README.md')).toBe('# coco adapter\n');
+  });
+
+  it('rejects an unknown top-level directory or extension namespace in the Package', () => {
+    write('src/wiki-sdd/hooks/run-kmd-hook.mjs', 'stray wrapper\n');
+    write('src/wiki-sdd/org.example.harness/hooks.json', '{}\n');
+    const problems = render(root, manifest(), 'write').problems;
+    expect(problems).toEqual([
+      expect.stringMatching(/^hooks\/: not a Package directory/),
+      expect.stringMatching(/^org\.example\.harness\/: unknown extension namespace/)
+    ]);
+    expect(existsSync(join(root, 'plugins/claude/wiki-sdd/skills/foo/SKILL.md'))).toBe(false);
   });
 });

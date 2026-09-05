@@ -18,7 +18,6 @@ const MCP_SCHEMA = 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json';
 const MANIFEST = { $schema: PLUGIN_SCHEMA, name: 'fixture', version: '1.0.0' };
 const MCP = {
   $schema: MCP_SCHEMA,
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: the Agent Plugins placeholder is literal
   mcpServers: { wiki: { type: 'stdio', command: 'node', args: ['${PLUGIN_ROOT}/x.mjs'] } }
 };
 
@@ -93,6 +92,20 @@ describe('the source is harness-neutral', () => {
   });
 });
 
+describe('the portable mcp.json stays portable', () => {
+  it('carries $schema, mcpServers, and one stdio entry in the closed shape', () => {
+    const { mcp, problems } = validatePackage(SOURCE);
+    expect(problems).toEqual([]);
+    expect(Object.keys(mcp ?? {})).toEqual(['$schema', 'mcpServers']);
+    const servers = Object.values(mcp?.mcpServers ?? {});
+    expect(servers).toHaveLength(1);
+    expect(servers[0]?.type).toBe('stdio');
+    for (const key of Object.keys(servers[0] ?? {})) {
+      expect(['type', 'command', 'args', 'cwd']).toContain(key);
+    }
+  });
+});
+
 describe('the Kiro copy is retired', () => {
   it('has no kiro flavor, no plugins/kiro tree, the folder on the retired list, and the README at the Package root', () => {
     const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
@@ -103,5 +116,33 @@ describe('the Kiro copy is retired', () => {
     expect(raw.retired).toContain('plugins/kiro/wiki-sdd/');
     expect(existsSync(join(repoRoot, 'plugins', 'kiro'))).toBe(false);
     expect(existsSync(join(SOURCE, 'README.md'))).toBe(true);
+  });
+});
+
+describe('the Kiro hook-file template', () => {
+  const EVENTS: Record<string, string> = {
+    SessionStart: 'session-start',
+    UserPromptSubmit: 'prompt',
+    PreToolUse: 'pretool',
+    PostToolUse: 'posttool',
+    Stop: 'stop'
+  };
+
+  it('registers the five events in the v1 schema, each running the launcher under --harness kiro at the filled package root', () => {
+    const raw = readFileSync(join(SOURCE, 'dev.kiro', 'hooks', 'wiki-sdd.json.template'), 'utf8');
+    expect(raw).toContain('{{PACKAGE_ROOT}}');
+    const filled = JSON.parse(raw.replaceAll('{{PACKAGE_ROOT}}', '/seat/powers/wiki-sdd')) as {
+      version: string;
+      hooks: { name: string; trigger: string; action: { type: string; command: string } }[];
+    };
+    expect(filled.version).toBe('v1');
+    expect(filled.hooks.map((hook) => hook.trigger)).toEqual(Object.keys(EVENTS));
+    for (const hook of filled.hooks) {
+      expect(hook.action.type).toBe('command');
+      expect(hook.action.command).toBe(
+        `node "/seat/powers/wiki-sdd/scripts/run-kmd.mjs" hook ${EVENTS[hook.trigger]} --harness kiro`
+      );
+      expect(hook.name).toMatch(/^wiki-sdd-/);
+    }
   });
 });

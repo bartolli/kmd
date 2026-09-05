@@ -69,8 +69,9 @@
   "mcpServers": {
     "wiki": {
       "type": "stdio",
-      "command": "kmd",
+      "command": "node",
       "args": [
+        "${CORTEX_PLUGIN_ROOT}/plugins/src/wiki-sdd/scripts/run-kmd.mjs",
         "mcp"
       ],
       "env": {

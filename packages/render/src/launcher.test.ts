@@ -22,11 +22,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 const LAUNCHER = fileURLToPath(
   new URL('../../../plugins/src/wiki-sdd/scripts/run-kmd.mjs', import.meta.url)
 );
-const WRAPPER = fileURLToPath(
-  new URL('../../../plugins/src/wiki-sdd/hooks/run-kmd-hook.mjs', import.meta.url)
+const COCO_RESOLVER = fileURLToPath(
+  new URL('../../../plugins/src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', import.meta.url)
 );
 
-const CURRENT = '0.16.0';
+const CURRENT = '0.17.0';
 const STALE = '0.6.0';
 
 let base: string;
@@ -165,7 +165,7 @@ describe('the launcher resolves a global kmd', () => {
     expect(r.stdout).toBe('');
     expect(r.stderr.trim().split('\n')).toEqual([
       expect.stringMatching(
-        /^kmd launcher: no kmd at or above 0\.16\.0 on PATH, and npx failed to start/
+        /^kmd launcher: no kmd at or above 0\.17\.0 on PATH, and npx failed to start/
       )
     ]);
     expect(tiers()).toEqual([]);
@@ -187,14 +187,14 @@ describe('the launcher resolves a global kmd', () => {
     expect(dark.stderr).toContain('npx failed to start');
   });
 
-  it('declares the same floor as the hook wrapper', () => {
+  it('declares the same floor as the coco resolver', () => {
     const declared = (file: string, name: string): string | undefined =>
       new RegExp(`${name} = \\[(\\d+), (\\d+), (\\d+)\\]`)
         .exec(readFileSync(file, 'utf8'))
         ?.slice(1)
         .join('.');
     expect(declared(LAUNCHER, 'MIN_KMD_VERSION')).toBe(CURRENT);
-    expect(declared(WRAPPER, 'MIN_HOOK_VERSION')).toBe(CURRENT);
+    expect(declared(COCO_RESOLVER, 'MIN_HOOK_VERSION')).toBe(CURRENT);
   });
 
   // intent-launcher-swallows-kiro-deny-exit: the engine's exit 2 is the only

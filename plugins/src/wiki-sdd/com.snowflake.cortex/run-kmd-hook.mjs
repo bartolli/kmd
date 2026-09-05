@@ -1,19 +1,14 @@
 #!/usr/bin/env node
-// Resolver for kmd gate hooks. Three tiers, cheapest first.
-//   import — a PATH `kmd` that resolves to a node entry (npm's bin is a symlink
-//            at kmd.mjs; pnpm's shim names its target in a cmd-shim trailer)
-//            whose version clears MIN_HOOK_VERSION is imported in-process: one
-//            node startup (~0.15s vs ~0.65s warm npx).
-//   spawn  — an executable shim with no readable target (Volta's binary) still
-//            runs locally, so it is asked its version (one extra startup, this
-//            tier only) and spawned when it clears the floor.
-//   npx    — `npx -y @bartolli/kmd@latest`, registry resolution.
-// The floor keeps a stale global off both local tiers: a `hook`-unaware kmd
-// exits non-zero (a prompt block on UserPromptSubmit), and a hook-capable but
-// older engine silently runs behavior this chrome no longer expects. Falling
-// back is only possible before the payload on stdin is consumed, so the spawn
-// is terminal. A wrapper failure must never block the harness event: exit 0
-// on every path, one stderr line on degraded ones.
+// Resolver for kmd gate hooks, CoCo flavor. Two local tiers and no npx: CoCo
+// deployments are typically managed environments where `npx` is blocked or
+// offline, and a fallback that cannot run is worse than none — it turns a
+// missing prerequisite into a silent no-op. A PATH `kmd` that resolves to a
+// node entry (npm's symlink, or the target named in pnpm's cmd-shim trailer)
+// whose version clears MIN_HOOK_VERSION is imported in-process; an executable
+// shim with no readable target (Volta's binary) is asked its version and
+// spawned when it clears the floor; anything else exits 0 with one stderr
+// line naming the cause. Exiting 0 is the contract: exit 2 on
+// UserPromptSubmit blocks the user's prompt, so gates fail open, loudly.
 import { spawn, spawnSync } from 'node:child_process';
 import {
   accessSync,
@@ -28,10 +23,15 @@ import {
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const MIN_HOOK_VERSION = [0, 16, 0];
+const MIN_HOOK_VERSION = [0, 17, 0];
 const FLOOR = MIN_HOOK_VERSION.join('.');
 const IMPORTABLE = /\.(mjs|cjs|js)$/;
 const args = process.argv.slice(2);
+
+function fail(message) {
+  process.stderr.write(`kmd hook wrapper: ${message}\n`);
+  process.exit(0);
+}
 
 function meetsFloor(raw) {
   const version = String(raw).trim().split('.').map(Number);
@@ -97,7 +97,6 @@ function shimTarget(shim) {
 // shim is the spawn candidate — the shell's own pick when nothing is
 // importable — and the first below-floor entry is kept for the diagnostic.
 function resolveLocal() {
-  if (process.platform === 'win32') return { entry: null, shim: null, stale: null };
   let shim = null;
   let stale = null;
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {
@@ -127,7 +126,7 @@ function resolveLocal() {
 }
 
 // The shim's version is unreadable from disk, so it is asked. stdin stays
-// untouched: the probe must leave the payload for whichever tier runs.
+// untouched: the probe must leave the payload for the spawn.
 function shimVersion(shim) {
   const probe = spawnSync(shim, ['--version'], {
     stdio: ['ignore', 'pipe', 'ignore'],
@@ -138,60 +137,36 @@ function shimVersion(shim) {
   return /\d+\.\d+\.\d+/.exec(probe.stdout)?.[0] ?? null;
 }
 
-function runNpx() {
-  const child = spawn('npx', ['-y', '@bartolli/kmd@latest', ...args], { stdio: 'inherit' });
-  child.on('error', (error) => {
-    process.stderr.write(`kmd hook wrapper: ${error.message}\n`);
-    process.exit(0);
-  });
-  child.on('close', (code) => {
-    // kmd hook always exits 0 by contract — nonzero here is npx/registry
-    // infrastructure failure, and propagating it can block the harness event.
-    if (code !== 0 && code !== null) {
-      process.stderr.write(`kmd hook wrapper: npx exited ${code} — degrading open\n`);
-    }
-    process.exit(0);
-  });
-}
-
 function runShim(shim) {
   const child = spawn(shim, args, { stdio: 'inherit' });
-  child.on('error', (error) => {
-    // never started, payload intact — the registry tier can still run
-    process.stderr.write(`kmd hook wrapper: ${shim} failed to start (${error.message}) — falling back to npx\n`);
-    runNpx();
-  });
+  child.on('error', (error) => fail(`${shim} failed to start (${error.message}) — gates are off`));
   child.on('close', (code) => {
     // terminal: the payload is consumed, and kmd hook exits 0 by contract
-    if (code !== 0 && code !== null) {
-      process.stderr.write(`kmd hook wrapper: ${shim} exited ${code} — degrading open\n`);
-    }
+    if (code !== 0 && code !== null) fail(`${shim} exited ${code} — gates are off`);
     process.exit(0);
   });
 }
 
-function runLocalOrNpx(shim, stale) {
+function runLocal(shim, stale) {
   if (shim === null) {
     if (stale !== null) {
-      process.stderr.write(`kmd hook wrapper: ${stale.path} is kmd ${stale.version}, below ${FLOOR} — falling back to npx\n`);
+      fail(`${stale.path} is kmd ${stale.version}, below ${FLOOR} — gates are off. Upgrade or rebuild the global kmd`);
     }
-    return runNpx();
+    fail(`no kmd on PATH — gates are off. Install kmd ${FLOOR} or newer globally`);
   }
   const version = shimVersion(shim);
-  if (version === null) {
-    process.stderr.write(`kmd hook wrapper: ${shim} did not answer --version — falling back to npx\n`);
-    return runNpx();
-  }
+  if (version === null) fail(`${shim} did not answer --version — gates are off`);
   if (!meetsFloor(version)) {
-    process.stderr.write(`kmd hook wrapper: ${shim} is kmd ${version}, below ${FLOOR} — falling back to npx\n`);
-    return runNpx();
+    fail(`${shim} is kmd ${version}, below ${FLOOR} — gates are off. Upgrade or rebuild the global kmd`);
   }
   runShim(shim);
 }
 
+if (process.platform === 'win32') fail('unsupported platform — gates are off');
+
 const { entry, shim, stale } = resolveLocal();
 if (entry === null) {
-  runLocalOrNpx(shim, stale);
+  runLocal(shim, stale);
 } else {
   process.argv = [process.argv[0], entry, ...args];
   try {
@@ -199,6 +174,6 @@ if (entry === null) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`kmd hook wrapper: import failed (${message}) — falling back\n`);
-    runLocalOrNpx(shim, stale);
+    runLocal(shim, stale);
   }
 }
