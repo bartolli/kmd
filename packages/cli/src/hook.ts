@@ -312,12 +312,13 @@ export interface PretoolMatch {
 
 /**
  * Per-harness tool names → the canonical names gate authors write, keyed by
- * codec. Kiro's rows are the v3 engine's as witnessed; a name the table does
- * not carry passes through unchanged, and the `files` predicate already reads
- * Kiro's `path` field among its candidates.
+ * codec. Kiro's rows are the v3 engine's as witnessed plus the 2.x names its
+ * hooks docs list as canonical; a name the table does not carry passes
+ * through unchanged, and the `files` predicate already reads Kiro's `path`
+ * field among its candidates.
  */
 const HARNESS_TOOL_NAMES: Record<'kiro', Record<string, string>> = {
-  kiro: { execute_bash: 'Bash', read_file: 'Read' }
+  kiro: { execute_bash: 'Bash', read_file: 'Read', fs_read: 'Read', fs_write: 'Write' }
 };
 
 export function canonicalToolName(harness: 'kiro' | undefined, toolName: string): string {

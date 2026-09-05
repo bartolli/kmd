@@ -63,6 +63,12 @@ triggers_extra:
       tool: Read
       files: ["**/secret.md"]
       reason: "Secrets stay closed."
+    - id: write-gate
+      on: pretool
+      enforce: block
+      tool: Write
+      files: ["**/secret.md"]
+      reason: "Secrets stay closed to writes."
 `;
 
 // A v3 Kiro PreToolUse payload as witnessed: PascalCase event name, Kiro's
@@ -344,6 +350,26 @@ describe('kmd hook pretool --harness kiro (end-to-end)', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toBe('Retro gate: no retro in scope newer than the last release note.\n');
   }, 30_000);
+
+  it('translates the 2.x names: `fs_read` and `fs_write` deny through gates authored on `Read` and `Write`', async () => {
+    const legacy = (tool: string) =>
+      JSON.stringify({
+        hook_event_name: 'preToolUse',
+        cwd: '/tmp',
+        tool_name: tool,
+        tool_input: { path: '/tmp/notes/secret.md' }
+      });
+    const args = ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'];
+    const env = { KIRO_SESSION_ID: 'legacy-session' };
+
+    const read = await runKmd(args, legacy('fs_read'), kmdHome, env);
+    expect(read.code).toBe(2);
+    expect(read.stderr).toBe('Secrets stay closed.\n');
+
+    const write = await runKmd(args, legacy('fs_write'), kmdHome, env);
+    expect(write.code).toBe(2);
+    expect(write.stderr).toBe('Secrets stay closed to writes.\n');
+  }, 60_000);
 
   it('is a known harness on the prompt event: the neutral stdin codec, no diagnostic', async () => {
     const result = await runKmd(
