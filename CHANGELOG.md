@@ -1,3 +1,18 @@
+## [v0.17.1] - 2026-09-05
+
+### Fixed
+
+- the tier walk passes over the level whose `.kmd` is the global home: `~/.kmd/config.yaml` is never read as a project tier config, so a set `default_vault` binds `global-config` from every cwd under HOME with no nearer tier. The Kiro power's server — launched with cwd at `~/.kiro/powers/installed/wiki-sdd`, no roots capability, no `WIKI_VAULT` — binds the machine default and lists `prime` and `search`; before, every such cwd failed with `Unrecognized key: "default_vault"`
+- the tier-home lookup never returns the global home: a vault directly under HOME homes its index at `$KMD_HOME/db/{key}/index.db`, and `kmd db reset` on it deletes that directory alone; before, two such vaults shared `~/.kmd/db/index.db` and the reset deleted every keyed index
+- `kmd hook session-start --harness kiro` writes the orientation line bare on stdout — Kiro adds SessionStart stdout to context as text, envelope included, so the envelope arrived as literal JSON; no flag and `--harness claude` keep the `hookSpecificOutput` envelope. The seat's first injected context on a live session is unwitnessed at this version; the hooks docs and the engine's end-to-end test carry the claim
+
+### Changed
+
+- `~/vault/vault.yaml` and a `~/.kmd`-marked `~/vault.yaml` bind by no convention; `kmd config set default_vault` is the route for a vault directly under HOME
+- an unknown `--harness` on session-start diags once and emits the envelope, like the other events
+- plugin train unmoved: wiki-sdd stays 0.21.0 and the floors `[0, 17, 0]`; 0.21.1 with the floors at 0.17.1, the installed power path in the onboarding text, and a render lint holding every skill token to a Package skill ride the next train, after this publish
+- not in this release: Kiro ignores hook stdout on tool events, so the resync fix list after a vault write and inject-class pretool triggers do not reach the model there and the Stop gate is the backstop; the 2.x tool names `fs_read` and `fs_write` are not translated to `Read` and `Write`
+
 ## [v0.17.0] - 2026-09-05
 
 ### Added
