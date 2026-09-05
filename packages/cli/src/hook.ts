@@ -45,6 +45,8 @@ const DEFAULT_TRIGGERS: Trigger[] = [];
 
 const SESSION_STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// The 2.x Kiro engine sends no `session_id`; its environment carries
+// KIRO_SESSION_ID. A payload's own id always wins.
 function eventFields(raw: string): Record<string, unknown> | null {
   let data: unknown;
   try {
@@ -53,8 +55,17 @@ function eventFields(raw: string): Record<string, unknown> | null {
     return null;
   }
   if (typeof data !== 'object' || data === null) return null;
-  return data as Record<string, unknown>;
+  const fields = data as Record<string, unknown>;
+  const fallback = process.env.KIRO_SESSION_ID;
+  if (typeof fields.session_id !== 'string' && typeof fallback === 'string' && fallback !== '') {
+    fields.session_id = fallback;
+  }
+  return fields;
 }
+
+// Harnesses whose events arrive as the neutral JSON on stdin under an explicit
+// `--harness`: kiro's flag rides every event for the pretool codec's sake.
+const NEUTRAL_INPUT_HARNESSES = new Set<unknown>(['kiro']);
 
 export function parsePromptEvent(raw: string): PromptEvent | null {
   const fields = eventFields(raw);
@@ -299,6 +310,21 @@ export interface PretoolMatch {
   dedup?: Trigger['dedup'];
 }
 
+/**
+ * Per-harness tool names → the canonical names gate authors write, keyed by
+ * codec. Kiro's rows are the v3 engine's as witnessed; a name the table does
+ * not carry passes through unchanged, and the `files` predicate already reads
+ * Kiro's `path` field among its candidates.
+ */
+const HARNESS_TOOL_NAMES: Record<'kiro', Record<string, string>> = {
+  kiro: { execute_bash: 'Bash', read_file: 'Read' }
+};
+
+export function canonicalToolName(harness: 'kiro' | undefined, toolName: string): string {
+  if (harness === undefined) return toolName;
+  return HARNESS_TOOL_NAMES[harness][toolName] ?? toolName;
+}
+
 export function parsePretoolEvent(raw: string): PretoolEvent | null {
   const fields = eventFields(raw);
   if (fields === null) return null;
@@ -498,10 +524,18 @@ function readUpdated(path: string): string | null {
   return null;
 }
 
+/**
+ * Output codecs for the pretool gate. `claude` speaks the hookSpecificOutput
+ * JSON; `neutral` the engine's own decision object; `kiro` has one deny
+ * channel — exit 2 with the reason on stderr, stdout dropped by the harness —
+ * so a rendered deny is the only path under `kmd hook` that exits non-zero.
+ */
+export type PretoolFormat = 'neutral' | 'claude' | 'kiro';
+
 export function renderPretool(
   matches: PretoolMatch[],
-  format: 'neutral' | 'claude'
-): { stdout: string | null; stderr: string[] } {
+  format: PretoolFormat
+): { stdout: string | null; stderr: string[]; exitCode: 0 | 2 } {
   // Identity and payload are separate: every id spent its own dedup key
   // upstream; here byte-identical text renders once and every unique block
   // reason reports in match order.
@@ -510,6 +544,14 @@ export function renderPretool(
   const reasons = byClass('block');
   const context = byClass('inject');
   const warnings = byClass('warn');
+  if (format === 'kiro') {
+    if (reasons.length > 0) return { stdout: null, stderr: reasons, exitCode: 2 };
+    return {
+      stdout: context.length > 0 ? context.join('\n') : null,
+      stderr: warnings,
+      exitCode: 0
+    };
+  }
   if (format === 'claude') {
     // "allow" would auto-approve the tool call; inject/warn must leave the
     // permission flow untouched, so the decision appears only on deny.
@@ -522,9 +564,13 @@ export function renderPretool(
       hookSpecificOutput.additionalContext = context.join('\n');
     }
     const decided = reasons.length > 0 || context.length > 0;
-    return { stdout: decided ? JSON.stringify({ hookSpecificOutput }) : null, stderr: warnings };
+    return {
+      stdout: decided ? JSON.stringify({ hookSpecificOutput }) : null,
+      stderr: warnings,
+      exitCode: 0
+    };
   }
-  if (matches.length === 0) return { stdout: null, stderr: [] };
+  if (matches.length === 0) return { stdout: null, stderr: [], exitCode: 0 };
   return {
     stdout: JSON.stringify({
       decision: reasons.length > 0 ? 'deny' : 'none',
@@ -532,7 +578,8 @@ export function renderPretool(
       context,
       warnings
     }),
-    stderr: []
+    stderr: [],
+    exitCode: 0
   };
 }
 
@@ -779,7 +826,7 @@ export function explainPretool(options: {
   stateDir: string;
   sessionId: string;
   cwd?: string;
-  format?: 'neutral' | 'claude';
+  format?: PretoolFormat;
   now?: number;
 }): { triggers: PretoolExplainEntry[]; outcome: { stdout: string | null; stderr: string[] } } {
   const now = options.now ?? Date.now();
@@ -1037,7 +1084,10 @@ export async function runHookPrompt(): Promise<void> {
     let event: PromptEvent | null = null;
     if (invocation.harness === 'kiro-ide') {
       event = kiroIdePromptEvent();
-    } else if (invocation.harness !== undefined) {
+    } else if (
+      invocation.harness !== undefined &&
+      !NEUTRAL_INPUT_HARNESSES.has(invocation.harness)
+    ) {
       diag(`unknown harness "${String(invocation.harness)}" — reading the neutral stdin event`);
     }
     event ??= parsePromptEvent(await readStdin());
@@ -1088,18 +1138,23 @@ export async function runHookPrompt(): Promise<void> {
 }
 
 /**
- * `kmd hook pretool [<vault-root>] [--scope <s>] [--harness claude]`. Fails
- * open: a degraded engine (missing/invalid config, bad payload) emits one
- * stderr diagnostic per event and no decision — loud enough to get fixed,
- * never denying unrelated work on a config typo. Exits 0 on every path.
+ * `kmd hook pretool [<vault-root>] [--scope <s>] [--harness claude|kiro]`.
+ * Fails open: a degraded engine (missing/invalid config, bad payload) emits
+ * one stderr diagnostic per event and no decision — loud enough to get fixed,
+ * never denying unrelated work on a config typo. Exits 0 on every path but
+ * one: under `--harness kiro` a rendered deny exits 2 with the reason on
+ * stderr, the only deny channel that harness has.
  */
 export async function runHookPretool(): Promise<void> {
   try {
     const invocation = hookInvocation();
-    let format: 'neutral' | 'claude' = 'neutral';
-    if (invocation.harness === 'claude') {
-      format = 'claude';
-    } else if (invocation.harness !== undefined) {
+    let format: PretoolFormat = 'neutral';
+    if (invocation.harness === 'claude' || invocation.harness === 'kiro') {
+      format = invocation.harness;
+    } else if (
+      invocation.harness !== undefined &&
+      !NEUTRAL_INPUT_HARNESSES.has(invocation.harness)
+    ) {
       diag(`unknown harness "${String(invocation.harness)}" — emitting the neutral contract`);
     }
     const event = parsePretoolEvent(await readStdin());
@@ -1107,6 +1162,7 @@ export async function runHookPretool(): Promise<void> {
       diag('stdin is not a pretool event ({session_id, tool_name})');
       return;
     }
+    const toolName = canonicalToolName(format === 'kiro' ? 'kiro' : undefined, event.tool_name);
     const vaultRoot = resolveHookVault(invocation, event.cwd);
     if (vaultRoot === null) return;
     const config = await loadVaultConfig(vaultRoot);
@@ -1121,7 +1177,7 @@ export async function runHookPretool(): Promise<void> {
     }
     if (invocation.explain) {
       const trace = explainPretool({
-        toolName: event.tool_name,
+        toolName,
         toolInput: event.tool_input,
         triggers,
         vaultRoot,
@@ -1133,7 +1189,7 @@ export async function runHookPretool(): Promise<void> {
       console.log(JSON.stringify({ event: 'pretool', scope: scope ?? null, duplicates, ...trace }));
       return;
     }
-    const matches = matchPretoolTriggers(event.tool_name, event.tool_input, triggers, event.cwd);
+    const matches = matchPretoolTriggers(toolName, event.tool_input, triggers, event.cwd);
     const { fired, skipped } = evaluateMatches(matches, vaultRoot);
     for (const id of skipped) {
       diag(`trigger "${id}": unknown or unevaluable predicate — skipped`);
@@ -1148,6 +1204,7 @@ export async function runHookPretool(): Promise<void> {
     if (rendered.stdout !== null) {
       console.log(rendered.stdout);
     }
+    process.exitCode = rendered.exitCode;
   } catch (err) {
     diag(err instanceof Error ? err.message : String(err));
   }
@@ -1170,7 +1227,10 @@ export async function runHookPosttool(): Promise<void> {
     let format: 'neutral' | 'claude' = 'neutral';
     if (invocation.harness === 'claude') {
       format = 'claude';
-    } else if (invocation.harness !== undefined) {
+    } else if (
+      invocation.harness !== undefined &&
+      !NEUTRAL_INPUT_HARNESSES.has(invocation.harness)
+    ) {
       diag(`unknown harness "${String(invocation.harness)}" — emitting the neutral contract`);
     }
     const event = parsePretoolEvent(await readStdin());

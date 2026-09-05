@@ -50,7 +50,7 @@ commands:
                            CLI mirror of the prime tool: the scope's orientation briefing
   search <query> [<vault-root>] [--scope <s>] [--kind <k>] [--limit <n>]
                            CLI mirror of the search tool: ranked candidates, never page bodies
-  hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--default-root <path>] [--scope <s>] [--harness <claude|kiro-ide>] [--triggers <file>]
+  hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--default-root <path>] [--scope <s>] [--harness <claude|kiro|kiro-ide>] [--triggers <file>]
                            session-start [--defer-orientation]: hold the line for the session's first prompt
                            harness gate engine: JSON event on stdin, decision/context on stdout;
                            the vault resolves through the chain with the event cwd as project
@@ -230,9 +230,10 @@ async function run(): Promise<void> {
     }
     case 'hook': {
       const sub = positionals[1];
-      // Hook runners own their errors and always exit 0 — never falling
-      // through to the global handler, whose stderr/exit(1) would fire on
-      // every harness event.
+      // Hook runners own their errors and exit 0 — never falling through to
+      // the global handler, whose stderr/exit(1) would fire on every harness
+      // event. The one non-zero path is the kiro codec's rendered deny, which
+      // sets exit 2 itself.
       if (sub === 'prompt') {
         const { runHookPrompt } = await import('@llm-wiki/cli/hook');
         await runHookPrompt();
@@ -256,7 +257,7 @@ async function run(): Promise<void> {
         console.error(`kmd hook: unknown event: ${sub}`);
       } else {
         console.error(
-          'usage: kmd hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <scope>] [--harness <claude|kiro-ide>]'
+          'usage: kmd hook <prompt|pretool|posttool|stop|session-start> [<vault-root>] [--scope <scope>] [--harness <claude|kiro|kiro-ide>]'
         );
         process.exit(2);
       }

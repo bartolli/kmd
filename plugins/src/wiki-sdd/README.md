@@ -87,3 +87,10 @@ editing vault pages:
 ```bash
 kmd validate /path/to/vault && kmd sync
 ```
+
+**kiro-cli 2.x** — the default engine of 2.21.0; `--v3` runs the v3 engine — installs
+no powers, wires hooks in an agent configuration, and sends payloads without a
+`session_id`; the engine reads `KIRO_SESSION_ID` from the environment instead. A
+hand-wired agent config running the launcher gets prompt injection and the resync
+after vault writes. Deny and the handoff gate are absent there: 2.x ignores the stop
+decision, and its matcher takes an exact tool name, never a regex.

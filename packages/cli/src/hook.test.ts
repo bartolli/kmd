@@ -462,6 +462,34 @@ describe('matchPretoolTriggers / renderPretool', () => {
     expect(output.hookSpecificOutput.permissionDecisionReason).toContain('Retro gate');
   });
 
+  it('renders the kiro codec: a deny is exit 2 with the reason on stderr, anything else exit 0', () => {
+    const denied = renderPretool(
+      matchPretoolTriggers('Bash', { command: 'git tag v1' }, [gate]),
+      'kiro'
+    );
+    expect(denied).toEqual({ stdout: null, stderr: [gate.reason], exitCode: 2 });
+
+    const note: Trigger = {
+      id: 'note',
+      on: 'pretool',
+      enforce: 'inject',
+      tool: 'Bash',
+      text: 'N.'
+    };
+    const warn: Trigger = { id: 'warn', on: 'pretool', enforce: 'warn', tool: 'Bash', text: 'W.' };
+    const advised = renderPretool(
+      matchPretoolTriggers('Bash', { command: 'ls' }, [note, warn]),
+      'kiro'
+    );
+    expect(advised).toEqual({ stdout: 'N.', stderr: ['W.'], exitCode: 0 });
+
+    expect(renderPretool([], 'kiro')).toEqual({ stdout: null, stderr: [], exitCode: 0 });
+    expect(
+      renderPretool(matchPretoolTriggers('Bash', { command: 'git tag v1' }, [gate]), 'claude')
+        .exitCode
+    ).toBe(0);
+  });
+
   it('stays silent when the tool name does not match', () => {
     const matches = matchPretoolTriggers('Write', { file_path: 'git tag.md' }, [gate]);
 
@@ -886,6 +914,33 @@ describe('parsePromptEvent cwd', () => {
     );
 
     expect(event?.cwd).toBe('/p/codanna');
+  });
+});
+
+describe('KIRO_SESSION_ID fallback', () => {
+  const saved = process.env.KIRO_SESSION_ID;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.KIRO_SESSION_ID;
+    else process.env.KIRO_SESSION_ID = saved;
+  });
+
+  it('takes the session id from the environment when a payload carries none, on every event', () => {
+    process.env.KIRO_SESSION_ID = 'kiro-2x-session';
+    expect(parsePromptEvent('{"prompt":"hi","cwd":"/tmp"}')?.session_id).toBe('kiro-2x-session');
+    expect(parsePretoolEvent('{"tool_name":"execute_bash","tool_input":{}}')?.session_id).toBe(
+      'kiro-2x-session'
+    );
+    expect(parseStopEvent('{"cwd":"/tmp"}')?.session_id).toBe('kiro-2x-session');
+    expect(parseSessionStartEvent('{"cwd":"/tmp"}')?.session_id).toBe('kiro-2x-session');
+    expect(parsePretoolEvent('{"session_id":"own","tool_name":"x"}')?.session_id).toBe('own');
+  });
+
+  it('still rejects a payload without a session id when the environment has none', () => {
+    delete process.env.KIRO_SESSION_ID;
+    expect(parsePromptEvent('{"prompt":"hi"}')).toBeNull();
+    expect(parsePretoolEvent('{"tool_name":"execute_bash"}')).toBeNull();
+    expect(parseStopEvent('{"cwd":"/tmp"}')).toBeNull();
+    expect(parseSessionStartEvent('{"cwd":"/tmp"}')).toBeNull();
   });
 });
 

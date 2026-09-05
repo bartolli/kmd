@@ -47,7 +47,35 @@ triggers_extra:
         fresh: ["notes/demo-retro-*.md"]
         than: ["ops/release-*.md"]
       reason: "Retro gate: the retro is older than the last release note."
+    - id: rm-gate
+      on: pretool
+      enforce: block
+      args_match: "rm -rf"
+      reason: "Recursive delete is the operator's."
+    - id: status-note
+      on: pretool
+      enforce: inject
+      args_match: "git status"
+      text: "Status note: the index is disposable."
+    - id: read-gate
+      on: pretool
+      enforce: block
+      tool: Read
+      files: ["**/secret.md"]
+      reason: "Secrets stay closed."
 `;
+
+// A v3 Kiro PreToolUse payload as witnessed: PascalCase event name, Kiro's
+// own tool name, the shell tool's input fields.
+function kiroPretoolEvent(command: string): string {
+  return JSON.stringify({
+    session_id: 'sess_kiro_1',
+    hook_event_name: 'PreToolUse',
+    cwd: '/tmp',
+    tool_name: 'execute_bash',
+    tool_input: { command, cwd: '/tmp', run_in_background: false, timeout: 0 }
+  });
+}
 
 interface RunResult {
   code: number;
@@ -211,6 +239,142 @@ describe('kmd init (end-to-end)', () => {
     expect(result.code).toBe(2);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('usage: kmd init <dir>');
+  }, 30_000);
+});
+
+describe('kmd hook pretool --harness kiro (end-to-end)', () => {
+  let base: string;
+  let vaultRoot: string;
+  let kmdHome: string;
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-hook-kiro-e2e-'));
+    vaultRoot = join(base, 'vault');
+    kmdHome = join(base, 'kmd-home');
+    await mkdir(vaultRoot, { recursive: true });
+    await writeFile(join(vaultRoot, 'vault.yaml'), VAULT_YAML);
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('exits 2 on a rendered deny with the reason on stderr and nothing on stdout', async () => {
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      kiroPretoolEvent('rm -rf /tmp/scratch'),
+      kmdHome
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe("Recursive delete is the operator's.\n");
+  }, 30_000);
+
+  it('exits 0 on every other path — no match, a matched inject, a missing config', async () => {
+    const args = ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'];
+
+    const quiet = await runKmd(args, kiroPretoolEvent('ls -la'), kmdHome);
+    expect(quiet.code).toBe(0);
+    expect(quiet.stdout).toBe('');
+    expect(quiet.stderr).toBe('');
+
+    const inject = await runKmd(args, kiroPretoolEvent('git status'), kmdHome);
+    expect(inject.code).toBe(0);
+    expect(inject.stdout).toBe('Status note: the index is disposable.\n');
+    expect(inject.stderr).toBe('');
+
+    const emptyRoot = join(base, 'no-vault');
+    await mkdir(emptyRoot, { recursive: true });
+    const degraded = await runKmd(
+      ['hook', 'pretool', emptyRoot, '--scope', 'demo', '--harness', 'kiro'],
+      kiroPretoolEvent('rm -rf /tmp/scratch'),
+      kmdHome
+    );
+    expect(degraded.code).toBe(0);
+    expect(degraded.stdout).toBe('');
+    expect(degraded.stderr.trimEnd().split('\n')).toHaveLength(1);
+    expect(degraded.stderr).toContain('kmd hook:');
+  }, 60_000);
+
+  it('translates Kiro tool names: a gate authored on `Bash` denies `execute_bash`', async () => {
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      kiroPretoolEvent('git tag v9'),
+      kmdHome
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('Retro gate: no retro in scope newer than the last release note.\n');
+  }, 30_000);
+
+  it("reads Kiro's `path` field: a gate authored on `Read` with a files glob denies `read_file`", async () => {
+    const event = JSON.stringify({
+      session_id: 'sess_kiro_1',
+      hook_event_name: 'PreToolUse',
+      cwd: '/tmp',
+      tool_name: 'read_file',
+      tool_input: { path: '/tmp/notes/secret.md', offset: 0, limit: 200 }
+    });
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      event,
+      kmdHome
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toBe('Secrets stay closed.\n');
+  }, 30_000);
+
+  it('accepts a 2.x payload — camelCase event, no session id — with KIRO_SESSION_ID in the environment', async () => {
+    const legacy = JSON.stringify({
+      hook_event_name: 'preToolUse',
+      cwd: '/tmp',
+      tool_name: 'execute_bash',
+      tool_input: { command: 'git tag v9', summary: 'tag the release' }
+    });
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      legacy,
+      kmdHome,
+      { KIRO_SESSION_ID: 'legacy-session' }
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.stderr).toBe('Retro gate: no retro in scope newer than the last release note.\n');
+  }, 30_000);
+
+  it('is a known harness on the prompt event: the neutral stdin codec, no diagnostic', async () => {
+    const result = await runKmd(
+      ['hook', 'prompt', vaultRoot, '--scope', 'demo', '--harness', 'kiro'],
+      JSON.stringify({
+        session_id: 'sess_kiro_1',
+        hook_event_name: 'UserPromptSubmit',
+        cwd: '/tmp',
+        prompt: "let's cut the release"
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
+    expect(result.stderr).toBe('');
+  }, 30_000);
+
+  it('keeps the neutral contract without --harness kiro: the same deny exits 0 as JSON on stdout', async () => {
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo'],
+      kiroPretoolEvent('rm -rf /tmp/scratch'),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout) as { decision: string }).toMatchObject({
+      decision: 'deny',
+      reason: "Recursive delete is the operator's."
+    });
   }, 30_000);
 });
 
