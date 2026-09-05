@@ -154,4 +154,21 @@ describe('per-vault index layout', () => {
       rmSync(vault, { recursive: true, force: true });
     }
   });
+
+  it('a vault directly under HOME keeps the keyed home: ~/.kmd is the global home, not a tier', () => {
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'kmd-tier-home-')));
+    const saved = process.env.KMD_HOME;
+    process.env.KMD_HOME = join(home, '.kmd');
+    try {
+      mkdirSync(join(home, '.kmd'));
+      const vault = join(home, 'wiki');
+      mkdirSync(vault);
+
+      expect(resolveIndexPath(vault)).toBe(join(home, '.kmd', 'db', vaultKey(vault), 'index.db'));
+    } finally {
+      if (saved === undefined) delete process.env.KMD_HOME;
+      else process.env.KMD_HOME = saved;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });

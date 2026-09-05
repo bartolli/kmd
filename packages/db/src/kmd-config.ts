@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { Document, parse, parseDocument } from 'yaml';
 import { z } from 'zod';
-import { canonicalVaultRoot, kmdHome } from './database.js';
+import { canonicalVaultRoot, isKmdHome, kmdHome } from './database.js';
 
 // Two config tiers, no central registry: global ~/.kmd/config.yaml (personal,
 // absolutes fine) and project <repo>/.kmd/ (committed config.yaml carries only
@@ -155,7 +155,8 @@ function projectVaultAt(
  * Nearest-ancestor project tier from `fromDir`: at each level,
  * `.kmd/config.local.yaml` > `.kmd/config.yaml` > `vault/vault.yaml` >
  * `vault.yaml` (bare form `.kmd`-marked only). Relative config paths resolve
- * against the tier root.
+ * against the tier root. The level whose `.kmd` is the global home is passed
+ * over whole: its config is the global one, and its `.kmd` marks nothing.
  */
 export function findProjectTier(
   fromDir: string,
@@ -164,7 +165,7 @@ export function findProjectTier(
 ): ProjectTier | null {
   let level = canonicalVaultRoot(fromDir);
   for (;;) {
-    const hit = projectVaultAt(level, env, onSkip);
+    const hit = isKmdHome(join(level, '.kmd')) ? null : projectVaultAt(level, env, onSkip);
     if (hit !== null) return hit;
     const parent = dirname(level);
     if (parent === level) return null;

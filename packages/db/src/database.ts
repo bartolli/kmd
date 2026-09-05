@@ -100,10 +100,21 @@ export function vaultKey(vaultRoot: string): string {
   return `${basename(canonical)}-${hash}`;
 }
 
+/**
+ * True when `dir` is the global `.kmd` home itself. The home is never a
+ * project tier's `.kmd`: a vault directly under HOME would otherwise index at
+ * `~/.kmd/db/index.db` (shared by every such vault, deleted whole by
+ * `kmd db reset`), and the tier walk would read `~/.kmd/config.yaml` with the
+ * project schema. Both sides canonical — the walk realpaths its levels.
+ */
+export function isKmdHome(dir: string): boolean {
+  return canonicalVaultRoot(dir) === canonicalVaultRoot(kmdHome());
+}
+
 /** The vault's tier `.kmd/` home (vault root, then its parent), or null. */
 function tierKmdDir(canonical: string): string | null {
   for (const stateHome of [join(canonical, '.kmd'), join(dirname(canonical), '.kmd')]) {
-    if (existsSync(stateHome)) return stateHome;
+    if (existsSync(stateHome) && !isKmdHome(stateHome)) return stateHome;
   }
   return null;
 }

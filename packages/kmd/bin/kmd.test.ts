@@ -985,6 +985,27 @@ describe('two-tier resolution (end-to-end)', () => {
     expect(result.stderr).toContain('--set-default applies to global init only');
   }, 30_000);
 
+  it('a set default_vault binds from a power-shaped cwd under HOME: the global config is not a tier', async () => {
+    const home = join(base, 'home');
+    const homeKmd = join(home, '.kmd');
+    const vault = join(base, 'global-vault');
+    expect((await runKmd(['init', vault], '', homeKmd)).code).toBe(0);
+    const powerDir = join(home, '.kiro', 'powers', 'installed', 'wiki-sdd');
+    await mkdir(powerDir, { recursive: true });
+
+    const set = await runKmd(['config', 'set', 'default_vault', vault], '', homeKmd, {}, powerDir);
+    expect(set.code).toBe(0);
+
+    const fromPower = await runKmd(['config'], '', homeKmd, {}, powerDir);
+    expect(fromPower.code).toBe(0);
+    expect(fromPower.stdout).toContain(`vault: ${vault}`);
+    expect(fromPower.stdout).toContain('source: global config (default_vault)');
+
+    const fromHome = await runKmd(['config'], '', homeKmd, {}, home);
+    expect(fromHome.code).toBe(0);
+    expect(fromHome.stdout).toContain('source: global config (default_vault)');
+  }, 30_000);
+
   it('config set/get default_vault round-trips and resolves outside projects', async () => {
     const vault = join(base, 'global-vault');
     const init = await runKmd(['init', vault], '', kmdHome);

@@ -140,6 +140,24 @@ describe('kmd mcp roots-sourced deferred binding (end-to-end)', () => {
     expect(await primeVaultRoot(session.client)).toBe(fallback);
   }, 60_000);
 
+  it("the power's server binds the machine default: no roots, a scrubbed env, cwd at the install dir under HOME", async () => {
+    const home = join(base, 'home');
+    const homeKmd = join(home, '.kmd');
+    const powerDir = join(home, '.kiro', 'powers', 'installed', 'wiki-sdd');
+    await mkdir(powerDir, { recursive: true });
+    const vault = join(base, 'machine-default');
+    await mkdir(vault, { recursive: true });
+    await writeFile(join(vault, 'vault.yaml'), VAULT_YAML);
+    await mkdir(homeKmd, { recursive: true });
+    await writeFile(join(homeKmd, 'config.yaml'), `default_vault: ${vault}\n`);
+
+    session = await connectClient({ args: [], kmdHome: homeKmd, cwd: powerDir, roots: null });
+
+    const { tools } = await session.client.listTools();
+    expect(tools.map((tool) => tool.name).sort()).toEqual(['prime', 'search']);
+    expect(await primeVaultRoot(session.client)).toBe(vault);
+  }, 60_000);
+
   it('a client without the roots capability binds through the cwd-fed chain', async () => {
     const { project, vault } = await makeProject('cwd-proj');
 

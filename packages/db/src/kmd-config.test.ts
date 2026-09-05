@@ -140,6 +140,45 @@ describe('findProjectTier', () => {
   it('returns null with no tier signal', () => {
     expect(findProjectTier(project)).toBeNull();
   });
+
+  // intent-global-config-parsed-as-project-tier: ~/.kmd/config.yaml carries
+  // default_vault, which the strict project schema rejects — the walk must
+  // pass over the level whose .kmd is the global home.
+  it('never reads the global config as a tier: a set default_vault survives a walk from under HOME', () => {
+    process.env.KMD_HOME = join(home, '.kmd');
+    setGlobalConfigValue('default_vault', '/vaults/main');
+    const powerDir = join(home, '.kiro', 'powers', 'installed', 'wiki-sdd');
+    mkdirSync(powerDir, { recursive: true });
+
+    expect(findProjectTier(powerDir)).toBeNull();
+    expect(findProjectTier(home)).toBeNull();
+    expect(
+      resolveVaultRoot({ projectDir: powerDir, globalDefault: loadGlobalConfig().default_vault })
+    ).toEqual({ root: '/vaults/main', source: 'global-config' });
+  });
+
+  it('a project tier below HOME still resolves ahead of the global default', () => {
+    process.env.KMD_HOME = join(home, '.kmd');
+    setGlobalConfigValue('default_vault', '/vaults/main');
+    const repo = join(home, 'work', 'repo');
+    writeTierConfig(repo, 'config.yaml', 'vault: /team/vault\n');
+
+    expect(
+      resolveVaultRoot({ projectDir: repo, globalDefault: loadGlobalConfig().default_vault })
+    ).toMatchObject({ root: '/team/vault', source: 'project-config', tierRoot: repo });
+  });
+
+  it('the HOME level binds no convention: ~/vault/vault.yaml and a ~/.kmd-marked ~/vault.yaml', () => {
+    process.env.KMD_HOME = join(home, '.kmd');
+    mkdirSync(process.env.KMD_HOME, { recursive: true });
+    makeVault(join(home, 'vault'));
+    makeVault(home);
+    const sub = join(home, 'Documents');
+    mkdirSync(sub, { recursive: true });
+
+    expect(findProjectTier(sub)).toBeNull();
+    expect(findProjectTier(home)).toBeNull();
+  });
 });
 
 describe('resolveVaultRoot', () => {
