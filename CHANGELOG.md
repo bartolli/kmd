@@ -1,3 +1,25 @@
+## [v0.17.0] - 2026-09-05
+
+### Added
+
+- `kmd hook pretool --harness kiro` — the Kiro output codec. A rendered deny exits 2 with the reason on stderr and nothing on stdout, Kiro's only deny channel; a matched inject writes its lines to stdout and warnings to stderr at exit 0; every degraded path stays exit 0 with one diagnostic. `renderPretool` returns an `exitCode` beside stdout and stderr; the neutral and claude codecs always carry 0
+- a per-harness tool-name table keyed by codec: under `--harness kiro`, `execute_bash` and `read_file` match gates authored on `Bash` and `Read`; a name the table does not carry passes through unchanged; the `files` predicate reads Kiro's `path` field among its candidates. The write tool's name is unwitnessed on the v3 engine and not in the table
+- `KIRO_SESSION_ID` fallback in every hook parser: a payload without `session_id` takes the id from the environment, the kiro-cli 2.x shape; a payload's own id wins. On 2.x that buys prompt injection and the resync; deny and the handoff gate are absent there
+- `--harness kiro` is a known harness on every hook event — the neutral stdin codec, no "unknown harness" diagnostic — so one flag rides every Kiro wiring line
+- `plugins/src/wiki-sdd` is an Agent Plugins 1.0.0 package: root `plugin.json` with per-harness manifest data under `extensions` (`com.anthropic.claude-code` userConfig, `com.openai.codex` interface), a root-free `mcp.json` running `node ${PLUGIN_ROOT}/scripts/run-kmd.mjs mcp`, and the launcher itself — a global `kmd` at or above the floor in-process, then an opaque shim, then `npx`; a hook run passes the engine's exit 2 through and degrades every other failure to 0, any other subcommand propagates the exit. The render check validates both files against the vendored 1.0.0 schemas and holds the root version equal to `versionSource`; a Package README documents the Kiro power import, the launcher, and the default vault
+- render lint: a harness name or a harness-owned instruction file (`Claude`, `Claude Code`, `Codex`, `CoCo`, `Cortex`, `Kiro`, `CLAUDE.md`, `CORTEX.md`) in any Package file under `skills/` fails the render outside a `lintAllow` site; `lintAllow` entries are a literal phrase or `{section: "<heading line>"}` exempting that section
+- the Agent Skills caps — name equals folder, 64-char name, 1024-char description — run over every source `SKILL.md`, since a conformant client installs the source
+
+### Changed
+
+- engine invariant: everything under `kmd hook` exits 0 except a rendered deny under the kiro codec; `spec-cli` § `kmd hook` reads shipped
+- the skill source is harness-neutral: skill bodies name the agent and the project instructions, never a harness; the wiki skill's § Harness placement is the one site that names harnesses — table, standalone registration placement, wrong-vault remedies, instruction-file notes — and every step points there. Dialect kind `claude` replaces `identity` and renders the neutral source as is; the bare-Claude rewrite and the CLAUDE.md replacement pairs are gone; coco keeps its npx-to-kmd pairs. Rendered flavors change as build output; the Claude flavor reads "`AGENTS.md` or the harness's equivalent" where it read `CLAUDE.md`
+- plugin train unmoved: wiki-sdd stays 0.20.0 and the wrapper floor `[0, 16, 0]`; the Kiro hook wiring and the floor bump to 0.17.0 ride the next train
+
+### Removed
+
+- `plugins/kiro` — Kiro installs the source folder as a power; the kiro flavor and dialect kind are gone from the render manifest and the folder is on its `retired` list
+
 ## [v0.16.1] - 2026-09-03
 
 ### Fixed
