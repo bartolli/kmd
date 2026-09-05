@@ -116,9 +116,7 @@ Once the slice is green and refactored:
 1. Open the story file.
 2. Tick the corresponding `## Slices` checkbox: `- [ ]` → `- [x]`.
 3. Bump `updated:` in the story's frontmatter.
-4. If ALL slices in the story are now ticked:
-   - Note this in the parent plan's Story Index — the story is "done" but its `triage_state` stays as-is until user-promotion.
-   - Suggest the user mark `status: archived` on the story when they're satisfied.
+4. If ALL slices in the story are now ticked and its acceptance criteria hold: set `status: archived` with `updated` from the clock and say so in the report — the story is done, and the plan's Story Index row follows at handoff. A story whose slices are ticked but whose acceptance still waits on a witness or a release stays `active`, with the waiting condition in its Decisions.
 5. Confirm the resync: the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
 ### 7. Done — report
@@ -163,7 +161,7 @@ If during implementation you discover the spec is wrong (code reality differs fr
 
 ## Rules
 
-- **One slice per session.** Don't bundle slices.
+- **One slice at a time.** Consecutive slices in one session are fine while the context is hot; commit at a story or release boundary, not per slice.
 - **Tests before code, every time.** No exceptions.
 - **One test, then make it green, then next test.** Vertical, not horizontal.
 - **Minimum code to pass.** No speculative features.

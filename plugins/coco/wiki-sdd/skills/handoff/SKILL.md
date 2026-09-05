@@ -2,7 +2,7 @@
 name: handoff
 description: This skill should be used to close a session so the next one starts cold from corrected truth. Operator-invoked, gated on a retro note newer than the scope's last edit. Rewrites the primer within its budget first, then runs the status sweep (fully-resolved stories proposed for archiving, flipped only on approval) and reconciles every plan's Story Index — Focus, Next, Open, Read order, about 300 words, nothing another surface derives — confirms the index synced, and prints the one line the next session starts with. Use when the user says "$handoff", "hand off", "close the session", "wrap up the session", "prep the primer", "get the primer ready", "cold session prep", or "what does the next session start with".
 metadata:
-  version: "0.21.1"
+  version: "0.21.2"
 ---
 
 # Handoff — Close the Session from Corrected Truth
@@ -64,9 +64,11 @@ literal vault path, so the gate and the resync both see the write.
 
 ### Step 3 — Status sweep
 
-Slices tick during a session; nothing closes a story. List every story
-whose slices are all resolved — ticked, or declined with recorded
-rationale — and whose `status` is still `active` or `draft`. For each,
+Slices tick during a session, and a story whose slices and acceptance
+are all resolved archives at the last tick (`$tdd`). The sweep catches
+what that missed: list every story whose slices are all resolved —
+ticked, or declined with recorded rationale — and whose `status` is
+still `active` or `draft`. For each,
 name any outstanding verification debt from its Decisions or its
 intents. Propose the set. Flip `status: archived` **only on the
 operator's approval**, with `updated` from the clock

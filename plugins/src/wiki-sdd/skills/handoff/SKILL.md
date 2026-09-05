@@ -62,9 +62,11 @@ literal vault path, so the gate and the resync both see the write.
 
 ### Step 3 — Status sweep
 
-Slices tick during a session; nothing closes a story. List every story
-whose slices are all resolved — ticked, or declined with recorded
-rationale — and whose `status` is still `active` or `draft`. For each,
+Slices tick during a session, and a story whose slices and acceptance
+are all resolved archives at the last tick (`/tdd`). The sweep catches
+what that missed: list every story whose slices are all resolved —
+ticked, or declined with recorded rationale — and whose `status` is
+still `active` or `draft`. For each,
 name any outstanding verification debt from its Decisions or its
 intents. Propose the set. Flip `status: archived` **only on the
 operator's approval**, with `updated` from the clock

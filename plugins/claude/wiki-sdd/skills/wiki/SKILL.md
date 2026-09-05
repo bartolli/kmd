@@ -2,7 +2,7 @@
 name: wiki
 description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and per-harness file placement when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "/wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.21.1"
+  version: "0.21.2"
 ---
 
 # Wiki — Project Bootstrap
@@ -64,9 +64,9 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 | `/to-stories` | conversation; `glossary.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
 | `/triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
 | `/to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
-| `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks slice checkbox |
-| `/retro` | the session's own claims, gates, and drift from the slice in progress | intents (max three), sightings bumps, story Decisions entries, a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
-| `/handoff` | fully-resolved stories; every plan's Story Index; the retro's residue | archive flips on approval, reconciled Story Index, the primer under budget in the canonical-dense register — gated on a retro note newer than the scope's last edit |
+| `/tdd` | story scenarios as test spec; referenced specs | code + tests; ticks the slice, archives the story at the last tick |
+| `/retro` | the session's own claims, gates, and drift from the slice in progress | small testable fixes in the current commit with a Decisions line; intents (max three) for what the hot context cannot fix; sightings bumps; a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
+| `/handoff` | fully-resolved stories; every plan's Story Index; the retro's residue | archive flips for the sweep's strays on approval, reconciled Story Index, the primer under budget in the canonical-dense register — gated on a retro note newer than the scope's last edit |
 | `/to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
 
 Typical session arc for new work: `/intent` → `/to-stories` → `/triage` → `/to-issues` → `/tdd` (per slice) → repeat triage when stories complete or intents reach two sightings → `/retro` whenever drift is suspected and always before the close → `/handoff` closes the session. `/to-triggers` joins whenever a rule proves it needs to become a gate.
@@ -91,7 +91,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 | | Claude Code | Codex | CoCo (Cortex Code) | Kiro (IDE and CLI) |
 |---|---|---|---|---|
 | Skill files | `wiki-sdd` plugin, or `~/.claude/skills/wiki/` | `wiki-sdd` plugin via `codex plugin add` | `wiki-sdd` plugin, or `~/.snowflake/cortex/skills/wiki/` (`.claude/skills/` is read too) | the `wiki-sdd` power, imported from the Package folder (Powers panel → Add Custom Power → Import power from a folder); the skills ride the power |
-| MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | plugin-bundled, or `mcpServers` in `~/.snowflake/cortex/mcp.json` | power-bundled (`mcp.json`, activated on a keyword match); a project vault takes a workspace `.kiro/settings/mcp.json` from `templates/mcp-entry-kiro.json.template` — the operator's file; both merge, workspace wins |
+| MCP registration | `.mcp.json` at the project root, or user-level settings | plugin-bundled, or `[mcp_servers.wiki]` in `~/.codex/config.toml` | plugin-bundled, or `mcpServers` in `~/.snowflake/cortex/mcp.json` | power-bundled (`mcp.json`, activated on a keyword match) — it serves the machine default, so `kmd config set default_vault <path>` once per seat is the precondition; a project vault takes a workspace `.kiro/settings/mcp.json` from `templates/mcp-entry-kiro.json.template` — the operator's file; both merge, workspace wins |
 | Project-vault signal | automatic (plugin maps the project dir) | `export KMD_PROJECT_DIR="$PWD"` in the launching shell | automatic when launched from the project root; `export KMD_PROJECT_DIR="$PWD"` when using `-w` | workspace-level `.kiro/settings/mcp.json` naming the project vault — the operator's file |
 | Project instructions | `CLAUDE.md` or `AGENTS.md` (step 7) | `AGENTS.md` | `AGENTS.md`, `CLAUDE.md`, or `CORTEX.md` — all read | `AGENTS.md`, read automatically; `.kiro/steering/*.md` when inclusion modes are wanted |
 
@@ -102,7 +102,7 @@ This skill runs anywhere SKILL.md skills are supported — same slash-invocation
 - **Claude Code (plugin):** the mapping is automatic, so a wrong bind means the server predates the current session state — restart the session (or `/reload-plugins`) so the plugin re-registers with the project directory.
 - **CoCo:** the server bound the directory the session was launched from. Relaunch from the project root, or `export KMD_PROJECT_DIR="$PWD"` before starting — plugin MCP servers get a scrubbed environment, and the bundled registration forwards `WIKI_VAULT` and `KMD_PROJECT_DIR` through it for exactly this.
 - **Codex:** the classic cause — no `KMD_PROJECT_DIR` in the launching shell, often masked by an ambient `WIKI_VAULT` export that pins the default. `export KMD_PROJECT_DIR="$PWD"`, then restart the Codex session so the MCP server inherits it.
-- **Kiro:** the power's server serves the machine default; a workspace `.kiro/settings/mcp.json` naming the project vault, placed by the operator, and a reconnect.
+- **Kiro:** the power's server serves the machine default — with none set (`kmd config set default_vault <path>`) it dies at bind and the power lists no tools; a workspace `.kiro/settings/mcp.json` naming the project vault, placed by the operator, and a reconnect.
 
 **Standalone registration placement:**
 

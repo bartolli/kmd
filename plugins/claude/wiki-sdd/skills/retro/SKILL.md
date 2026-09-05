@@ -1,8 +1,8 @@
 ---
 name: retro
-description: This skill should be used for a session retrospective at any point in a session — mid-session when drift is suspected, after a bug-hunting detour, after compaction, before a release cut, and always before /handoff. Asks three questions — 'What are you least confident about?', 'What's the biggest thing we're missing? What don't I realize?', and 'Where are we relative to the slice we started, and what were the detours?' — then routes every answer into intents, sightings bumps, and story Decisions entries, never a new story and never the primer. Use when the user says "/retro", "run the retro", "lightweight retro", "mid-session retro", "session retro", "retro protocol", "check for drift", "what are we least confident about", "what are we missing", or "what don't you realize".
+description: This skill should be used for a session retrospective at any point in a session — mid-session when drift is suspected, after a bug-hunting detour, after compaction, before a release cut, and always before /handoff. Asks three questions — 'What are you least confident about?', 'What's the biggest thing we're missing? What don't I realize?', and 'Where are we relative to the slice we started, and what were the detours?' — then routes every answer into a fix in the current commit when it is small and testable, else intents, sightings bumps, and story Decisions entries — never a new story and never the primer. Use when the user says "/retro", "run the retro", "lightweight retro", "mid-session retro", "session retro", "retro protocol", "check for drift", "what are we least confident about", "what are we missing", or "what don't you realize".
 metadata:
-  version: "0.21.1"
+  version: "0.21.2"
 ---
 
 # Retro — Three Questions, Then Intents
@@ -14,8 +14,8 @@ spots and the last to notice its own drift. Verification gates check
 what the session claimed; the retro asks what it did not claim, and
 whether the work still points at the slice it started on. It is a
 grooming step, cheap enough to run whenever drift is suspected, not a
-closing ceremony: it files intents, never stories, and it never
-touches the primer. The session close is `/handoff`, which is gated on
+closing ceremony: it fixes what the hot context can fix, files intents
+for what it cannot, never a story, and it never touches the primer. The session close is `/handoff`, which is gated on
 a retro newer than the primer.
 
 Precedent: a mid-session retro surfaced that a just-shipped
@@ -93,7 +93,8 @@ Nothing stays only in chat. Route by shape:
 | Answer shape | Artifact |
 |---|---|
 | Finding already on file — an intent in any status, or a story | Bump the intent's `sightings` and its `updated`; for a story, reference it. Never file a twin. |
-| New finding, suspected gap, unverified claim about landed work | An intent: `status: draft`, `origin: retro`, `sightings: 1`, the six template sections, about fifteen lines, a concrete Falsification path. |
+| New finding whose fix is small, testable now, and outside ADR-gated territory | The fix itself, in the current commit: a test named for the finding, then the change; one Decisions line in the owning story naming it. No intent. |
+| New finding that needs investigation, a decision, a cold session, or more than a small change | An intent: `status: draft`, `origin: retro`, `sightings: 1`, the six template sections, about fifteen lines, a concrete Falsification path. |
 | Invalidated or shaky assumption | Correct the story, spec, or ADR where it lives, inline; a Decisions entry in the story if acceptance changes. |
 | Sequencing call or risk that shapes what ships next | A Decisions entry in the owning story, carrying its falsification path. |
 | A detour from question 3 | Decision → its recorded location; drift → dropped, or an intent if it is worth pursuing; done → the slice tick. |
@@ -129,31 +130,32 @@ Ten lines or fewer, pointers only. The substance lives in the intents
 and stories; the note is the freshness signal the handoff and tag
 gates read, so its clock must move every time.
 
-### Step 5 — Acting on a finding: file vs. fix now
+### Step 5 — Acting on a finding: fix now, or file
 
-The retro authorizes artifacts, never fixes. But a finding whose fix
-is cheapest right now, with the failing code and the evidence live in
-context, may ship under an explicit override. All four, or it files:
+The intent is a cold-start capture: its six sections hold what a
+future session cannot recover from the code. When the context is hot
+and the fix is small, the interview re-captures what the conversation
+already holds and charges the next session for work this one could
+have finished. Fixing is the default and filing the fallback. Fix now
+when all three hold:
 
-1. **Shape locked before code.** Two admissible shapes. For a
-   one-slice fix: a failing test named for the intent, committed before
-   any code changes and never edited by the fix — the test is the
-   contract, and the intent archives with `fixed_by` naming its
-   repo-relative path. For anything larger: the finding is promoted and
-   its story carries the fix as Gherkin scenarios and bounding
-   Decisions, and the intent archives with `promoted_to`. Hot context
-   implements against a contract it cannot quietly reshape; without one,
-   a hot fix is a hot hack.
-2. **Operator-explicit go, in-turn.** The agent recommends and cites
-   the intent; the human authorizes. Never agent-initiated — the
-   session that produced a blind spot does not rate the urgency of its
-   own fix.
-3. **Same-session capture.** Slice ticks, spec corrections, and the
-   retro note ride the same session. The override reorders the
-   ceremony; it never skips artifacts.
-4. **Locked territory stays out.** Anything the story's Decisions mark
-   as ADR-gated routes to its amendment round. When the fix shape IS
-   an amendment, acting now means holding that conversation now.
+1. **Small and testable.** The change is bounded — on the order of
+   twenty lines — and a test named for the finding goes red before it,
+   in a test file already in play. The test is the contract; the
+   record is one Decisions line in the owning story, or `fixed_by` on
+   an intent already filed.
+2. **In the current flow.** It ships in the commit the session is
+   already building — never its own slice, ceremony, or "next run" —
+   and the operator hears what shipped in the same turn: a report, not
+   a permission gate. Slice ticks, spec corrections, and the retro note
+   ride the same session.
+3. **Unlocked territory.** Anything the story's Decisions mark as
+   ADR-gated routes to its amendment round. When the fix shape IS an
+   amendment, acting now means holding that conversation now.
+
+Anything larger files as an intent; when a filed intent's fix turns out
+that cheap, it archives with `fixed_by` naming the test's repo-relative
+path. Promotion is for findings that need a story's shape.
 
 ## Output shape
 
@@ -173,6 +175,9 @@ No separate report — the artifacts are the output.
   spots it was meant to surface.
 - **Filing as resolution.** A draft intent is a routed finding, not a
   handled one; the second sighting, not the first file, is the signal.
+- **Filing as deferral.** An intent for a fix the hot context could
+  make is ceremony charged to the next session, which starts cold and
+  pays the interview twice.
 - **Confession register.** Wiki artifacts store project state, never
   behavioral postmortems.
 - **Note as substance.** A retro note longer than ten lines is a plan
