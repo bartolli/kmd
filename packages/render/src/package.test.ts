@@ -79,7 +79,10 @@ describe('the source is harness-neutral', () => {
   it('renders from the real manifest without a harness-name finding', () => {
     const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
     const manifest = loadManifest(join(repoRoot, 'plugins', 'render-manifest.yaml'));
-    expect(render(repoRoot, manifest, 'check').problems).toEqual([]);
+    const checked = render(repoRoot, manifest, 'check');
+    expect(checked.problems).toEqual([]);
+    // the claude manifest is a projection of the root: byte-identical to the committed file
+    expect(checked.mismatches).toEqual([]);
     const skill = (flavor: string): string =>
       readFileSync(
         join(repoRoot, 'plugins', flavor, 'wiki-sdd', 'skills', 'intent', 'SKILL.md'),
@@ -95,6 +98,7 @@ describe('the Kiro copy is retired', () => {
     const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
     const manifestPath = join(repoRoot, 'plugins', 'render-manifest.yaml');
     expect(Object.keys(loadManifest(manifestPath).flavors)).toEqual(['claude', 'codex', 'coco']);
+    expect(loadManifest(manifestPath).versionSource).toBe('plugins/src/wiki-sdd/plugin.json');
     const raw = parse(readFileSync(manifestPath, 'utf8')) as { retired: string[] };
     expect(raw.retired).toContain('plugins/kiro/wiki-sdd/');
     expect(existsSync(join(repoRoot, 'plugins', 'kiro'))).toBe(false);

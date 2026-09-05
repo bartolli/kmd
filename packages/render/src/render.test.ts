@@ -298,3 +298,228 @@ describe('Agent Skills caps on the source', () => {
     ]);
   });
 });
+
+describe('claude manifest projection', () => {
+  const ROOT_MANIFEST = {
+    $schema: PLUGIN_SCHEMA,
+    name: 'wiki-sdd',
+    version: '1.2.3',
+    description: 'Loop.',
+    author: { name: 'A. Author' },
+    repository: 'https://example.invalid/kmd',
+    license: 'MIT',
+    keywords: ['wiki', 'sdd'],
+    extensions: {
+      'com.anthropic.claude-code': {
+        $schema: 'https://json.schemastore.org/claude-code-plugin-manifest.json',
+        userConfig: { vault_path: { type: 'directory', title: 'Vault path', required: true } }
+      }
+    }
+  };
+  const CLAUDE_MANIFEST = `{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "wiki-sdd",
+  "version": "1.2.3",
+  "description": "Loop.",
+  "author": {
+    "name": "A. Author"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "sdd"
+  ],
+  "userConfig": {
+    "vault_path": {
+      "type": "directory",
+      "title": "Vault path",
+      "required": true
+    }
+  }
+}
+`;
+
+  const CODEX_MANIFEST = `{
+  "name": "wiki-sdd",
+  "version": "1.2.3",
+  "description": "Loop.",
+  "author": {
+    "name": "A. Author"
+  },
+  "license": "MIT",
+  "keywords": [
+    "wiki",
+    "sdd"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Wiki SDD"
+  }
+}
+`;
+
+  it('derives .codex-plugin/plugin.json from the root manifest and its codex extension', () => {
+    write(
+      'src/wiki-sdd/plugin.json',
+      JSON.stringify({
+        ...ROOT_MANIFEST,
+        extensions: {
+          ...ROOT_MANIFEST.extensions,
+          'com.openai.codex': { interface: { displayName: 'Wiki SDD' } }
+        }
+      })
+    );
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/codex/wiki-sdd/.codex-plugin/plugin.json')).toBe(CODEX_MANIFEST);
+    write('plugins/codex/wiki-sdd/.codex-plugin/plugin.json', 'hand edit');
+    expect(render(root, manifest(), 'check').mismatches).toContain(
+      'codex: .codex-plugin/plugin.json: differs from rendered output'
+    );
+  });
+
+  it('derives the repo-root Cortex manifest: identity from the root, skills by rule, the inline blocks carried from the committed file', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT_MANIFEST));
+    write(
+      '.cortex-plugin/plugin.json',
+      JSON.stringify({
+        name: 'stale',
+        version: '0.0.1',
+        description: 'stale',
+        author: { name: 'stale' },
+        skills: ['./stale'],
+        hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node x.mjs hook stop' }] }] },
+        mcpServers: { wiki: { type: 'stdio', command: 'kmd', args: ['mcp'] } }
+      })
+    );
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('.cortex-plugin/plugin.json')).toBe(`{
+  "name": "wiki-sdd",
+  "version": "1.2.3",
+  "description": "Loop.",
+  "author": {
+    "name": "A. Author"
+  },
+  "skills": [
+    "./plugins/coco/wiki-sdd/skills"
+  ],
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node x.mjs hook stop"
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "wiki": {
+      "type": "stdio",
+      "command": "kmd",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
+`);
+    expect(render(root, manifest(), 'check').mismatches).toEqual([]);
+  });
+
+  it("derives the repo-root marketplace entry from the root manifest and the claude extension's marketplace block", () => {
+    write(
+      'src/wiki-sdd/plugin.json',
+      JSON.stringify({
+        ...ROOT_MANIFEST,
+        extensions: {
+          'com.anthropic.claude-code': {
+            ...ROOT_MANIFEST.extensions['com.anthropic.claude-code'],
+            marketplace: { name: 'kmd', category: 'development', strict: false }
+          }
+        }
+      })
+    );
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('.claude-plugin/marketplace.json')).toBe(`{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "kmd",
+  "owner": {
+    "name": "A. Author"
+  },
+  "plugins": [
+    {
+      "name": "wiki-sdd",
+      "source": "./plugins/claude/wiki-sdd",
+      "description": "Loop.",
+      "version": "1.2.3",
+      "author": {
+        "name": "A. Author"
+      },
+      "category": "development",
+      "strict": false
+    }
+  ]
+}
+`);
+    write('.claude-plugin/marketplace.json', 'hand edit');
+    expect(render(root, manifest(), 'check').mismatches).toEqual([
+      expect.stringMatching(
+        /^claude: .*\.claude-plugin\/marketplace\.json: differs from rendered output$/
+      )
+    ]);
+  });
+
+  it('one bump: a root version move fails the check for every projection until the render, and nothing else moves', () => {
+    const withMarketplace = {
+      ...ROOT_MANIFEST,
+      extensions: {
+        'com.anthropic.claude-code': {
+          ...ROOT_MANIFEST.extensions['com.anthropic.claude-code'],
+          marketplace: { name: 'kmd', category: 'development', strict: false }
+        },
+        'com.openai.codex': { interface: { displayName: 'Wiki SDD' } }
+      }
+    };
+    write('src/wiki-sdd/plugin.json', JSON.stringify(withMarketplace));
+    const m = { ...manifest(), versionSource: 'src/wiki-sdd/plugin.json' };
+    expect(render(root, m, 'write').problems).toEqual([]);
+    expect(render(root, m, 'check').mismatches).toEqual([]);
+
+    write('src/wiki-sdd/plugin.json', JSON.stringify({ ...withMarketplace, version: '1.3.0' }));
+    const stale = render(root, m, 'check');
+    expect(stale.problems).toEqual([]);
+    expect(stale.mismatches.map((line) => line.split(': ')[1])).toEqual(
+      expect.arrayContaining([
+        'skills/foo/SKILL.md',
+        '.claude-plugin/plugin.json',
+        '../../../.claude-plugin/marketplace.json',
+        '.codex-plugin/plugin.json',
+        '../../../.cortex-plugin/plugin.json'
+      ])
+    );
+
+    render(root, m, 'write');
+    expect(render(root, m, 'check').mismatches).toEqual([]);
+    expect(read('plugins/codex/wiki-sdd/.codex-plugin/plugin.json')).toContain(
+      '"version": "1.3.0"'
+    );
+    expect(read('.claude-plugin/marketplace.json')).toContain('"version": "1.3.0"');
+  });
+
+  it('derives .claude-plugin/plugin.json from the root manifest and its claude extension, and checks it', () => {
+    write('src/wiki-sdd/plugin.json', JSON.stringify(ROOT_MANIFEST));
+    write('plugins/claude/wiki-sdd/.claude-plugin/plugin.json', 'hand edit');
+    const checked = render(root, manifest(), 'check');
+    expect(checked.problems).toEqual([]);
+    expect(checked.mismatches).toContain(
+      'claude: .claude-plugin/plugin.json: differs from rendered output'
+    );
+
+    expect(render(root, manifest(), 'write').problems).toEqual([]);
+    expect(read('plugins/claude/wiki-sdd/.claude-plugin/plugin.json')).toBe(CLAUDE_MANIFEST);
+    expect(existsSync(join(root, 'plugins/codex/wiki-sdd/.claude-plugin'))).toBe(false);
+  });
+});

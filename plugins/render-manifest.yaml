@@ -11,10 +11,11 @@
 
 sourceRoot: plugins/src/wiki-sdd
 
-# Stamps metadata.version (Agent Skills standard: the metadata field) into
-# every rendered SKILL.md — skills travel standalone, provenance rides the
-# folder. The renderer owns the field; sources must not declare metadata.
-versionSource: plugins/claude/wiki-sdd/.claude-plugin/plugin.json
+# The one version: the Package's root manifest. The renderer stamps it into
+# every derived manifest and into metadata.version (Agent Skills standard: the
+# metadata field) of every rendered SKILL.md — skills travel standalone,
+# provenance rides the folder. Sources must not declare metadata.
+versionSource: plugins/src/wiki-sdd/plugin.json
 
 flavors:
   claude:
@@ -96,22 +97,21 @@ chrome:
   coco:
     - README.md
     - hooks/run-kmd-hook.mjs # npx-free resolver, not the shared wrapper
-    # The manifest lives at the repo root, not in dest: a managed
-    # `cortex plugin install` resolves it at the clone root, and
-    # ${CORTEX_PLUGIN_ROOT} expands to that root. One file carries the
-    # whole surface — skills by path, hooks and mcpServers inline (the
-    # docs' sample-manifest shape); the explicit mcpServers block also
-    # keeps the repo's dev .mcp.json out of the plugin. Its version
-    # stamp rides the release train beside versionSource.
-    - /.cortex-plugin/plugin.json
+    # /.cortex-plugin/plugin.json is a projection of the root plugin.json:
+    # identity derived, skills by rule, the inline hooks and mcpServers
+    # blocks carried from the committed file until their projections land.
+    # It lives at the repo root, not in dest: a managed `cortex plugin
+    # install` resolves it at the clone root, and ${CORTEX_PLUGIN_ROOT}
+    # expands to that root.
     - /.cortex-plugin/activation.md
   claude:
-    - .claude-plugin/plugin.json
+    # .claude-plugin/plugin.json and the repo-root .claude-plugin/marketplace.json
+    # are projections of the root plugin.json, not chrome
     - .mcp.json
     - README.md
     - hooks/hooks.json
   codex:
-    - .codex-plugin/plugin.json
+    # .codex-plugin/plugin.json is a projection of the root plugin.json, not chrome
     - .mcp.json
     - README.md
     - hooks/hooks.json

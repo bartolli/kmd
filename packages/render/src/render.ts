@@ -2,6 +2,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import { validatePackage } from './package.js';
+import {
+  claudeManifest,
+  codexManifest,
+  cortexManifest,
+  marketplaceManifest
+} from './projections.js';
 import { type DialectConfig, transformCoco, transformCodex } from './transform.js';
 
 export type Dialect =
@@ -158,6 +164,23 @@ function applyDialect(text: string, dialect: Dialect, names: string[]): string {
   return dialect.kind === 'codex' ? transformCodex(text, cfg) : transformCoco(text, cfg);
 }
 
+// Repo-root placements: a managed Cortex install resolves its manifest at the
+// clone root, and the Claude marketplace serves from the repository root.
+const CORTEX_MANIFEST = '.cortex-plugin/plugin.json';
+const MARKETPLACE = '.claude-plugin/marketplace.json';
+
+function committedBlocks(path: string): { hooks?: unknown; mcpServers?: unknown } {
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    return {
+      ...(raw.hooks !== undefined && { hooks: raw.hooks }),
+      ...(raw.mcpServers !== undefined && { mcpServers: raw.mcpServers })
+    };
+  } catch {
+    return {};
+  }
+}
+
 function walkFiles(dir: string): string[] {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -241,6 +264,29 @@ function buildPayloads(
     for (const entry of manifest.shared.exact) {
       if (entry.flavors && !entry.flavors.includes(name)) continue;
       payload.set(entry.path, readFileSync(join(sourceRoot, entry.path)));
+    }
+    if (flavor.dialect.kind === 'claude' && pkg.manifest !== null) {
+      payload.set('.claude-plugin/plugin.json', claudeManifest(pkg.manifest));
+      const marketplace = marketplaceManifest(pkg.manifest, flavor.dest);
+      if (marketplace !== null) {
+        payload.set(
+          relative(join(repoRoot, flavor.dest), join(repoRoot, MARKETPLACE)),
+          marketplace
+        );
+      }
+    }
+    if (flavor.dialect.kind === 'codex' && pkg.manifest !== null) {
+      payload.set('.codex-plugin/plugin.json', codexManifest(pkg.manifest));
+    }
+    if (flavor.dialect.kind === 'coco' && pkg.manifest !== null) {
+      // The inline hook and server blocks are carried from the committed
+      // manifest until their own projections land.
+      const cortexPath = join(repoRoot, CORTEX_MANIFEST);
+      const committed = committedBlocks(cortexPath);
+      payload.set(
+        relative(join(repoRoot, flavor.dest), cortexPath),
+        cortexManifest(pkg.manifest, `${flavor.dest}/skills`, committed)
+      );
     }
     payloads.set(name, payload);
   }

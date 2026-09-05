@@ -1,11 +1,13 @@
 {
   "name": "wiki-sdd",
-  "version": "0.20.0",
-  "description": "Wiki-native spec-driven development loop for an Obsidian-based agent wiki.",
+  "version": "0.21.0",
+  "description": "Wiki-native spec-driven development loop for the llm-wiki agent wiki: bootstrap a project scope, grill intent into a glossary, synthesize PRDs and user stories, triage stories through a state machine, slice into tracker issues, and implement slices via red-green-refactor TDD.",
   "author": {
     "name": "Angel Bartolli"
   },
-  "skills": ["./plugins/coco/wiki-sdd/skills"],
+  "skills": [
+    "./plugins/coco/wiki-sdd/skills"
+  ],
   "hooks": {
     "SessionStart": [
       {
@@ -68,7 +70,9 @@
     "wiki": {
       "type": "stdio",
       "command": "kmd",
-      "args": ["mcp"],
+      "args": [
+        "mcp"
+      ],
       "env": {
         "WIKI_VAULT": "${WIKI_VAULT:-}",
         "KMD_PROJECT_DIR": "${KMD_PROJECT_DIR:-}",

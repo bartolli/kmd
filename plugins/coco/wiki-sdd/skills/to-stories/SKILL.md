@@ -2,7 +2,7 @@
 name: to-stories
 description: 'This skill should be used to write wiki stories — Gherkin scenarios plus a first slice list — from either input: the current conversation, synthesized into a thin `plan/plan-{name}.md` with one `plan/{name}/story-N-{slug}.md` per story; or a promoted intent, elaborated into one story under the active plan with the intent linked and `promoted_to` reported back. Default `triage_state: needs-triage`. Does NOT interview — if intent is unclear it suggests `$intent` and stops. Use when the user says "turn this into a plan", "draft a PRD", "$to-stories", "write up what we discussed", "synthesize this into stories", "write the story for intent X", or "elaborate intent X". Reads `glossary.md` and existing ADRs to use the project''s vocabulary correctly.'
 metadata:
-  version: "0.20.0"
+  version: "0.21.0"
 ---
 
 # To Stories — Conversation or Intent into Wiki Stories

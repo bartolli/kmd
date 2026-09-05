@@ -2,7 +2,14 @@
   "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/plugins"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/plugins",
+      "!.cortex-plugin/plugin.json",
+      "!.claude-plugin/marketplace.json"
+    ]
   },
   "formatter": {
     "enabled": true,
