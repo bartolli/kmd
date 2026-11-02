@@ -3,9 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
   canonicalVaultRoot,
-  getMeta,
   indexRootDir,
-  openDatabase,
+  peekMeta,
   resolveIndexPath
 } from '@llm-wiki/db/database';
 import {
@@ -129,16 +128,8 @@ interface VaultDescription {
 function describeVault(root: string): VaultDescription {
   const vault = canonicalVaultRoot(root);
   const index = resolveIndexPath(vault);
-  let synced = 'never';
-  if (existsSync(index)) {
-    const db = openDatabase(index);
-    try {
-      synced = getMeta(db, 'last_synced') ?? 'never';
-    } finally {
-      db.close();
-    }
-  }
-  return { vault, index, synced };
+  const [synced] = existsSync(index) ? peekMeta(index, 'last_synced') : [null];
+  return { vault, index, synced: synced ?? 'never' };
 }
 
 function printVault(d: VaultDescription): void {
@@ -156,14 +147,9 @@ function knownVaults(): VaultDescription[] {
     if (!entry.isDirectory()) continue;
     const index = join(root, entry.name, 'index.db');
     if (!existsSync(index)) continue;
-    const db = openDatabase(index);
-    try {
-      const vault = getMeta(db, 'vault_root');
-      if (vault === null) continue;
-      known.push({ vault, index, synced: getMeta(db, 'last_synced') ?? 'never' });
-    } finally {
-      db.close();
-    }
+    const [vault, synced] = peekMeta(index, 'vault_root', 'last_synced');
+    if (vault === null || vault === undefined) continue;
+    known.push({ vault, index, synced: synced ?? 'never' });
   }
   return known;
 }

@@ -198,6 +198,24 @@ export function getMeta(db: DatabaseSync, key: string): string | null {
   return row?.value ?? null;
 }
 
+/**
+ * Reads meta values without the schema step, so the file stays as found. An
+ * index that predates the `meta` table answers null for every key.
+ */
+export function peekMeta(dbPath: string, ...keys: string[]): Array<string | null> {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return keys.map((key) => getMeta(db, key));
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('no such table: meta')) {
+      return keys.map(() => null);
+    }
+    throw err;
+  } finally {
+    db.close();
+  }
+}
+
 export function setMeta(db: DatabaseSync, key: string, value: string): void {
   db.prepare(
     'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'

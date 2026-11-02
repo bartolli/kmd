@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { openDatabase, resolveIndexPath, setMeta } from '@llm-wiki/db/database';
@@ -114,6 +115,35 @@ describe('kmd config / db reset (per-vault index)', () => {
     expect(out).toContain(vaultA);
     expect(out).toContain(vaultB);
     expect(out.match(/vault: /g)).toHaveLength(2);
+  });
+
+  it('config reads an older index without changing its schema', async () => {
+    const dbPath = resolveIndexPath(vaultA);
+    await mkdir(dirname(dbPath), { recursive: true });
+    const legacy = new DatabaseSync(dbPath);
+    legacy.exec('CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    setMeta(legacy, 'vault_root', vaultA);
+    setMeta(legacy, 'last_synced', '2026-07-01T00:00:00.000Z');
+    legacy.close();
+    const schema = (): string[] => {
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        return (
+          db.prepare('SELECT name FROM sqlite_master ORDER BY name').all() as { name: string }[]
+        ).map((row) => row.name);
+      } finally {
+        db.close();
+      }
+    };
+    const before = schema();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runConfig();
+    process.env.WIKI_VAULT = vaultA;
+    await runConfig();
+
+    expect(log.mock.calls.flat().join('\n')).toContain('synced: 2026-07-01T00:00:00.000Z');
+    expect(schema()).toEqual(before);
   });
 
   it('config never creates index state for a merely-asked-about vault', async () => {
