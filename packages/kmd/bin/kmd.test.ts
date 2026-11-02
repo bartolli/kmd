@@ -1,9 +1,12 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -1091,4 +1094,299 @@ describe('two-tier resolution (end-to-end)', () => {
     const unset = await runKmd(['config', 'unset', 'default_vault'], '', kmdHome, {}, neutral);
     expect(unset.code).toBe(0);
   }, 30_000);
+});
+
+describe('concurrent sync (end-to-end)', () => {
+  let base: string;
+  let vaultRoot: string;
+  let kmdHome: string;
+
+  const page = (title: string): string =>
+    `---\ntitle: ${title}\nkind: note\nstatus: active\nsummary: probe\ntags: [sync]\ncreated: "2026-01-01T00:00:00Z"\nupdated: "2026-01-01T00:00:00Z"\n---\nbody\n`;
+
+  async function indexPath(): Promise<string> {
+    const [key] = await readdir(join(kmdHome, 'db'));
+    return join(kmdHome, 'db', key as string, 'index.db');
+  }
+
+  function indexedPaths(index: string): string[] {
+    const db = new DatabaseSync(index, { readOnly: true });
+    try {
+      return (db.prepare('SELECT path FROM pages ORDER BY path').all() as { path: string }[]).map(
+        (row) => row.path
+      );
+    } finally {
+      db.close();
+    }
+  }
+
+  function indexedRow(index: string, path: string): { title: string; kind: string } | undefined {
+    const db = new DatabaseSync(index, { readOnly: true });
+    try {
+      const row = db.prepare('SELECT title, kind FROM pages WHERE path = ?').get(path);
+      return row === undefined ? undefined : { ...(row as { title: string; kind: string }) };
+    } finally {
+      db.close();
+    }
+  }
+
+  const invalidPage = (title: string): string =>
+    page(title).replace('kind: note', 'kind: invalid-kind');
+
+  function posttoolHook(): Promise<RunResult> {
+    const event = JSON.stringify({
+      session_id: 's',
+      tool_name: 'Bash',
+      tool_input: { command: `cat ${vaultRoot}/notes/first.md` },
+      cwd: vaultRoot
+    });
+    return runKmd(['hook', 'posttool', vaultRoot, '--harness', 'claude'], event, kmdHome);
+  }
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-concurrent-sync-e2e-'));
+    vaultRoot = join(base, 'vault');
+    kmdHome = join(base, 'kmd-home');
+    await mkdir(join(vaultRoot, 'notes'), { recursive: true });
+    await writeFile(
+      join(vaultRoot, 'vault.yaml'),
+      'scopes: {}\nkinds: [note]\nstatuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+    );
+    await writeFile(join(vaultRoot, 'notes/first.md'), page('First'));
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('a sync blocked on the writer lock walks the vault after the lock clears', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+    const index = await indexPath();
+
+    const holder = new DatabaseSync(index);
+    holder.exec('BEGIN IMMEDIATE');
+    const blocked = runKmd(['sync', vaultRoot], '', kmdHome);
+    // A sync that walked before taking the lock has its stale file list by now.
+    await delay(2_500);
+    await writeFile(join(vaultRoot, 'notes/second.md'), page('Second'));
+    holder.exec(
+      "INSERT INTO pages (path, title, kind) VALUES ('notes/second.md', 'Second', 'note')"
+    );
+    holder.exec('COMMIT');
+    holder.close();
+
+    expect((await blocked).code).toBe(0);
+    expect(indexedPaths(index)).toEqual(['notes/first.md', 'notes/second.md']);
+  }, 30_000);
+
+  it('parallel posttool hooks on a fresh index all sync', async () => {
+    const event = JSON.stringify({
+      session_id: 's',
+      tool_name: 'Bash',
+      tool_input: { command: `cat ${vaultRoot}/notes/first.md` },
+      cwd: vaultRoot
+    });
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        runKmd(['hook', 'posttool', vaultRoot, '--harness', 'claude'], event, kmdHome)
+      )
+    );
+
+    for (const result of results) {
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).not.toContain('sync failed');
+    }
+    expect(indexedPaths(await indexPath())).toEqual(['notes/first.md']);
+  }, 30_000);
+
+  it('an unchanged hook completes while another process holds the writer lock', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+
+    const holder = new DatabaseSync(await indexPath());
+    holder.exec('BEGIN IMMEDIATE');
+    const startedAt = Date.now();
+    const result = await posttoolHook();
+    const elapsed = Date.now() - startedAt;
+    holder.exec('ROLLBACK');
+    holder.close();
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).not.toContain('sync failed');
+    // Well under the 10-second lock wait: this hook must not queue at all.
+    expect(elapsed).toBeLessThan(7_000);
+  }, 30_000);
+
+  it('a hook advances synced for an edit the index does not hold', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+    const index = await indexPath();
+    const lastSynced = (): string => {
+      const db = new DatabaseSync(index, { readOnly: true });
+      try {
+        const row = db.prepare("SELECT value FROM meta WHERE key = 'last_synced'").get();
+        return (row as { value: string }).value;
+      } finally {
+        db.close();
+      }
+    };
+    const before = lastSynced();
+
+    await writeFile(join(vaultRoot, 'notes/primer.md'), 'A primer carries no frontmatter.\n');
+    expect((await posttoolHook()).stdout).toBe('');
+
+    expect(lastSynced() > before).toBe(true);
+  }, 30_000);
+
+  it('a hook syncs an edit, a new page, and a deletion', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+    const index = await indexPath();
+
+    await writeFile(join(vaultRoot, 'notes/first.md'), page('First edited'));
+    expect((await posttoolHook()).stdout).not.toContain('sync failed');
+    expect(indexedRow(index, 'notes/first.md')?.title).toBe('First edited');
+
+    await writeFile(join(vaultRoot, 'notes/second.md'), page('Second'));
+    expect((await posttoolHook()).stdout).not.toContain('sync failed');
+    expect(indexedPaths(index)).toEqual(['notes/first.md', 'notes/second.md']);
+
+    await rm(join(vaultRoot, 'notes/second.md'));
+    expect((await posttoolHook()).stdout).not.toContain('sync failed');
+    expect(indexedPaths(index)).toEqual(['notes/first.md']);
+  }, 30_000);
+
+  it('a hook queued on the writer lock holds content that went invalid while it waited', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+    const index = await indexPath();
+
+    await writeFile(join(vaultRoot, 'notes/first.md'), page('First edited'));
+    const holder = new DatabaseSync(index);
+    holder.exec('BEGIN IMMEDIATE');
+    const queued = posttoolHook();
+    // The hook has validated the edit and is waiting on the lock by now.
+    await delay(2_500);
+    await writeFile(join(vaultRoot, 'notes/first.md'), invalidPage('First invalid'));
+    holder.exec('ROLLBACK');
+    holder.close();
+
+    const result = await queued;
+    expect(result.stdout).toContain('kind-vocabulary');
+    expect(indexedRow(index, 'notes/first.md')).toEqual({ title: 'First', kind: 'note' });
+  }, 30_000);
+
+  it('a kmd sync queued on the writer lock aborts on content that went invalid', async () => {
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+    const index = await indexPath();
+
+    const holder = new DatabaseSync(index);
+    holder.exec('BEGIN IMMEDIATE');
+    const queued = runKmd(['sync', vaultRoot], '', kmdHome);
+    await delay(2_500);
+    await writeFile(join(vaultRoot, 'notes/first.md'), invalidPage('First invalid'));
+    holder.exec('ROLLBACK');
+    holder.close();
+
+    const result = await queued;
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('sync aborted');
+    expect(indexedRow(index, 'notes/first.md')).toEqual({ title: 'First', kind: 'note' });
+  }, 30_000);
+});
+
+describe('older-engine recovery (end-to-end)', () => {
+  let base: string;
+  let vaultRoot: string;
+  let kmdHome: string;
+
+  const page = (title: string, body: string): string =>
+    `---\ntitle: ${title}\nkind: note\nstatus: active\nsummary: probe\ntags: [sync]\ncreated: "2026-01-01T00:00:00Z"\nupdated: "2026-01-01T00:00:00Z"\n---\n${body}\n`;
+  const source = (target: string): string =>
+    page('Source', `links to [[projects/demo/notes/${target}]]`);
+  const SOURCE = 'projects/demo/notes/a-source.md';
+
+  async function indexPath(): Promise<string> {
+    const [key] = await readdir(join(kmdHome, 'db'));
+    return join(kmdHome, 'db', key as string, 'index.db');
+  }
+
+  /** The per-page statement an older engine runs before links and FTS; stopping here is its interruption. */
+  async function legacyRowUpdate(path: string, raw: string): Promise<void> {
+    await writeFile(join(vaultRoot, path), raw);
+    const db = new DatabaseSync(await indexPath());
+    try {
+      db.prepare('UPDATE pages SET body = ?, content_hash = ? WHERE path = ?').run(
+        raw.slice(raw.indexOf('\n---\n') + 5),
+        createHash('sha256').update(raw).digest('hex'),
+        path
+      );
+    } finally {
+      db.close();
+    }
+  }
+
+  function posttoolHook(): Promise<RunResult> {
+    const event = JSON.stringify({
+      session_id: 's',
+      tool_name: 'Bash',
+      tool_input: { command: `cat ${vaultRoot}/vault.yaml` },
+      cwd: vaultRoot
+    });
+    return runKmd(['hook', 'posttool', vaultRoot, '--harness', 'claude'], event, kmdHome);
+  }
+
+  async function searchPaths(term: string): Promise<string[]> {
+    const result = await runKmd(['search', term, vaultRoot], '', kmdHome);
+    return (JSON.parse(result.stdout) as { results: { path: string }[] }).results.map(
+      (r) => r.path
+    );
+  }
+
+  beforeEach(async () => {
+    base = await mkdtemp(join(tmpdir(), 'kmd-legacy-recovery-e2e-'));
+    vaultRoot = join(base, 'vault');
+    kmdHome = join(base, 'kmd-home');
+    await mkdir(join(vaultRoot, 'projects/demo/notes'), { recursive: true });
+    await writeFile(
+      join(vaultRoot, 'vault.yaml'),
+      'scopes:\n  demo:\n    status: active\n    repo: /kmd-e2e-legacy-repo\nkinds: [note]\nstatuses: [active]\nmethodologies: [sdd]\ntags:\n  canonical: []\n  aliases: {}\n'
+    );
+    await writeFile(join(vaultRoot, 'projects/demo/notes/b-target-a.md'), page('Target A', 'a'));
+    await writeFile(join(vaultRoot, 'projects/demo/notes/b-target-b.md'), page('Target B', 'b'));
+  });
+
+  afterEach(async () => {
+    await rm(base, { recursive: true, force: true });
+  });
+
+  it('search serves the vault after an older engine restored a row without its FTS rebuild', async () => {
+    const probe = 'projects/demo/notes/probe.md';
+    await writeFile(join(vaultRoot, probe), page('Probe', 'alphaprobe'));
+    await writeFile(join(vaultRoot, SOURCE), source('b-target-a'));
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+
+    await legacyRowUpdate(probe, page('Probe', 'betaprobe'));
+    const db = new DatabaseSync(await indexPath());
+    db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+    db.close();
+    await legacyRowUpdate(probe, page('Probe', 'alphaprobe'));
+    expect(await searchPaths('alphaprobe')).toEqual([]);
+
+    expect((await posttoolHook()).stdout).toBe('');
+
+    expect(await searchPaths('alphaprobe')).toEqual([probe]);
+    expect(await searchPaths('betaprobe')).toEqual([]);
+  }, 60_000);
+
+  it('prime hubs follow the vault after an older engine updated a row before its links', async () => {
+    await writeFile(join(vaultRoot, SOURCE), source('b-target-a'));
+    expect((await runKmd(['sync', vaultRoot], '', kmdHome)).code).toBe(0);
+
+    await legacyRowUpdate(SOURCE, source('b-target-b'));
+    expect((await posttoolHook()).stdout).toBe('');
+
+    const prime = await runKmd(['prime', 'demo', vaultRoot], '', kmdHome);
+    expect(prime.stdout).toContain('b-target-b (1 inbound)');
+    expect(prime.stdout).not.toContain('b-target-a');
+  }, 60_000);
 });

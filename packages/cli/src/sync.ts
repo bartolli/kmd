@@ -3,11 +3,20 @@ import { mkdirSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { canonicalVaultRoot, openDatabase, resolveIndexPath, setMeta } from '@llm-wiki/db/database';
-import { loadVaultConfig } from '@llm-wiki/db/vault-config';
+import {
+  canonicalVaultRoot,
+  getMeta,
+  INDEX_TRUSTED_KEY,
+  isBusy,
+  openDatabase,
+  resolveIndexPath,
+  setMeta
+} from '@llm-wiki/db/database';
+import { loadVaultConfig, type VaultConfig } from '@llm-wiki/db/vault-config';
 import { z } from 'zod';
 import { type ParsedFrontmatter, parseFrontmatter } from './frontmatter.js';
 import { refreshSchemaFile } from './init.js';
+import type { Finding } from './validate.js';
 
 const EnvSchema = z.object({
   WIKI_VAULT: z.string().min(1)
@@ -99,6 +108,30 @@ export async function walkMarkdown(root: string, domain: string): Promise<string
 
 export function toRelativePath(root: string, absolute: string): string {
   return relative(root, absolute).split(sep).join('/');
+}
+
+/** One read of the vault, so what validate judges is what sync indexes. */
+export interface VaultSnapshot {
+  root: string;
+  config: VaultConfig;
+  /** Every page in the vault; references resolve against this universe. */
+  allPaths: string[];
+  /** The content-domain pages, in `SCAN_DOMAINS` order. */
+  pages: { path: string; raw: string }[];
+}
+
+export async function readVaultSnapshot(root: string): Promise<VaultSnapshot> {
+  const config = await loadVaultConfig(root);
+  const allPaths = (await walkMarkdown(root, '.')).map((abs) => toRelativePath(root, abs));
+  const pages: VaultSnapshot['pages'] = [];
+  for (const domain of SCAN_DOMAINS) {
+    for (const path of allPaths) {
+      if (path.startsWith(`${domain}/`)) {
+        pages.push({ path, raw: await readFile(join(root, path), 'utf8') });
+      }
+    }
+  }
+  return { root, config, allPaths, pages };
 }
 
 function sha256(content: string): string {
@@ -217,11 +250,12 @@ export function buildPageFields(
   };
 }
 
-export function syncPage(db: DatabaseSync, fields: PageFields): SyncResult {
+/** `rewrite` skips the hash shortcut: a matching hash vouches for a row, never for its links. */
+export function syncPage(db: DatabaseSync, fields: PageFields, rewrite = false): SyncResult {
   const existing = db.prepare('SELECT content_hash FROM pages WHERE path = ?').get(fields.path) as
     | { content_hash: string | null }
     | undefined;
-  if (existing?.content_hash === fields.hash) {
+  if (!rewrite && existing?.content_hash === fields.hash) {
     return 'unchanged';
   }
 
@@ -286,6 +320,70 @@ export interface SyncStats {
   linksDeleted: number;
   noPages: boolean;
   warnings: SyncWarning[];
+  /** The findings that held this sync; empty when it was not held. */
+  heldBy: Finding[];
+}
+
+export interface SyncOptions {
+  /** Judges the snapshot about to be indexed, under the writer lock. */
+  gate?: (snapshot: VaultSnapshot) => Promise<Finding[]>;
+  /** A read the caller already holds: when the index matches it, nothing queues. */
+  observed?: VaultSnapshot;
+}
+
+function noWrites(heldBy: Finding[] = []): SyncStats {
+  return {
+    changed: 0,
+    unchanged: 0,
+    skipped: 0,
+    pagesDeleted: 0,
+    linksDeleted: 0,
+    noPages: false,
+    warnings: [],
+    heldBy
+  };
+}
+
+function wouldIndex(path: string, raw: string, scopes: ReadonlySet<string>): boolean {
+  try {
+    return buildPageFields(path, raw, parseFrontmatter(raw), scopes) !== null;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Whether a sync of this snapshot would change nothing. Any doubt reads as a
+ * change: an unindexed page that could index, a row with no file, a hash that
+ * moved, or an index some write touched after the last transactional commit.
+ */
+function indexMatches(db: DatabaseSync, snapshot: VaultSnapshot): boolean {
+  if (getMeta(db, INDEX_TRUSTED_KEY) === null) return false;
+  const rows = db.prepare('SELECT path, content_hash FROM pages').all() as {
+    path: string;
+    content_hash: string | null;
+  }[];
+  const indexed = new Map(rows.map((row) => [row.path, row.content_hash]));
+  const scopes = new Set(Object.keys(snapshot.config.scopes));
+  for (const { path, raw } of snapshot.pages) {
+    if (!indexed.has(path)) {
+      if (wouldIndex(path, raw, scopes)) return false;
+    } else if (indexed.get(path) !== sha256(raw)) {
+      return false;
+    }
+    indexed.delete(path);
+  }
+  return indexed.size === 0;
+}
+
+/** Advances `synced` without waiting: a held lock is a sync that stamps it at commit. */
+function stampVerified(db: DatabaseSync): void {
+  db.exec('PRAGMA busy_timeout = 0');
+  try {
+    setMeta(db, 'last_synced', new Date().toISOString());
+  } catch (err) {
+    if (!isBusy(err)) throw err;
+  }
 }
 
 /**
@@ -311,29 +409,55 @@ export function clockNotAdvanced(db: DatabaseSync, fields: PageFields): SyncWarn
  * The sync pipeline without operator output — the seam the posttool hook
  * calls in-process, where stdout belongs to the harness protocol.
  */
-export async function syncVault(vaultRoot: string): Promise<SyncStats> {
-  const dbPath = resolveIndexPath(vaultRoot);
-  const vaultConfig = await loadVaultConfig(vaultRoot);
-  const scopes = new Set(Object.keys(vaultConfig.scopes));
+export async function syncVault(vaultRoot: string, options: SyncOptions = {}): Promise<SyncStats> {
+  const stats = await indexVault(vaultRoot, options);
+  // Derived artifact like the index: refreshed so engine upgrades surface as a
+  // git diff, not silent IDE/runtime disagreement. stderr keeps every hook
+  // codec's stdout clean.
+  if (stats.heldBy.length === 0 && (await refreshSchemaFile(vaultRoot))) {
+    console.error('sync: vault.schema.json refreshed to the running engine');
+  }
+  return stats;
+}
 
+async function indexVault(vaultRoot: string, { gate, observed }: SyncOptions): Promise<SyncStats> {
+  const dbPath = resolveIndexPath(vaultRoot);
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = openDatabase(dbPath);
 
   try {
-    const files: string[] = [];
-    for (const domain of SCAN_DOMAINS) {
-      files.push(...(await walkMarkdown(vaultRoot, domain)));
+    if (observed) {
+      // One read transaction, so the stamp and the rows come from the same commit.
+      db.exec('BEGIN');
+      const matches = indexMatches(db, observed);
+      db.exec('COMMIT');
+      if (matches) {
+        stampVerified(db);
+        return noWrites();
+      }
     }
 
+    // The lock spans the read: a sync that read the vault before a concurrent
+    // sync's commit would otherwise overwrite or sweep that newer result, and
+    // content validated before the wait could change during it. An uncommitted
+    // return or failure rolls back at close, keeping the prior index.
+    db.exec('BEGIN IMMEDIATE');
+    const snapshot = await readVaultSnapshot(vaultRoot);
+    if (observed && indexMatches(db, snapshot)) return noWrites();
+    const heldBy = (await gate?.(snapshot)) ?? [];
+    if (heldBy.length > 0) return noWrites(heldBy);
+    // Read before the first write clears it. Without the stamp, rows and links
+    // may come from an interrupted writer, so every page is rewritten.
+    const rewrite = getMeta(db, INDEX_TRUSTED_KEY) === null;
+
+    const scopes = new Set(Object.keys(snapshot.config.scopes));
     const indexedPaths: string[] = [];
     let changed = 0;
     let unchanged = 0;
     let skipped = 0;
     const warnings: SyncWarning[] = [];
 
-    for (const file of files) {
-      const path = toRelativePath(vaultRoot, file);
-      const raw = await readFile(file, 'utf8');
+    for (const { path, raw } of snapshot.pages) {
       const parsed = parseFrontmatter(raw);
       const fields = buildPageFields(path, raw, parsed, scopes);
       if (!fields) {
@@ -343,7 +467,7 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
 
       const warning = clockNotAdvanced(db, fields);
       if (warning) warnings.push(warning);
-      const result = syncPage(db, fields);
+      const result = syncPage(db, fields, rewrite);
       if (result === 'changed') {
         changed++;
       } else {
@@ -369,14 +493,9 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
     db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
 
     setMeta(db, 'vault_root', canonicalVaultRoot(vaultRoot));
+    setMeta(db, INDEX_TRUSTED_KEY, new Date().toISOString());
     setMeta(db, 'last_synced', new Date().toISOString());
-
-    // Derived artifact like the index: refreshed so engine upgrades surface
-    // as a git diff, not silent IDE/runtime disagreement. stderr keeps every
-    // hook codec's stdout clean.
-    if (await refreshSchemaFile(vaultRoot)) {
-      console.error('sync: vault.schema.json refreshed to the running engine');
-    }
+    db.exec('COMMIT');
 
     return {
       changed,
@@ -385,17 +504,19 @@ export async function syncVault(vaultRoot: string): Promise<SyncStats> {
       pagesDeleted,
       linksDeleted,
       noPages: indexedPaths.length === 0,
-      warnings
+      warnings,
+      heldBy: []
     };
   } finally {
     db.close();
   }
 }
 
-export async function runSync(): Promise<void> {
+export async function runSync(gate: NonNullable<SyncOptions['gate']>): Promise<Finding[]> {
   const env = loadEnv();
   console.log(`sync: ${env.WIKI_VAULT} → ${resolveIndexPath(env.WIKI_VAULT)}`);
-  const stats = await syncVault(env.WIKI_VAULT);
+  const stats = await syncVault(env.WIKI_VAULT, { gate });
+  if (stats.heldBy.length > 0) return stats.heldBy;
   if (stats.noPages) {
     console.warn('no indexable pages found; index swept empty');
   }
@@ -405,4 +526,5 @@ export async function runSync(): Promise<void> {
   console.log(
     `done: ${stats.changed} changed, ${stats.unchanged} unchanged, ${stats.skipped} skipped, ${stats.pagesDeleted} pages deleted, ${stats.linksDeleted} link orphans cleared`
   );
+  return [];
 }

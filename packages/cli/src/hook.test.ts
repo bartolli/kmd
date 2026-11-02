@@ -1448,6 +1448,24 @@ describe('renderPosttool', () => {
     expect(out.hookSpecificOutput.additionalContext).toContain('kmd sync failed');
   });
 
+  it('carries the sync failure cause to the model (claude)', () => {
+    const out = JSON.parse(
+      renderPosttool([], false, 'claude', {}, 'database is locked') as string
+    ) as { hookSpecificOutput: Record<string, string> };
+
+    expect(out.hookSpecificOutput.additionalContext).toBe(
+      'kmd sync failed — index not updated: database is locked'
+    );
+  });
+
+  it('appends the sync failure cause after a configured text (claude)', () => {
+    const out = JSON.parse(
+      renderPosttool([], false, 'claude', { text: 'index stale' }, 'database is locked') as string
+    ) as { hookSpecificOutput: Record<string, string> };
+
+    expect(out.hookSpecificOutput.additionalContext).toBe('index stale: database is locked');
+  });
+
   it('emits findings and sync status as JSON (neutral)', () => {
     const out = JSON.parse(renderPosttool([error], false, 'neutral') as string) as {
       findings: Finding[];

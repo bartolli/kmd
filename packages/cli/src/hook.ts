@@ -20,9 +20,15 @@ import { loadVaultConfig, TriggerSchema } from '@llm-wiki/db/vault-config';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { parseFrontmatter } from './frontmatter.js';
-import { syncVault } from './sync.js';
+import { readVaultSnapshot, syncVault } from './sync.js';
 import { diffVault, isBehind, summarizeDelta } from './upgrade.js';
-import { type Finding, hasErrors, validateVault } from './validate.js';
+import {
+  type Finding,
+  hasErrors,
+  syncBlockers,
+  validateSnapshot,
+  validateVault
+} from './validate.js';
 
 export interface PromptEvent {
   session_id: string;
@@ -610,9 +616,9 @@ function patchPaths(toolInput: unknown): string[] {
  * one counts as a path candidate when it carries a separator, a glob or
  * variable character, is a bare dot, or ends in a vault content extension.
  * Glob and variable targets resolve against the event cwd, so they register
- * only when the command runs inside the vault. Over-matching is safe
- * (validate + sync is idempotent); the silent miss is the failure mode this
- * closes. Paths built behind an in-command `cd` stay out of reach.
+ * only when the command runs inside the vault. Over-matching is safe (an
+ * unchanged vault never waits on the writer lock); the silent miss is the
+ * failure mode this closes. Paths built behind an in-command `cd` stay out of reach.
  */
 const COMMAND_TOKEN_RE = /"([^"]*)"|'([^']*)'|(\S+)/g;
 const PATHISH_RE = /[/*$]|\.(?:md|base|canvas|ya?ml)$/i;
@@ -652,7 +658,7 @@ export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: st
 
 /** Engine defaults for the fixed-function hook prose ([[adr-builtin-hook-identity]]). */
 const RESYNC_REASON = 'Edit landed; the index sync is held until these validate errors are fixed';
-const RESYNC_TEXT = 'kmd sync failed — index not updated; see hook stderr';
+const RESYNC_TEXT = 'kmd sync failed — index not updated';
 const HANDOFF_GATE_REASON =
   'Validate errors are outstanding and the index sync is held — fix them, let the resync run, then finish';
 
@@ -660,14 +666,15 @@ const HANDOFF_GATE_REASON =
  * Posttool outcome codec — public id `resync`. Errors read as the fix list
  * (sync did not run); warnings pass the sync gate but still surface once. The
  * quiet path — no findings, sync clean — renders nothing: zero per-edit
- * noise. `messages` overrides the preamble prose only; the error lines are
- * always engine-appended.
+ * noise. `messages` overrides the preamble prose only; the error lines and
+ * the sync failure's cause are always engine-appended.
  */
 export function renderPosttool(
   findings: Finding[],
   synced: boolean,
   format: 'neutral' | 'claude',
-  messages: { reason?: string | undefined; text?: string | undefined } = {}
+  messages: { reason?: string | undefined; text?: string | undefined } = {},
+  syncError?: string
 ): string | null {
   if (findings.length === 0 && synced) return null;
   const lines = findings.map((f) => `${f.severity}: ${f.path} [${f.rule}] ${f.message}`);
@@ -680,7 +687,10 @@ export function renderPosttool(
     }
     const hookSpecificOutput: Record<string, string> = { hookEventName: 'PostToolUse' };
     const notes = [...lines];
-    if (!synced) notes.push(messages.text ?? RESYNC_TEXT);
+    if (!synced) {
+      const text = messages.text ?? RESYNC_TEXT;
+      notes.push(syncError === undefined ? text : `${text}: ${syncError}`);
+    }
     hookSpecificOutput.additionalContext = notes.join('\n');
     return JSON.stringify({ hookSpecificOutput });
   }
@@ -1242,19 +1252,27 @@ export async function runHookPosttool(): Promise<void> {
     const vaultRoot = resolveHookVault(invocation, event.cwd);
     if (vaultRoot === null) return;
     if (!vaultPathTouched(event.tool_input, vaultRoot, event.cwd)) return;
-    const config = await loadVaultConfig(vaultRoot);
-    const findings = await validateVault(vaultRoot);
+    const snapshot = await readVaultSnapshot(vaultRoot);
+    let findings = await validateSnapshot(snapshot);
     let synced = false;
+    let syncError: string | undefined;
     if (!hasErrors(findings)) {
       try {
-        const stats = await syncVault(vaultRoot);
-        synced = true;
-        findings.push(...stats.warnings);
+        const stats = await syncVault(vaultRoot, { gate: syncBlockers, observed: snapshot });
+        synced = stats.heldBy.length === 0;
+        findings = synced ? [...findings, ...stats.warnings] : stats.heldBy;
       } catch (err) {
-        diag(`sync failed: ${err instanceof Error ? err.message : String(err)}`);
+        syncError = err instanceof Error ? err.message : String(err);
+        diag(`sync failed: ${syncError}`);
       }
     }
-    const rendered = renderPosttool(findings, synced, format, config.builtin_hooks?.resync ?? {});
+    const rendered = renderPosttool(
+      findings,
+      synced,
+      format,
+      snapshot.config.builtin_hooks?.resync ?? {},
+      syncError
+    );
     if (rendered !== null) {
       console.log(rendered);
     }

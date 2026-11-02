@@ -1,19 +1,13 @@
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  BUILT_IN_KINDS,
-  kindName,
-  loadVaultConfig,
-  type VaultConfig
-} from '@llm-wiki/db/vault-config';
+import { BUILT_IN_KINDS, kindName, type VaultConfig } from '@llm-wiki/db/vault-config';
 import { parseFrontmatter } from './frontmatter.js';
 import {
   deriveLocation,
   extractWikilinks,
   isNotesPath,
-  SCAN_DOMAINS,
-  toRelativePath,
-  walkMarkdown
+  readVaultSnapshot,
+  type VaultSnapshot
 } from './sync.js';
 
 export type Severity = 'error' | 'warning';
@@ -665,43 +659,44 @@ export function validateAmbiguousLinks(
   return findings;
 }
 
-/**
- * Walk the vault's content domains (reusing the sync walker), build the basename
- * index of valid reference targets (all on-disk pages, including title-less ones),
- * then aggregate findings across all pages. No database — validation is a
- * pre-sync, read-only pass over the filesystem.
- */
 export async function validateVault(root: string): Promise<Finding[]> {
-  const cfg = await loadVaultConfig(root);
+  return validateSnapshot(await readVaultSnapshot(root));
+}
+
+/** The findings that hold a sync of this snapshot: all of them once any is an error. */
+export async function syncBlockers(snapshot: VaultSnapshot): Promise<Finding[]> {
+  const findings = await validateSnapshot(snapshot);
+  return hasErrors(findings) ? findings : [];
+}
+
+/**
+ * Build the basename index of valid reference targets, then aggregate findings
+ * across the snapshot's pages. No database and no page reads: a snapshot is
+ * judged as read, so a gate can vouch for the exact content it indexes.
+ */
+export async function validateSnapshot(snapshot: VaultSnapshot): Promise<Finding[]> {
+  const { root, config: cfg, allPaths, pages: contentPages } = snapshot;
 
   // Reference target universe = every on-disk page, including title-less ones and
   // pages outside the scanned domains (raw/, templates/) that are legitimate link
-  // targets. Walking from '.' covers the whole vault; dotdirs (.git, .obsidian)
-  // are skipped by the walker.
-  const all = (await walkMarkdown(root, '.')).map((abs) => ({
-    relPath: toRelativePath(root, abs),
-    abs
-  }));
+  // targets.
   // basename → [paths] (the spec's reference-resolution model). `refIndex` (dangling
   // checks: does the basename exist) is its key set; the multimap also backs the
   // cross-page ambiguity warning (does a basename have more than one owner).
   const basenameToPaths = new Map<string, string[]>();
-  for (const f of all) {
-    const b = basename(f.relPath);
+  for (const relPath of allPaths) {
+    const b = basename(relPath);
     const owners = basenameToPaths.get(b);
-    if (owners) owners.push(f.relPath);
-    else basenameToPaths.set(b, [f.relPath]);
+    if (owners) owners.push(relPath);
+    else basenameToPaths.set(b, [relPath]);
   }
   const refIndex = new Set<string>(basenameToPaths.keys());
-
-  // Applicability = only the indexed content domains.
-  const files = all.filter((f) => SCAN_DOMAINS.some((d) => f.relPath.startsWith(`${d}/`)));
 
   const findings: Finding[] = [];
   const pages: PageData[] = [];
   const linkPages: LinkPage[] = [];
-  for (const { relPath, abs } of files) {
-    const raw = await readFile(abs, 'utf8');
+  // Applicability = only the indexed content domains.
+  for (const { path: relPath, raw } of contentPages) {
     findings.push(...validatePage(relPath, raw, cfg, refIndex));
     try {
       const parsed = parseFrontmatter(raw);

@@ -112,7 +112,7 @@ and the engine appends the error lines:
 builtin_hooks:
   resync:                # posttool validate + sync
     reason: "Edit landed; the index sync is held until these validate errors are fixed"
-    text: "kmd sync failed — index not updated; see hook stderr"
+    text: "kmd sync failed — index not updated"
   handoff-gate:          # stop handoff gate
     reason: "Validate errors are outstanding and the index sync is held — fix them, then finish"
 ```

@@ -18,7 +18,7 @@ import {
 import { loadVaultConfig } from '@llm-wiki/db/vault-config';
 import { runSync } from './sync.js';
 import { upgradeVault } from './upgrade.js';
-import { type Finding, hasErrors, validateVault } from './validate.js';
+import { type Finding, hasErrors, syncBlockers, validateVault } from './validate.js';
 
 export type Command = 'sync' | 'validate';
 
@@ -100,16 +100,22 @@ export async function runValidate(positional?: string): Promise<void> {
   process.exit(hasErrors(findings) ? 1 : 0);
 }
 
+function abortSync(findings: Finding[]): never {
+  const errors = findings.filter((f) => f.severity === 'error').length;
+  console.error(`sync aborted: ${errors} validation error(s); no database writes`);
+  process.exit(1);
+}
+
 export async function runSyncCommand(positional?: string): Promise<void> {
   const { root } = requireCliVault(positional);
   const findings = await validateVault(root);
   reportFindings(findings);
-  if (hasErrors(findings)) {
-    const errors = findings.filter((f) => f.severity === 'error').length;
-    console.error(`sync aborted: ${errors} validation error(s); no database writes`);
-    process.exit(1);
+  if (hasErrors(findings)) abortSync(findings);
+  const heldBy = await runSync(syncBlockers);
+  if (heldBy.length > 0) {
+    reportFindings(heldBy);
+    abortSync(heldBy);
   }
-  await runSync();
 }
 
 interface VaultDescription {

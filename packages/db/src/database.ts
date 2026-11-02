@@ -4,6 +4,9 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+/** Set by a transactional sync at commit; any page or link write clears it. */
+export const INDEX_TRUSTED_KEY = 'index_trusted';
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS pages (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,11 +58,55 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- Any write to the derived tables clears the stamp a transactional sync sets at
+-- commit. Triggers live in the file, so an engine that predates the stamp still
+-- clears it, and the no-change check never vouches for rows it wrote.
+CREATE TRIGGER IF NOT EXISTS pages_insert_untrusts AFTER INSERT ON pages
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
+CREATE TRIGGER IF NOT EXISTS pages_update_untrusts AFTER UPDATE ON pages
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
+CREATE TRIGGER IF NOT EXISTS pages_delete_untrusts AFTER DELETE ON pages
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
+CREATE TRIGGER IF NOT EXISTS links_insert_untrusts AFTER INSERT ON links
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
+CREATE TRIGGER IF NOT EXISTS links_update_untrusts AFTER UPDATE ON links
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
+CREATE TRIGGER IF NOT EXISTS links_delete_untrusts AFTER DELETE ON links
+BEGIN DELETE FROM meta WHERE key = '${INDEX_TRUSTED_KEY}'; END;
 `;
+
+// Bounds one lock wait, not a whole hook. Well under the shortest harness hook
+// timeout, so exhausted contention surfaces as a sync warning, not a killed hook.
+const BUSY_TIMEOUT_MS = 10_000;
+const SQLITE_BUSY = 5;
+const WAL_RETRY_DELAY_MS = 20;
+
+export function isBusy(err: unknown): boolean {
+  // node:sqlite reports extended codes; the low byte is the primary code.
+  const errcode = (err as { errcode?: number }).errcode ?? 0;
+  return (errcode & 0xff) === SQLITE_BUSY;
+}
+
+// A journal-mode switch returns SQLITE_BUSY without consulting the busy
+// handler, so concurrent openers of a fresh index retry it here.
+function enableWal(db: DatabaseSync): void {
+  const deadline = Date.now() + BUSY_TIMEOUT_MS;
+  for (;;) {
+    try {
+      db.exec('PRAGMA journal_mode = WAL');
+      return;
+    } catch (err) {
+      if (!isBusy(err) || Date.now() >= deadline) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, WAL_RETRY_DELAY_MS);
+    }
+  }
+}
 
 export function openDatabase(dbPath: string): DatabaseSync {
   const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA journal_mode = WAL');
+  db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+  enableWal(db);
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(SCHEMA);
   return db;
