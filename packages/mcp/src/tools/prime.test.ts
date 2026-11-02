@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
@@ -6,6 +6,8 @@ import { openDatabase } from '@llm-wiki/db/database';
 import type { VaultConfig } from '@llm-wiki/db/vault-config';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handlePrime, type PrimeData, prime, renderMarkdown } from './prime.js';
+
+const RUNS_AS_ROOT = process.getuid?.() === 0;
 
 const CONFIG: VaultConfig = {
   scopes: { sotto: { status: 'active' }, 'llm-wiki': { methodology: 'sdd', status: 'active' } },
@@ -248,5 +250,109 @@ describe('prime inlines the glossary', () => {
     expect(without.data.glossary).toBe('');
     expect(beside.data.glossary).toBe(LANGUAGE);
     expect(beside.markdown).not.toContain('Legacy term');
+  });
+});
+
+describe('prime link graph', () => {
+  let root: string;
+  let db: DatabaseSync;
+  const HUB = 'projects/sotto/spec/spec-hub.md';
+  const LOCAL_SOURCE = 'projects/sotto/adr/adr-a.md';
+  const FOREIGN_SOURCE = 'projects/llm-wiki/spec/spec-b.md';
+
+  async function page(path: string, title: string | null, scope: string | null): Promise<void> {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(
+      join(root, path),
+      title === null ? 'title-less\n' : `---\ntitle: ${title}\n---\n`
+    );
+    if (title !== null) {
+      db.prepare('INSERT INTO pages (path, title, kind, scope) VALUES (?, ?, ?, ?)').run(
+        path,
+        title,
+        'spec',
+        scope
+      );
+    }
+  }
+
+  function link(source: string, target: string): void {
+    db.prepare('INSERT INTO links (source_path, target_path) VALUES (?, ?)').run(source, target);
+  }
+
+  const primeSotto = async () =>
+    (await prime({ db, vaultRoot: root, vaultConfig: CONFIG }, { scope: 'sotto' })).data;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'kmd-prime-links-'));
+    db = openDatabase(':memory:');
+    await page(HUB, 'Hub', 'sotto');
+    await page(LOCAL_SOURCE, 'Local', 'sotto');
+    await page(FOREIGN_SOURCE, 'Foreign', 'llm-wiki');
+    await page('notes/n.md', 'Note', null);
+    link(LOCAL_SOURCE, 'spec-hub.md');
+    link(LOCAL_SOURCE, HUB);
+    link(FOREIGN_SOURCE, 'spec-hub.md');
+    link('notes/n.md', 'spec-hub.md');
+  });
+
+  afterEach(async () => {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('counts slug links as hub inbound, one edge per source', async () => {
+    const data = await primeSotto();
+
+    expect(data.hub_pages).toEqual([{ path: HUB, title: 'Hub', inbound: 3 }]);
+    expect(data.cross_scope).toEqual([
+      { from_scope: 'llm-wiki', from_path: FOREIGN_SOURCE, to_path: HUB }
+    ]);
+  });
+
+  it('follows a candidate added and removed while the linking pages stay unchanged', async () => {
+    const rival = join(root, 'research', 'topic', 'spec-hub.md');
+    await mkdir(join(root, 'research', 'topic'), { recursive: true });
+    await writeFile(rival, 'title-less rival\n');
+
+    const ambiguous = await primeSotto();
+    expect(ambiguous.hub_pages).toEqual([{ path: HUB, title: 'Hub', inbound: 1 }]);
+    expect(ambiguous.cross_scope).toEqual([]);
+
+    await rm(rival);
+    const restored = await primeSotto();
+    expect(restored.hub_pages).toEqual([{ path: HUB, title: 'Hub', inbound: 3 }]);
+    expect(restored.cross_scope).toHaveLength(1);
+  });
+
+  // Root reads through mode 000, so the unreadable directory cannot be staged.
+  it.skipIf(RUNS_AS_ROOT)(
+    'fails instead of resolving against a directory it cannot read',
+    async () => {
+      await page('projects/llm-wiki/notes/spec-hub.md', null, 'llm-wiki');
+      const unreadable = join(root, 'projects', 'llm-wiki', 'notes');
+      await chmod(unreadable, 0o000);
+      try {
+        const result = await handlePrime(
+          { db, vaultRoot: root, vaultConfig: CONFIG },
+          { scope: 'sotto' }
+        );
+
+        expect(result.structuredContent.code).toBe('PRIME_FAILED');
+        expect(result.structuredContent.message).toContain('EACCES');
+      } finally {
+        await chmod(unreadable, 0o755);
+      }
+    }
+  );
+
+  it('counts no link that a title-less owner claims or makes ambiguous', async () => {
+    await page('projects/llm-wiki/notes/spec-hub.md', null, 'llm-wiki');
+
+    const data = await primeSotto();
+
+    // The llm-wiki source resolves to its own title-less page; the scope-less note sees two owners.
+    expect(data.hub_pages).toEqual([{ path: HUB, title: 'Hub', inbound: 1 }]);
+    expect(data.cross_scope).toEqual([]);
   });
 });

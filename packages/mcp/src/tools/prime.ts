@@ -6,6 +6,7 @@ import { kindName, type VaultConfig } from '@llm-wiki/db/vault-config';
 import { z } from 'zod';
 import { parseFrontmatter } from '../frontmatter.js';
 import { sanitizeFtsQuery } from '../lib/fts.js';
+import { type LinkEdge, resolveLinks, type StoredLink, vaultPagePaths } from '../lib/links.js';
 import { textError, textWithStruct } from '../lib/toolResponse.js';
 import { FTS_RANK } from './search.js';
 
@@ -59,6 +60,38 @@ function pathSlug(p: string): string {
   return basename(p).replace(/\.md$/, '');
 }
 
+interface GraphPage {
+  path: string;
+  title: string;
+  scope: string | null;
+}
+
+/** Hubs and cross-scope references over resolved edges; only indexed targets count. */
+function linkGraph(
+  edges: readonly LinkEdge[],
+  pages: ReadonlyMap<string, GraphPage>,
+  scope: string
+): Pick<PrimeData, 'hub_pages' | 'cross_scope'> {
+  const inbound = new Map<string, number>();
+  const crossScope: PrimeData['cross_scope'] = [];
+  for (const { source, target } of edges) {
+    if (pages.get(target)?.scope !== scope) continue;
+    inbound.set(target, (inbound.get(target) ?? 0) + 1);
+    const from = pages.get(source)?.scope;
+    if (from && from !== scope) {
+      crossScope.push({ from_scope: from, from_path: source, to_path: target });
+    }
+  }
+  const hubs = [...inbound]
+    .sort(([a, x], [b, y]) => y - x || a.localeCompare(b))
+    .slice(0, 5)
+    .map(([path, count]) => ({ path, title: pages.get(path)?.title ?? path, inbound: count }));
+  crossScope.sort(
+    (a, b) => a.from_path.localeCompare(b.from_path) || a.to_path.localeCompare(b.to_path)
+  );
+  return { hub_pages: hubs, cross_scope: crossScope.slice(0, 10) };
+}
+
 async function readIndexFm(vaultRoot: string, scope: string): Promise<ProjectIndexFm> {
   try {
     const raw = await readFile(join(vaultRoot, 'projects', scope, 'index.md'), 'utf8');
@@ -102,10 +135,11 @@ export async function prime(
   const { db, vaultRoot, vaultConfig } = deps;
   const { scope, task } = input;
 
-  const [fm, primer, glossary] = await Promise.all([
+  const [fm, primer, glossary, candidates] = await Promise.all([
     readIndexFm(vaultRoot, scope),
     readPrimer(vaultRoot, scope),
-    readGlossary(vaultRoot, scope)
+    readGlossary(vaultRoot, scope),
+    vaultPagePaths(vaultRoot)
   ]);
 
   const counts = db
@@ -135,30 +169,21 @@ export async function prime(
     )
     .all(scope) as Array<{ tag: string }>;
 
-  const hubs = db
-    .prepare(
-      `SELECT p.path, p.title, count(*) AS inbound
-       FROM links l JOIN pages p ON p.path = l.target_path
-       WHERE p.scope = ?
-       GROUP BY p.path, p.title
-       ORDER BY inbound DESC LIMIT 5`
-    )
-    .all(scope) as Array<{ path: string; title: string; inbound: number | bigint }>;
+  const graphPages = db
+    .prepare('SELECT path, title, scope FROM pages')
+    .all() as unknown as GraphPage[];
+  const storedLinks = db
+    .prepare('SELECT source_path, target_path FROM links')
+    .all() as unknown as StoredLink[];
+  const graph = linkGraph(
+    resolveLinks(storedLinks, candidates),
+    new Map(graphPages.map((row) => [row.path, row])),
+    scope
+  );
 
   const events = db
     .prepare('SELECT path, operation, ts FROM events WHERE scope = ? ORDER BY ts DESC LIMIT 5')
     .all(scope) as Array<{ path: string; operation: string; ts: string }>;
-
-  const crossScope = db
-    .prepare(
-      `SELECT pf.scope AS from_scope, l.source_path AS from_path, l.target_path AS to_path
-       FROM links l
-       JOIN pages pt ON pt.path = l.target_path
-       JOIN pages pf ON pf.path = l.source_path
-       WHERE pt.scope = ? AND pf.scope IS NOT NULL AND pf.scope != ?
-       LIMIT 10`
-    )
-    .all(scope, scope) as Array<{ from_scope: string; from_path: string; to_path: string }>;
 
   let relevant: Array<{ path: string; title: string; score: number }> = [];
   if (task) {
@@ -209,22 +234,14 @@ export async function prime(
         }
       : null,
     top_tags: tags.map((r) => r.tag),
-    hub_pages: hubs.map((r) => ({
-      path: r.path,
-      title: r.title,
-      inbound: Number(r.inbound)
-    })),
+    hub_pages: graph.hub_pages,
     recent: events.map((r) => ({
       path: r.path,
       operation: r.operation,
       date: r.ts.slice(0, 10)
     })),
     relevant,
-    cross_scope: crossScope.map((r) => ({
-      from_scope: r.from_scope,
-      from_path: r.from_path,
-      to_path: r.to_path
-    }))
+    cross_scope: graph.cross_scope
   };
 
   return { markdown: renderMarkdown(data, vaultConfig, task), data };
