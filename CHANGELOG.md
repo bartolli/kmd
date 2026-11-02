@@ -1,3 +1,21 @@
+## [v0.17.3] - 2026-11-02
+
+### Fixed
+
+- concurrent posttool hooks sync instead of failing with `database is locked`: each sync reads, validates, and indexes one vault snapshot inside a `BEGIN IMMEDIATE` transaction and waits up to 10s per lock. Before, parallel tool calls left all but one hook reporting `kmd sync failed`, and a sync waiting on the lock could overwrite or sweep a newer result, or index content that turned invalid after validation
+- `kmd sync` validates the snapshot it indexes under the writer lock: content that turns invalid while it waits aborts with exit 1 and no index write; a failed sync leaves the prior index
+- concurrent first opens of a fresh index retry the WAL switch, which bypasses SQLite's busy handler
+- `wiki-mcp` waits on a held writer lock at startup; before, it exited 1
+- a posttool on an unchanged vault never waits on the writer lock; `synced` still advances, best-effort, when the lock is free or the holder commits
+- triggers on `pages` and `links` clear the index's trust stamp on any write, an older engine's included; the next sync rewrites every page row and its links and rebuilds FTS
+- prime's Hubs and Cross-scope sections resolve bare `[[slug]]` links: a slug takes the unique owner in the linking page's scope, else the unique owner anywhere, and an ambiguous slug counts nowhere; before, only path-qualified links counted, so slug-linked vaults rendered no hubs. A vault directory prime cannot read fails it with `PRIME_FAILED`
+- `kmd config` reads index metadata read-only and leaves an index as found
+
+### Changed
+
+- a failed posttool sync names its cause in the model-visible context; the default `builtin_hooks.resync.text` is `kmd sync failed — index not updated`
+- plugin train wiki-sdd 0.21.3 rides this release: the launcher and coco resolver floors move to `[0, 17, 3]`, so a global engine below it falls to npx, and the wiki skill's `vault.yaml` reference carries the new default resync text
+
 ## [v0.17.2] - 2026-09-05
 
 ### Fixed
