@@ -24,6 +24,7 @@ const NOTE_TEMPLATE = '---\ntitle: {{title}}\nkind: note\n---\n\n# {{title}}\n';
 let vault: string;
 let kmdHome: string;
 let env: NodeJS.ProcessEnv;
+const kmdHomeBefore = process.env.KMD_HOME;
 
 beforeEach(async () => {
   const base = await mkdtemp(join(tmpdir(), 'kmd-local-client-'));
@@ -32,11 +33,16 @@ beforeEach(async () => {
   await mkdir(join(vault, 'templates'), { recursive: true });
   await writeFile(join(vault, 'vault.yaml'), VAULT_YAML);
   await writeFile(join(vault, 'templates', 'note.md'), NOTE_TEMPLATE);
-  // the index homes under KMD_HOME; the file log sink is the server's own
-  env = { ...process.env, KMD_HOME: kmdHome, LOG_LEVEL: 'silent' };
+  // the index homes under KMD_HOME; the file log sink is the server's own.
+  // createDatabase reads process.env, so the operator's ~/.kmd stays untouched
+  // only when the process carries the temp home too.
+  process.env.KMD_HOME = kmdHome;
+  env = { ...process.env, LOG_LEVEL: 'silent' };
 });
 
 afterEach(async () => {
+  if (kmdHomeBefore === undefined) delete process.env.KMD_HOME;
+  else process.env.KMD_HOME = kmdHomeBefore;
   await rm(join(vault, '..'), { recursive: true, force: true });
 });
 
