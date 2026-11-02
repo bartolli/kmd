@@ -57,7 +57,7 @@ npm i -g @bartolli/kmd
 ## The `wiki` server
 
 `mcp.json` runs `node ${PLUGIN_ROOT}/scripts/run-kmd.mjs mcp`. The launcher runs a
-global `kmd` at or above 0.17.1 in-process, falls back to `npx -y @bartolli/kmd@latest`
+global `kmd` at or above 0.17.3 in-process, falls back to `npx -y @bartolli/kmd@latest`
 where `npx` exists, and otherwise prints one line on stderr. The server exposes two
 tools, `prime` and `search`.
 
