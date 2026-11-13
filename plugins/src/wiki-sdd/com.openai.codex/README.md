@@ -12,7 +12,7 @@ Wiki-native spec-driven development loop for the `~/llm-wiki` agent wiki.
 | `triage` | Move stories through the triage state machine. |
 | `to-issues` | Slice stories into tracker issues. |
 | `tdd` | Implement a ready-for-agent slice via red-green-refactor. |
-| `retro` | Three-question grooming step, any time drift is suspected; answers become intents and story Decisions, never a story. |
+| `retro` | Three-question grooming step, any time drift is suspected; findings are fixed in the session, and only what is blocked becomes an intent, never a story. |
 | `handoff` | Session close: status sweep on approval, Story Index reconcile, primer under budget — gated on a fresh retro. |
 | `to-triggers` | Author vault gate triggers from stated intent; dry-run tested, approval-gated. |
 | `signal-dense` | Canonical-vocabulary response register for long agentic threads. |

@@ -2,7 +2,7 @@
 name: wiki
 description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and per-harness file placement when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.21.3"
+  version: "0.21.4"
 ---
 
 # Wiki — Project Bootstrap
@@ -65,7 +65,7 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 | `$triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
 | `$to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
 | `$tdd` | story scenarios as test spec; referenced specs | code + tests; ticks the slice, archives the story at the last tick |
-| `$retro` | the session's own claims, gates, and drift from the slice in progress | small testable fixes in the current commit with a Decisions line; intents (max three) for what the hot context cannot fix; sightings bumps; a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
+| `$retro` | the session's own claims, gates, and drift from the slice in progress | findings closed in the session — fixes with the check that ran, story Decisions lines, steps prepared up to the operator's approval; an intent only for what is blocked, with the blocker named; sightings bumps; a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
 | `$handoff` | fully-resolved stories; every plan's Story Index; the retro's residue | archive flips for the sweep's strays on approval, reconciled Story Index, the primer under budget in the canonical-dense register — gated on a retro note newer than the scope's last edit |
 | `$to-triggers` | a stated rule, or a protocol rule that just failed to fire | tested trigger entries under `vault.yaml` `triggers_extra` — on demand, outside the loop |
 
