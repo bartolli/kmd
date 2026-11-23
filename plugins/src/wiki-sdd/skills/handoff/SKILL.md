@@ -88,8 +88,9 @@ not, `kmd validate`, fix findings, `kmd sync`.
 
 ### Step 6 — The next line
 
-One line, last: `Next session starts with: story-<slug> slice N` — or
-the top intent when nothing is in progress.
+One line, last: `Next session starts with: <the work in plain words>
+(story-<slug>, slice N)` — or the top intent, named the same way, when
+nothing is in progress.
 
 ## Output shape
 

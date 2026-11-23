@@ -194,8 +194,8 @@ with the outcome, in this order, leaving out what is empty:
 4. **Filed**: each intent, its blocker, and what was tried first.
 
 Then the three answers, each with its location and what became of it,
-and one line naming what the session is re-anchored on
-(`story-<slug>`, slice N).
+and one line naming what the session is re-anchored on: the work in
+plain words, then its address (`story-<slug>`, slice N).
 
 ## What a retro leaves to other steps
 
@@ -203,6 +203,9 @@ and one line naming what the session is re-anchored on
   until `/triage` promotes it, on a second sighting, a confirmed
   falsification, or the operator's call. A story written at filing
   grows the backlog by ceremony.
+- **Reviews.** A forwarded review's findings are weighed in `/triage`
+  against the story's stop rule before any fix. A retro closes what the
+  session found about its own work.
 - **The primer.** It is written once, at `/handoff`, from the corrected
   state. A retro that edits it carries over the blind spots it was run
   to surface.

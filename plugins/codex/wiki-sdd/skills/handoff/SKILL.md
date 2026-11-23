@@ -2,7 +2,7 @@
 name: handoff
 description: This skill should be used to close a session so the next one starts cold from corrected truth. Operator-invoked, gated on a retro note newer than the scope's last edit. Rewrites the primer within its budget first, then runs the status sweep (fully-resolved stories proposed for archiving, flipped only on approval) and reconciles every plan's Story Index — Focus, Next, Open, Read order, about 300 words, nothing another surface derives — confirms the index synced, and prints the one line the next session starts with. Use when the user says "$handoff", "hand off", "close the session", "wrap up the session", "prep the primer", "get the primer ready", "cold session prep", or "what does the next session start with".
 metadata:
-  version: "0.21.4"
+  version: "0.21.5"
 ---
 
 # Handoff — Close the Session from Corrected Truth
@@ -90,8 +90,9 @@ not, `kmd validate`, fix findings, `kmd sync`.
 
 ### Step 6 — The next line
 
-One line, last: `Next session starts with: story-<slug> slice N` — or
-the top intent when nothing is in progress.
+One line, last: `Next session starts with: <the work in plain words>
+(story-<slug>, slice N)` — or the top intent, named the same way, when
+nothing is in progress.
 
 ## Output shape
 

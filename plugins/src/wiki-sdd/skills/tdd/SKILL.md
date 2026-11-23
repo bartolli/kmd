@@ -121,7 +121,7 @@ Once the slice is green and refactored:
 
 ### 7. Done — report
 
-> "Slice <N> of `[[story-N-<slug>]]` is green. <count> tests added. Remaining slices in this story: <list of unchecked>. Next: pick another slice or move to a different story."
+> "<What the slice delivers, in plain words> is green (slice <N> of `[[story-N-<slug>]]`). <count> tests added. Remaining in this story: <each unchecked slice by what it delivers, its number in parentheses>. Next: pick another slice or move to a different story."
 
 ## Per-slice checklist
 

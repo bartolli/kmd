@@ -1,8 +1,8 @@
 ---
 name: wiki
-description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes three sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning` — and guides MCP registration, local/global vault setup, and per-harness file placement when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
+description: Bootstrap an existing project (not yet on the wiki) to use the `~/llm-wiki` Obsidian-based agent wiki. Scaffolds a new vault when none exists (vault.yaml, served templates, domain dirs). Writes four sections to the project instructions from a bundled template — `## First read`, `## Wiki integration` (declaring `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), `## Sub-agent spawning`, and `## Identifiers in replies` — and guides MCP registration, local/global vault setup, and per-harness file placement when needed. Also serves as the central mental-model hub for the wiki-aware skill constellation and lists companion skills (`obsidian-markdown`, `obsidian-bases`, `obsidian-cli`, `json-canvas`). Use when the user says "set up wiki", "wire this project to the wiki", "connect this project to my wiki", "$wiki", "bootstrap a new vault", "this project isn't on the wiki yet", or when other wiki-aware skills report `WIKI_SCOPE` is missing.
 metadata:
-  version: "0.21.4"
+  version: "0.21.5"
 ---
 
 # Wiki — Project Bootstrap
@@ -15,7 +15,7 @@ This is a **prompt-driven bootstrap**, not a deterministic script. Explore, pres
 
 In the consumer project:
 
-1. **Project instructions** (`AGENTS.md` or the harness's equivalent — § Harness placement) populated from `templates/project-agents.md.template` with three sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), and `## Sub-agent spawning`.
+1. **Project instructions** (`AGENTS.md` or the harness's equivalent — § Harness placement) populated from `templates/project-agents.md.template` with four sections: `## First read`, `## Wiki integration` (carrying `WIKI_SCOPE`, `WIKI_ISSUE_TRACKER`, `WIKI_TRIAGE_LABELS`), `## Sub-agent spawning`, and `## Identifiers in replies` (wiki identifiers are addresses: the reply says the thing in plain words first).
 2. **MCP registration guidance** — only when the `wiki` MCP server is not already available (plugin-bundled or user-registered). Shows the canonical `kmd mcp --default-root <vault-path>` JSON and lets the user place it.
 
 Both are idempotent — if a section/entry already exists, update in place rather than duplicate.
@@ -62,7 +62,7 @@ Hooks resolving correctly while `prime` serves the wrong vault is the signature 
 |---|---|---|
 | `$intent` | wiki state via `prime(scope)` (MCP tool or `kmd prime`); codebase (brownfield) | `index.md`, `primer.md`, `glossary.md`, lazy `adr-{topic}.md` |
 | `$to-stories` | conversation; `glossary.md`; existing ADRs | thin `plan-{name}.md` + per-story `plan/{name}/story-N-{slug}.md` |
-| `$triage` | story files | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix |
+| `$triage` | story files; a forwarded review | mutates `triage_state` / `category` in story frontmatter; `adr-no-{slug}.md` on wontfix; a position per review finding before any fix |
 | `$to-issues` | story files; codebase | refined `## Slices` in story body; remote issues in GH/GitLab mode |
 | `$tdd` | story scenarios as test spec; referenced specs | code + tests; ticks the slice, archives the story at the last tick |
 | `$retro` | the session's own claims, gates, and drift from the slice in progress | findings closed in the session — fixes with the check that ran, story Decisions lines, steps prepared up to the operator's approval; an intent only for what is blocked, with the blocker named; sightings bumps; a dated note under the scope's `notes/` — invocable any time, never a story, never the primer |
@@ -237,7 +237,7 @@ CLI route only — the two-tool MCP freeze leaves no resource for this. The sess
 | `{{issue_tracker}}` | `github` / `gitlab` / `local` from step 3 |
 | `{{triage_labels}}` | The JSON map from step 4 |
 
-**If a `## First read`, `## Wiki integration`, or `## Sub-agent spawning` section already exists in the target file, update those sections in place** rather than appending duplicates. Don't overwrite user edits to surrounding sections.
+**If a `## First read`, `## Wiki integration`, `## Sub-agent spawning`, or `## Identifiers in replies` section already exists in the target file, update those sections in place** rather than appending duplicates. Don't overwrite user edits to surrounding sections.
 
 **Per-scope adaptations to the template:**
 
@@ -261,7 +261,7 @@ Suggest the next step:
 - **Never overwrite a non-empty project-instructions file** without showing the diff first.
 - **Check for an existing wiki MCP server** (plugin-bundled or user-registered) before offering to register one. If the `wiki-sdd` plugin is installed, its bundled registration already covers it.
 - **Use `kmd mcp --default-root <vault-path>`** for standalone registration, from a globally installed `kmd` rather than `npx` — don't construct `pnpm`/`tsx` dev paths, and don't pin the bare positional unless the user asks for a locked registration. Let the user choose where to place the registration (§ Harness placement).
-- **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning` sections** before writing — update in place if found.
+- **Always check for existing `## First read`, `## Wiki integration`, `## Sub-agent spawning`, `## Identifiers in replies` sections** before writing — update in place if found.
 - **Use the bundled `templates/project-agents.md.template`** rather than emitting the structure inline. Edits to the template propagate to all future bootstraps.
 - **Scaffold new vaults with `kmd init`** (`<vault-dir> [--set-default]` global, `--local` project) — the engine embeds the template set; filenames are the server's URI→file contract and the content is served to future agents as-is; never author templates inline, rename files, or assemble the structure by hand.
 - **Don't run `$intent` automatically** — suggest it as the next step, but let the user invoke it.

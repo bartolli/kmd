@@ -1,6 +1,6 @@
 ---
 name: triage
-description: This skill should be used to move intents and user-story files through the wiki's triage state machine. Intents (`draft` → `active` / archived with `promoted_to`, `dismissed`, or `fixed_by`) are triaged first, ordered by sightings; stories move `needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`. Reads and writes frontmatter, recommends transitions, promotes an intent into a story via the elaboration skill, dismisses with a recorded reason, writes `adr-no-{slug}.md` when rejecting an enhancement with design rationale, and in `github`/`gitlab` mode mirrors story state to remote labels. Use when the user says "/triage", "what needs my attention", "triage the intents", "what's in the intent queue", "promote intent X", "dismiss intent X", "triage the new stories", "move story X to ready-for-agent", or similar.
+description: This skill should be used to move intents and user-story files through the wiki's triage state machine. Intents (`draft` → `active` / archived with `promoted_to`, `dismissed`, or `fixed_by`) are triaged first, ordered by sightings; stories move `needs-triage` → `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`. Reads and writes frontmatter, recommends transitions, promotes an intent into a story via the elaboration skill, dismisses with a recorded reason, writes `adr-no-{slug}.md` when rejecting an enhancement with design rationale, and in `github`/`gitlab` mode mirrors story state to remote labels. Takes in a forwarded review, reproducing each finding and giving a position before any fix. Use when the user says "/triage", "what needs my attention", "triage the intents", "what's in the intent queue", "promote intent X", "dismiss intent X", "triage the new stories", "move story X to ready-for-agent", "triage this review", "a review came back", or similar.
 ---
 
 # Triage — Move Stories Through the State Machine
@@ -57,6 +57,7 @@ The user invokes `/triage` and describes what they want in natural language. Exa
 - *"Let's look at story 2 of plan-billing-mvp"* → triage a specific story
 - *"Move story 3 to ready-for-agent"* → quick state override
 - *"What's ready for agents to pick up?"* → filtered view
+- *"A review came back, here it is"* / *"Triage this review"* → review intake, a position before any fix
 
 ## Pattern A — Show what needs attention
 
@@ -148,6 +149,7 @@ If the story body is too thin for `ready-for-agent`, chain into `/intent` to fle
 - Verify `blocked_by:` is populated correctly (no missing dependencies).
 - Update frontmatter: `triage_state: ready-for-agent`.
 - Append an *agent brief* to the body (see template below) — short, durable, sufficient for an AFK agent to pick up cold.
+- Fill the brief's Out of scope and Definition of done before the flip. They are the stop rule a later review is weighed against (Pattern E).
 - In GH/GitLab mode: create a remote issue with the story body inlined and a wikilink back; apply the `ready-for-agent` label.
 
 **`ready-for-human`:**
@@ -239,6 +241,55 @@ One of three outcomes, with reasoning, then wait for direction:
 
 As for stories: the posttool hook validates and syncs; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.
 
+## Pattern E — Triage a review
+
+A forwarded review is inbound work, like an intent: its findings are claims to weigh against the work's stop rule. Closing each finding as it arrives turns every round into a patch, and a reviewer can always find one more shape. This pattern covers what a reviewer brings; findings the session raises about its own work follow `/retro`.
+
+No fix is written before Step 4. A reproduction case is not a fix.
+
+### Step 1 — Find the stop rule
+
+- Find the artifact that owns the work under review: the story in progress, or the intent it is still filed under.
+- Read its stop rule. In a story that is the Agent Brief's Acceptance criteria, Out of scope and Definition of done.
+- If nothing owns the work, or the owner states no stop, ask the operator for three things before anything else: the outcome, the baseline it is judged against, and what is out of scope. Record the answer in the owner: the story's Agent Brief, or the intent's Constraints.
+
+### Step 2 — Reproduce and classify
+
+For each finding:
+
+- Reproduce it once, on the smallest case that shows it. Report a finding that does not reproduce as such, with what was run.
+- Name its cause in one line, and say whether an earlier round on this work had the same cause.
+- Classify it:
+  - **Regression** — the work under review introduced it, measured against the baseline, or it fails an acceptance criterion.
+  - **Pre-existing** — the baseline has it too.
+  - **Out of scope** — real, and outside what the stop rule covers.
+  - **Disputed** — the claim is wrong, or the remedy costs more than the defect. Say which, with the evidence.
+
+### Step 3 — Position, then wait
+
+Present one row per finding, lead with a recommendation for the round as a whole, and wait for direction:
+
+| Finding | Reproduced | Class | Cause | Position | Cost |
+|---|---|---|---|---|---|
+
+- Position is one of **fix**, **file**, or **decline**.
+- A regression is owned by the work, so its position is fix, unless its cause repeats an earlier round. Then Convergence decides.
+- Every other class gets a position on its merits. The reviewer can be wrong, and can be right about something this work does not owe.
+- Cost names what the fix touches and what has to be verified again. A fix that moves one row and re-runs every gate shows that here, before it is approved.
+
+### Step 4 — Apply
+
+- **Fix** — the change, with a test named for the finding.
+- **File** — an intent for the cause, or a `sightings` bump on the one that already covers it.
+- **Decline** — one line with the reason in the story's Decisions, or the intent's Constraints.
+- When the stop rule holds, say so and stop. Another round needs a new stop from the operator.
+
+### Convergence
+
+A second round whose findings share a cause with an earlier round is one cause seen twice. Do not patch the new shape. Recommend one of two moves and wait: the root fix for the cause, or a scope cut that takes the cause out of this work.
+
+Work that reaches a second review round while filed only under an intent is promoted first (Pattern D): the story carries the stop rule the rounds lacked.
+
 ## Templates
 
 ### Agent brief (append to story body when transitioning to `ready-for-agent` or `ready-for-human`)
@@ -266,7 +317,10 @@ As for stories: the posttool hook validates and syncs; if `kmd config`'s `synced
 - All scenarios pass as integration tests
 - `<plan/{name}/story-N>` slice checkboxes all ticked
 - No unresolved [[spec-X]] divergence
+- <the outcome in a checkable form, and the baseline it is judged against when the work changes existing behavior>
 ```
+
+Out of scope and Definition of done are the story's stop rule: a review of the work is weighed against them (Pattern E).
 
 ### Triage notes (append when transitioning to `needs-info`)
 
@@ -348,6 +402,7 @@ If prior triage notes exist in a story body, read them, check whether the user h
 - **An archived intent carries exactly one outcome field** — `promoted_to`, `dismissed`, or `fixed_by`. A dismissal without a reason is not a dismissal.
 - **Every triaged story must carry exactly one category and one state.** If labels conflict, flag it and ask the user.
 - **Always show your recommendation with reasoning before transitioning.** Don't move state silently.
+- **A review gets a position before a fix.** Reproduce, classify, recommend, wait (Pattern E). A second round on one cause gets a root fix or a scope cut, never a third patch.
 - **For `wontfix-enhancement` on design grounds, always write `adr-no-{slug}.md`.** Rejection without rationale loses institutional memory. A stale-band dismissal is a capacity call and records its reason in Triage Notes instead.
 - **Always update the parent plan's Story Index table** when state changes.
 - **Confirm the resync after frontmatter changes** — the posttool hook syncs automatically; if `kmd config`'s `synced` line did not advance, run `kmd validate` then `kmd sync`.

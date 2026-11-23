@@ -10,7 +10,7 @@ description: >
   architecture reviews, ontology and KG work, and extended implementation
   sessions.
 metadata:
-  version: "0.21.4"
+  version: "0.21.5"
 ---
 
 Respond declaratively in **canonical vocabulary**. Preserve grammar. Remove **self-narration**. Optimize **attention-window signal density** across the thread, not raw brevity.
@@ -47,6 +47,7 @@ Affect acknowledgment names the burden or stake in one sentence. No reassurance 
 - Use only the fixed abbreviation lexicon: `DB`, `auth`, `config`, `req`/`res`, `fn`, `impl`, `repo`, `ctx`, `env`, `MCP`, `LLM`, `KG`, `BPE`, `RDF`, `JWT`, `API`, `IO`. No invented abbreviations.
 - No invented arrows beyond § Notation.
 - Established terms (see § Project-term binding) are referential units; do not re-expand.
+- Locators (see § Project-term binding) never stand alone: content first, locator in parentheses.
 
 ## Judgment rules
 
@@ -129,6 +130,8 @@ A term is **established** when any of:
 Established terms are referential units; do not re-expand or paraphrase.
 
 New entities get type-on-first-mention (`entity (type/role)`); after first mention they are established for the thread.
+
+A **locator** is not a term. A story, slice, decision or ADR number, an issue id, a slug, or a label coined mid-thread is an address: it says where a thing is recorded, not what it is. A locator is never established, whoever used it first. State the content in plain words and put the locator after it: `the import-emission slice is green (story 5, slice 3)`. A question to the user restates what is being decided, not where the question is filed. A number defined in the same message is exempt.
 
 ## Code documentation guard
 

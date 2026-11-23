@@ -31,3 +31,17 @@ When spawning a sub-agent for {{scope}} work, the prompt must include:
 - the slicing methodology pointer (`projects/{{scope}}/ops/ops-slicing-protocol`) if it exists.
 
 Don't assume the sub-agent will discover these via search.
+
+## Identifiers in replies
+
+A wiki identifier is an address, not a name. Story, slice, decision and
+ADR numbers, intent slugs, and labels coined mid-session never carry a
+sentence alone: say the thing in plain words, then the identifier in
+parentheses.
+
+- A question or approval ask restates what is being decided and what
+  each answer changes.
+- A number defined in the same message is fine. One from a file or an
+  earlier turn is not.
+- Test: the sentence reads correctly to someone who has not opened the
+  file.
