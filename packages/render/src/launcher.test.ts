@@ -26,7 +26,7 @@ const COCO_RESOLVER = fileURLToPath(
   new URL('../../../plugins/src/wiki-sdd/com.snowflake.cortex/run-kmd-hook.mjs', import.meta.url)
 );
 
-const CURRENT = '0.17.3';
+const CURRENT = '0.17.4';
 const STALE = '0.6.0';
 
 let base: string;
