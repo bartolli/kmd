@@ -1,3 +1,22 @@
+## [v0.17.4] - 2026-11-23
+
+### Fixed
+
+- a pretool `files` gate matches each path as spelled and again as the filesystem spells it — symlinks followed, on-disk letter case, every `.` and `..` resolved by the filesystem, a file that does not exist yet through its deepest existing ancestor. A `secrets/**` gate denies `./secrets/key.md`, `../proj/secrets/key.md`, `notes/../secrets/key.md`, another letter case on a case-insensitive filesystem, a path through a symlinked folder, and a parent step after a symlink; before, each passed, the first three with no symlink involved. Block gates, inject gates, and the explain trace share the stage
+- the posttool path guard counts a path inside the vault as spelled, or as the filesystem spells path and root: a vault write named through a symlinked cwd, another letter case, or a parent step after a symlink validates and syncs — tool path fields, apply_patch envelope paths, and shell command tokens alike; before, the hook exited 0 with nothing validated or synced, so a project-tier vault under a symlinked working directory never resynced
+- the vault root is the path as the filesystem spells it — symlinks followed, on-disk letter case, a root that does not exist yet through its deepest existing ancestor: two spellings of one directory resolve one root, one index key, and one `vault:` line in `kmd config`; before, each letter case keyed its own index on a case-insensitive filesystem. The kmd home under another spelling is still the home
+- the tier walk reports a skipped bare `vault.yaml` unless the walk bound that directory: `kmd config` from inside the bound project vault prints no `ignoring … no .kmd marker` line, a `Vault/` directory the nested convention binds included; before, a walk starting inside the vault drew the notice for the vault it then bound
+
+### Changed
+
+- a vault reached under a spelling other than the on-disk one re-keys: its index lives under the on-disk key and the next sync fills it fresh. The directory under `$KMD_HOME/db` named for the old spelling is orphaned, never migrated or pruned; the index is disposable, so deleting it loses nothing. A vault addressed as the disk spells it keeps its key. A `wiki-mcp` process started before the upgrade keeps the index it opened until it restarts
+- a `files` gate denies, or injects, for a respelled path it passed before. The `files` stage reads the filesystem, so an explain trace depends on what is on disk. The stage reads tool path fields and apply_patch envelope paths; a shell command naming a gated file is outside it, as before
+- a gate written against a symlink's name covers that name as spelled: with `open` a symlink to `secrets`, an `open/**` gate denies `open/key.md` and passes `OPEN/key.md` and `secrets/key.md`. Gates belong on the real path; hard links are outside the path rule
+- win32 keeps `realpathSync` for the vault root, the caller's letter case included. A non-blocking workflow runs each package's tests on `windows-latest`; its first run is red in every package, and no Windows seat has run this release
+- under musl without `/proc` the native realpath call throws and a path falls back to its absolute form, symlinks unfollowed; no such seat has run it
+- the probes behind this entry ran on macOS, case-insensitive APFS, against the packed tarball; no Linux seat has run them
+- plugin train wiki-sdd 0.21.6 rides this release: the launcher and coco resolver floors move to `[0, 17, 4]`, so a global engine below it falls to npx, and the Package README and the wiki skill's Kiro step name 0.17.4
+
 ## [v0.17.3] - 2026-11-02
 
 ### Fixed
