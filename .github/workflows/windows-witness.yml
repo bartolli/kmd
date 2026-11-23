@@ -1,0 +1,58 @@
+# Windows witness leg: path handling in the hook engine and the vault root
+# is separator- and case-specific by platform, and no Windows seat exists
+# to run the suite locally.
+# WITNESS, not gate: failures surface as warning annotations and the job
+# stays green -- red is reserved for gates. Promote to a gate by removing
+# the warning fallback once Windows is sustained-green.
+name: Windows Witness
+on:
+  # Iteration loop while Windows is being witnessed
+  workflow_dispatch:
+
+  # Sustained-green record accumulates without a dispatch
+  schedule:
+    - cron: '0 0 * * *'  # Midnight UTC daily
+
+  # Chain include for gate promotion
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test-windows:
+    name: windows witness
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # The runner's git converts to CRLF on checkout; rendered adapter
+      # copies and vault fixtures are compared byte for byte.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      # No version input: it installs the pnpm pinned in packageManager
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests (witness)
+        shell: bash
+        run: |
+          # Every package runs: a witness surfaces each failing stratum.
+          # `pnpm -r run test` stops at the first red package, and its
+          # --no-bail form exits 0 with the failures unreported.
+          failed=""
+          for dir in packages/*/; do
+            (cd "$dir" && pnpm run --if-present test) || failed="$failed $(basename "$dir")"
+          done
+          if [ -n "$failed" ]; then
+            echo "::warning title=Windows witness::test failures on Windows in:$failed (witness leg, non-blocking) -- see this job's log; tracked in the wiki's win32 intents"
+          fi
