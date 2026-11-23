@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 /** Set by a transactional sync at commit; any page or link write clears it. */
@@ -128,16 +128,46 @@ export function indexRootDir(): string {
 }
 
 /**
- * Resolved (symlink-free, absolute) vault root — the canonical identity a
- * vault is keyed by. Falls back to plain resolution when the path does not
- * exist yet.
+ * A path as the filesystem spells it: symlinks followed, on-disk casing, no
+ * trailing separator. A relative path is joined to `base` as text and the
+ * filesystem resolves the whole string — collapsing `..` first would step out
+ * of a symlink's own directory, where the filesystem steps out of its
+ * target's. The deepest existing ancestor is resolved and the rest
+ * re-appended, so a path that does not exist yet, or a fake path in a unit
+ * test, still compares by the same rule as an existing one.
+ */
+export function canonicalPath(path: string, base: string = process.cwd()): string {
+  const start = isAbsolute(path) ? path : `${base}${sep}${path}`;
+  let head = start;
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync.native(head);
+      return join(real, ...tail.reverse());
+    } catch {
+      const parent = dirname(head);
+      if (parent === head) return join(start);
+      tail.push(basename(head));
+      head = parent;
+    }
+  }
+}
+
+/**
+ * Absolute vault root as the filesystem spells it — the canonical identity a
+ * vault is keyed by, one string however the caller addressed it.
  */
 export function canonicalVaultRoot(vaultRoot: string): string {
-  try {
-    return realpathSync(vaultRoot);
-  } catch {
-    return resolve(vaultRoot);
+  // The key is persisted identity: win32 keeps the non-native call until a
+  // Windows seat has witnessed what the native one returns there.
+  if (process.platform === 'win32') {
+    try {
+      return realpathSync(vaultRoot);
+    } catch {
+      return resolve(vaultRoot);
+    }
   }
+  return canonicalPath(vaultRoot);
 }
 
 /** `{basename}-{8-hex}` — human-scannable, collision-safe per resolved path. */

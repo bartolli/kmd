@@ -115,13 +115,16 @@ const TIER_CONFIG_FILES = [
   ['config.yaml', 'config']
 ] as const;
 
-/** Called when the walk skips an unmarked bare `vault.yaml`; receives its path. */
+/**
+ * Called once the walk finishes, for each unmarked bare `vault.yaml` it
+ * skipped and did not go on to bind; receives its path.
+ */
 export type SkipListener = (candidate: string) => void;
 
 function projectVaultAt(
   level: string,
   env: NodeJS.ProcessEnv,
-  onSkip?: SkipListener
+  skipped: string[]
 ): ProjectTier | null {
   for (const [file, via] of TIER_CONFIG_FILES) {
     const path = join(level, '.kmd', file);
@@ -146,7 +149,7 @@ function projectVaultAt(
     if (existsSync(join(level, '.kmd'))) {
       return { tierRoot: level, vaultRoot: level, via: 'convention' };
     }
-    onSkip?.(join(level, 'vault.yaml'));
+    skipped.push(join(level, 'vault.yaml'));
   }
   return null;
 }
@@ -157,20 +160,32 @@ function projectVaultAt(
  * `vault.yaml` (bare form `.kmd`-marked only). Relative config paths resolve
  * against the tier root. The level whose `.kmd` is the global home is passed
  * over whole: its config is the global one, and its `.kmd` marks nothing.
+ * Skips are reported after the walk: a bare `vault.yaml` passed on the way up
+ * to the level that binds its own directory was never ignored.
  */
 export function findProjectTier(
   fromDir: string,
   env: NodeJS.ProcessEnv = process.env,
   onSkip?: SkipListener
 ): ProjectTier | null {
+  const skipped: string[] = [];
+  let hit: ProjectTier | null = null;
   let level = canonicalVaultRoot(fromDir);
   for (;;) {
-    const hit = isKmdHome(join(level, '.kmd')) ? null : projectVaultAt(level, env, onSkip);
-    if (hit !== null) return hit;
+    hit = isKmdHome(join(level, '.kmd')) ? null : projectVaultAt(level, env, skipped);
+    if (hit !== null) break;
     const parent = dirname(level);
-    if (parent === level) return null;
+    if (parent === level) break;
     level = parent;
   }
+  if (onSkip !== undefined && skipped.length > 0) {
+    // Walk levels are canonical; a config-sourced vault root need not be.
+    const bound = hit === null ? null : canonicalVaultRoot(hit.vaultRoot);
+    for (const candidate of skipped) {
+      if (dirname(candidate) !== bound) onSkip(candidate);
+    }
+  }
+  return hit;
 }
 
 export type VaultRootSource =

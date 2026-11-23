@@ -3,17 +3,16 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
   unlinkSync,
   writeFileSync
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseArgs } from 'node:util';
-import { resolveStateDir } from '@llm-wiki/db/database';
+import { canonicalPath, resolveStateDir } from '@llm-wiki/db/database';
 import { loadGlobalConfig, resolveVaultRoot } from '@llm-wiki/db/kmd-config';
 import type { Trigger, VaultConfig } from '@llm-wiki/db/vault-config';
 import { loadVaultConfig, TriggerSchema } from '@llm-wiki/db/vault-config';
@@ -150,28 +149,6 @@ export function effectiveTriggers(
 function expandHome(path: string): string {
   if (path === '~') return homedir();
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path;
-}
-
-/**
- * A path as the filesystem spells it: symlinks followed, on-disk casing, no
- * trailing separator. The deepest existing ancestor is resolved and the rest
- * re-appended, so a not-yet-cloned repo under a symlinked parent, or a fake
- * path in a unit test, still compares by the same rule as an existing one.
- */
-function canonicalPath(path: string): string {
-  let head = path;
-  const tail: string[] = [];
-  for (;;) {
-    try {
-      const real = realpathSync.native(head);
-      return join(real, ...tail.reverse());
-    } catch {
-      const parent = dirname(head);
-      if (parent === head) return join(path);
-      tail.push(basename(head));
-      head = parent;
-    }
-  }
 }
 
 /** Case-insensitive on win32, where two spellings of one directory can miss realpath. */
@@ -390,6 +367,32 @@ function pathCandidates(toolInput: unknown, cwd: string | undefined): string[] {
 }
 
 /**
+ * The candidates as the filesystem spells them. A gate matches these beside
+ * the paths as spelled, never instead of them: another letter case or a
+ * symlink must not open a gate, and a gate written against a symlink's name
+ * must keep holding. Each keeps the shape it was spelled in — a relative path
+ * stays relative unless it leaves the cwd — so a gate never starts matching
+ * the directories above the cwd.
+ */
+function canonicalCandidates(candidates: string[], cwd: string | undefined): string[] {
+  const base = canonicalPath(cwd ?? '.');
+  const out: string[] = [];
+  for (const candidate of candidates) {
+    const canonical = canonicalPath(candidate, cwd);
+    const relative = canonical.startsWith(`${base}/`)
+      ? canonical.slice(base.length + 1)
+      : undefined;
+    if (isAbsolute(candidate)) {
+      out.push(canonical);
+      if (cwd !== undefined && relative !== undefined) out.push(relative);
+    } else {
+      out.push(relative ?? canonical);
+    }
+  }
+  return out;
+}
+
+/**
  * One matcher walk serves enforcement and explain: `matchPretoolTriggers`
  * keeps the hits, the explain trace keeps every stage verdict — a second
  * hand-rolled walk would drift from the deny path it claims to explain.
@@ -412,12 +415,11 @@ function pretoolStage(
     if (!new RegExp(trigger.args_match).test(serialized)) return 'args';
   }
   if (trigger.files !== undefined && trigger.files.length > 0) {
-    const candidates = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
-    const hit = trigger.files.some((glob) => {
-      const regex = globToRegExp(glob);
-      return candidates.some((candidate) => regex.test(candidate));
-    });
-    if (!hit) return 'files';
+    const spelled = [...pathCandidates(toolInput, cwd), ...patchPaths(toolInput)];
+    const regexes = trigger.files.map(globToRegExp);
+    const matches = (candidates: string[]): boolean =>
+      regexes.some((regex) => candidates.some((candidate) => regex.test(candidate)));
+    if (!matches(spelled) && !matches(canonicalCandidates(spelled, cwd))) return 'files';
   }
   if (pretoolText(trigger) === undefined) return 'payload';
   return 'hit';
@@ -641,10 +643,14 @@ function commandPaths(toolInput: unknown): string[] {
 /**
  * Path guard for the posttool event: did this tool call touch a file inside
  * the vault? Relative candidates resolve against the event cwd. A miss is the
- * hot path — every non-vault edit in a session flows through here.
+ * hot path — every non-vault edit in a session flows through here. Paths
+ * compare as spelled and again as the filesystem spells them: the root may
+ * arrive canonical while the harness reports a symlinked or re-cased path,
+ * and the second comparison only ever adds a match.
  */
 export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: string): boolean {
   const root = resolve(vaultRoot);
+  const canonicalRoot = canonicalPath(vaultRoot);
   const candidates = [
     ...pathCandidates(toolInput, cwd),
     ...patchPaths(toolInput),
@@ -652,8 +658,12 @@ export function vaultPathTouched(toolInput: unknown, vaultRoot: string, cwd?: st
   ];
   return candidates.some((candidate) => {
     const absolute = resolve(cwd ?? '.', candidate);
-    return absolute === root || absolute.startsWith(`${root}/`);
+    return isInside(absolute, root) || isInside(canonicalPath(candidate, cwd), canonicalRoot);
   });
+}
+
+function isInside(path: string, root: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
 }
 
 /** Engine defaults for the fixed-function hook prose ([[adr-builtin-hook-identity]]). */

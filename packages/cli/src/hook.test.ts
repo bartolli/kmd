@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -746,6 +747,89 @@ describe('matchPretoolTriggers / renderPretool', () => {
     expect(matchPretoolTriggers('Read', { file_path: 'dist/a.js' }, [editOnly])).toEqual([]);
   });
 
+  describe('files gates under two spellings of one path', () => {
+    let base: string;
+    let cwd: string;
+    const gate = (glob: string): Trigger => ({
+      id: 'closed',
+      on: 'pretool',
+      enforce: 'block',
+      files: [glob],
+      reason: 'Closed.'
+    });
+    const hits = (glob: string, toolInput: unknown): boolean =>
+      matchPretoolTriggers('Read', toolInput, [gate(glob)], cwd).length > 0;
+
+    beforeEach(() => {
+      base = mkdtempSync(join(tmpdir(), 'kmd-gate-'));
+      cwd = join(base, 'proj');
+      mkdirSync(join(cwd, 'notes'), { recursive: true });
+      mkdirSync(join(cwd, 'secrets'));
+      writeFileSync(join(cwd, 'notes', 'secret.md'), 'x\n');
+      writeFileSync(join(cwd, 'notes', 'other.md'), 'x\n');
+      writeFileSync(join(cwd, 'secrets', 'key.md'), 'x\n');
+      symlinkSync('secret.md', join(cwd, 'notes', 'alias.md'));
+      symlinkSync('secrets', join(cwd, 'open'));
+    });
+
+    afterEach(() => {
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    it('a files gate matches a path through a symlinked folder', () => {
+      expect(hits('secrets/**', { file_path: 'open/key.md' })).toBe(true);
+      expect(hits('secrets/**', { file_path: join(cwd, 'open', 'key.md') })).toBe(true);
+    });
+
+    it('a files gate matches another casing of the path', () => {
+      if (existsSync(join(cwd, 'notes', 'SECRET.md'))) {
+        // case-insensitive filesystem (macOS default, Windows): one file, two spellings
+        expect(hits('**/secret.md', { file_path: 'notes/SECRET.md' })).toBe(true);
+      }
+    });
+
+    it('a files gate matches another casing of a folder', () => {
+      if (existsSync(join(cwd, 'SECRETS'))) {
+        expect(hits('secrets/**', { file_path: 'SECRETS/key.md' })).toBe(true);
+      }
+    });
+
+    it('a files gate matches a patch path through a symlinked folder', () => {
+      const patch = '*** Begin Patch\n*** Update File: open/key.md\n@@\n-a\n+b\n*** End Patch';
+
+      expect(hits('secrets/**', { patch })).toBe(true);
+    });
+
+    it("a files gate written against a symlink's name still matches", () => {
+      expect(hits('open/**', { file_path: 'open/key.md' })).toBe(true);
+    });
+
+    it('a files gate follows a symlink before a parent step', () => {
+      mkdirSync(join(cwd, 'secrets', 'inner'));
+      symlinkSync(join('secrets', 'inner'), join(cwd, 'door'));
+
+      expect(hits('secrets/**', { file_path: 'door/../key.md' })).toBe(true);
+      expect(hits('secrets/**', { file_path: `${cwd}/door/../key.md` })).toBe(true);
+    });
+
+    it('a files gate keeps a relative path relative: an ancestor directory is no match', () => {
+      const inner = join(base, 'dist', 'proj');
+      mkdirSync(join(inner, 'src'), { recursive: true });
+      writeFileSync(join(inner, 'src', 'a.ts'), 'x\n');
+      const matched = (toolInput: unknown): boolean =>
+        matchPretoolTriggers('Read', toolInput, [gate('**/dist/**')], inner).length > 0;
+
+      expect(matched({ file_path: 'src/a.ts' })).toBe(false);
+      expect(matched({ file_path: join(inner, 'src', 'a.ts') })).toBe(true);
+    });
+
+    it('a files gate ignores a path no spelling of which matches', () => {
+      expect(hits('**/secret.md', { file_path: 'notes/other.md' })).toBe(false);
+      expect(hits('secrets/**', { file_path: 'notes/other.md' })).toBe(false);
+      expect(hits('secrets/**', { file_path: join(cwd, 'notes', 'other.md') })).toBe(false);
+    });
+  });
+
   describe('evaluateMatches (newer-than)', () => {
     let vaultRoot: string;
 
@@ -1396,6 +1480,75 @@ describe('vaultPathTouched', () => {
 
     expect(vaultPathTouched({ patch }, '/v', '/v')).toBe(true);
     expect(vaultPathTouched({ patch }, '/v', '/repo')).toBe(false);
+  });
+
+  // The tier walk hands the hook a canonical root; tool paths arrive as the
+  // harness spells them. The fixture keeps the two apart on purpose.
+  describe('two spellings of one path', () => {
+    let base: string;
+    let root: string;
+    let cwd: string;
+
+    beforeEach(() => {
+      base = mkdtempSync(join(tmpdir(), 'kmd-guard-'));
+      mkdirSync(join(base, 'real', 'proj', 'vault', 'notes'), { recursive: true });
+      symlinkSync(join(base, 'real'), join(base, 'link'));
+      root = join(realpathSync(base), 'real', 'proj', 'vault');
+      cwd = join(base, 'link', 'proj');
+    });
+
+    afterEach(() => {
+      rmSync(base, { recursive: true, force: true });
+    });
+
+    it('matches a relative path under a symlinked cwd', () => {
+      expect(vaultPathTouched({ file_path: 'vault/vault.yaml' }, root, cwd)).toBe(true);
+      expect(vaultPathTouched({ file_path: join(cwd, 'vault', 'vault.yaml') }, root, cwd)).toBe(
+        true
+      );
+    });
+
+    it('matches another casing of the vault path', () => {
+      const proj = join(realpathSync(base), 'real', 'proj');
+      if (existsSync(join(proj, 'VAULT'))) {
+        // case-insensitive filesystem (macOS default, Windows): one directory, two spellings
+        expect(vaultPathTouched({ file_path: join(proj, 'VAULT', 'vault.yaml') }, root, proj)).toBe(
+          true
+        );
+      }
+    });
+
+    it('matches a command path under a symlinked cwd', () => {
+      expect(vaultPathTouched({ command: 'rm vault/notes/x.md' }, root, cwd)).toBe(true);
+    });
+
+    it('matches a patch path under a symlinked cwd', () => {
+      const patch = '*** Begin Patch\n*** Update File: vault/vault.yaml\n@@\n-a\n+b\n*** End Patch';
+
+      expect(vaultPathTouched({ patch }, root, cwd)).toBe(true);
+    });
+
+    it('follows a symlink before a parent step', () => {
+      symlinkSync(join('vault', 'notes'), join(base, 'real', 'proj', 'door'));
+
+      expect(vaultPathTouched({ file_path: 'door/../vault.yaml' }, root, cwd)).toBe(true);
+      expect(vaultPathTouched({ command: 'rm door/../notes/x.md' }, root, cwd)).toBe(true);
+    });
+
+    it('still matches a path inside the root as spelled when its target lies outside', () => {
+      mkdirSync(join(base, 'outside'));
+      symlinkSync(join(base, 'outside'), join(root, 'raw'));
+
+      expect(vaultPathTouched({ file_path: join(root, 'raw', 'x.md') }, root)).toBe(true);
+    });
+
+    it('stays quiet for a path outside the vault under either spelling', () => {
+      mkdirSync(join(base, 'real', 'proj', 'vault-other'));
+
+      expect(vaultPathTouched({ file_path: 'src/code.ts' }, root, cwd)).toBe(false);
+      expect(vaultPathTouched({ file_path: 'vault-other/x.md' }, root, cwd)).toBe(false);
+      expect(vaultPathTouched({ command: 'rm src/code.ts' }, root, cwd)).toBe(false);
+    });
   });
 });
 

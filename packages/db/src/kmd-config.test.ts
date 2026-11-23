@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -99,6 +106,54 @@ describe('findProjectTier', () => {
     const skipped: string[] = [];
     expect(findProjectTier(project, process.env, (c) => skipped.push(c))).toBeNull();
     expect(skipped).toEqual([join(project, 'vault.yaml')]);
+  });
+
+  it('stays silent on a bare vault.yaml the walk binds from the level above', () => {
+    makeVault(join(project, 'vault'));
+    mkdirSync(join(project, '.kmd'), { recursive: true });
+    const deep = join(project, 'vault', 'projects', 'x');
+    mkdirSync(deep, { recursive: true });
+    const skipped: string[] = [];
+    expect(findProjectTier(deep, process.env, (c) => skipped.push(c))).toMatchObject({
+      tierRoot: project,
+      vaultRoot: join(project, 'vault')
+    });
+    expect(skipped).toEqual([]);
+  });
+
+  it('stays silent on a bare vault.yaml a config tier above binds', () => {
+    makeVault(join(project, 'vault'));
+    writeTierConfig(project, 'config.yaml', 'vault: vault\n');
+    const skipped: string[] = [];
+    expect(
+      findProjectTier(join(project, 'vault'), process.env, (c) => skipped.push(c))
+    ).toMatchObject({ vaultRoot: join(project, 'vault'), via: 'config' });
+    expect(skipped).toEqual([]);
+  });
+
+  it('stays silent on a differently-cased vault directory the walk binds', () => {
+    makeVault(join(project, 'Vault'));
+    mkdirSync(join(project, '.kmd'), { recursive: true });
+    const deep = join(project, 'Vault', 'projects', 'x');
+    mkdirSync(deep, { recursive: true });
+    if (existsSync(join(project, 'vault', 'vault.yaml'))) {
+      // case-insensitive filesystem: the nested convention binds `Vault/` as `vault`
+      const skipped: string[] = [];
+      expect(findProjectTier(deep, process.env, (c) => skipped.push(c))?.tierRoot).toBe(project);
+      expect(skipped).toEqual([]);
+    }
+  });
+
+  it('reports a skipped bare vault.yaml when the walk binds a different vault', () => {
+    makeVault(join(project, 'vault'));
+    makeVault(join(project, 'other'));
+    const deep = join(project, 'other', 'deep');
+    mkdirSync(deep, { recursive: true });
+    const skipped: string[] = [];
+    expect(findProjectTier(deep, process.env, (c) => skipped.push(c))?.vaultRoot).toBe(
+      join(project, 'vault')
+    );
+    expect(skipped).toEqual([join(project, 'other', 'vault.yaml')]);
   });
 
   it('walks up from a subdirectory to the nearest tier', () => {

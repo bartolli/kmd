@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalVaultRoot,
   getMeta,
   indexRootDir,
+  isKmdHome,
   openDatabase,
   resolveIndexPath,
   setMeta,
@@ -108,6 +110,106 @@ describe('per-vault index layout', () => {
     } finally {
       rmSync(link, { force: true });
       rmSync(real, { recursive: true, force: true });
+    }
+  });
+
+  it('one directory spelled two ways maps to one index path', () => {
+    const base = mkdtempSync(join(tmpdir(), 'kmd-vault-case-'));
+    try {
+      const vault = join(base, 'Notes');
+      mkdirSync(vault);
+      const other = join(base, 'notes');
+      if (existsSync(other)) {
+        // case-insensitive filesystem (macOS default, Windows): one directory, two spellings
+        expect(resolveIndexPath(other)).toBe(resolveIndexPath(vault));
+        expect(vaultKey(other)).toMatch(/^Notes-[0-9a-f]{8}$/);
+      }
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('a missing root canonicalizes through its deepest existing ancestor', () => {
+    const base = mkdtempSync(join(tmpdir(), 'kmd-vault-missing-'));
+    try {
+      const real = join(base, 'real');
+      mkdirSync(real);
+      const link = join(base, 'link');
+      symlinkSync(real, link);
+      const expected = join(realpathSync(real), 'new');
+
+      expect(canonicalVaultRoot(join(link, 'new'))).toBe(expected);
+      mkdirSync(join(real, 'new'));
+      expect(canonicalVaultRoot(join(link, 'new'))).toBe(expected);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('a parent step after a symlink resolves through the filesystem', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'kmd-vault-dotdot-')));
+    try {
+      mkdirSync(join(base, 'a', 'target', 'sub'), { recursive: true });
+      mkdirSync(join(base, 'a', 'target', 'vault'));
+      mkdirSync(join(base, 'b'));
+      symlinkSync(join(base, 'a', 'target', 'sub'), join(base, 'b', 'door'));
+
+      // spelled as text: `join` would collapse the `..` this test is about
+      expect(canonicalVaultRoot(`${base}/b/door/../vault`)).toBe(
+        join(base, 'a', 'target', 'vault')
+      );
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('the kmd home spelled another way is still the home', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'kmd-home-case-')));
+    const saved = process.env.KMD_HOME;
+    try {
+      mkdirSync(join(base, 'home', '.kmd'), { recursive: true });
+      process.env.KMD_HOME = join(base, 'home', '.kmd');
+      const other = join(base, 'Home', '.kmd');
+      if (existsSync(other)) {
+        expect(isKmdHome(other)).toBe(true);
+      }
+    } finally {
+      if (saved === undefined) delete process.env.KMD_HOME;
+      else process.env.KMD_HOME = saved;
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it('the on-disk spelling keeps the key realpathSync gave', () => {
+    const real = mkdtempSync(join(tmpdir(), 'kmd-vault-pin-'));
+    const link = join(tmpdir(), `kmd-vault-pin-link-${Date.now()}`);
+    try {
+      symlinkSync(realpathSync(real), link);
+
+      expect(canonicalVaultRoot(realpathSync(real))).toBe(realpathSync(real));
+      expect(canonicalVaultRoot(real)).toBe(realpathSync(real));
+      expect(canonicalVaultRoot(link)).toBe(realpathSync(link));
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
+    }
+  });
+
+  it('win32 keeps realpathSync', () => {
+    const base = mkdtempSync(join(tmpdir(), 'kmd-vault-win32-'));
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    try {
+      const real = join(base, 'real');
+      mkdirSync(real);
+      const link = join(base, 'link');
+      symlinkSync(real, link);
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+
+      expect(canonicalVaultRoot(link)).toBe(realpathSync(link));
+      expect(canonicalVaultRoot(join(link, 'new'))).toBe(join(link, 'new'));
+    } finally {
+      if (platform !== undefined) Object.defineProperty(process, 'platform', platform);
+      rmSync(base, { recursive: true, force: true });
     }
   });
 

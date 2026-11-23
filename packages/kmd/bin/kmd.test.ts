@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -389,6 +389,31 @@ describe('kmd hook pretool --harness kiro (end-to-end)', () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toBe('Release protocol: retro gates the tag.\n');
     expect(result.stderr).toBe('');
+  }, 30_000);
+
+  it('pretool: denies a gated file reached through a symlink', async () => {
+    const work = join(base, 'work');
+    await mkdir(join(work, 'notes'), { recursive: true });
+    await writeFile(join(work, 'notes', 'secret.md'), 'x\n');
+    await symlink('secret.md', join(work, 'notes', 'alias.md'));
+
+    const result = await runKmd(
+      ['hook', 'pretool', vaultRoot, '--scope', 'demo'],
+      JSON.stringify({
+        session_id: 'e2e-gate-symlink',
+        hook_event_name: 'PreToolUse',
+        cwd: work,
+        tool_name: 'Read',
+        tool_input: { file_path: join(work, 'notes', 'alias.md') }
+      }),
+      kmdHome
+    );
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout) as { decision: string }).toMatchObject({
+      decision: 'deny',
+      reason: 'Secrets stay closed.'
+    });
   }, 30_000);
 
   it('keeps the neutral contract without --harness kiro: the same deny exits 0 as JSON on stdout', async () => {
@@ -997,6 +1022,89 @@ describe('two-tier resolution (end-to-end)', () => {
     expect(config.stdout).toContain(join(project, 'vault'));
     expect(config.stdout).toContain('source: project tier (convention)');
     expect(config.stdout).toContain(join(project, '.kmd', 'db', 'index.db'));
+  }, 30_000);
+
+  it('config from inside the co-located vault binds it without the unmarked notice', async () => {
+    const project = join(base, 'project');
+    await mkdir(project, { recursive: true });
+    const init = await runKmd(['init', '--local', '-y'], '', kmdHome, {}, project);
+    expect(init.code).toBe(0);
+    const inside = join(project, 'vault', 'projects', 'x');
+    await mkdir(inside, { recursive: true });
+
+    const config = await runKmd(['config'], '', kmdHome, {}, inside);
+    expect(config.code).toBe(0);
+    expect(config.stdout).toContain(`vault: ${join(project, 'vault')}`);
+    expect(config.stdout).toContain('source: project tier (convention)');
+    expect(config.stderr).not.toContain('ignoring');
+  }, 30_000);
+
+  it('posttool: syncs a vault write reached through a symlinked directory', async () => {
+    const project = join(base, 'real', 'proj');
+    await mkdir(project, { recursive: true });
+    const init = await runKmd(['init', '--local', '-y'], '', kmdHome, {}, project);
+    expect(init.code).toBe(0);
+    await symlink(join(base, 'real'), join(base, 'link'));
+    const cwd = join(base, 'link', 'proj');
+    const index = join(project, '.kmd', 'db', 'index.db');
+    expect(existsSync(index)).toBe(false);
+
+    const result = await runKmd(
+      ['hook', 'posttool', '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-post-symlink',
+        tool_name: 'Write',
+        cwd,
+        tool_input: { file_path: join(cwd, 'vault', 'vault.yaml') }
+      }),
+      kmdHome,
+      {},
+      cwd
+    );
+
+    expect(result.code).toBe(0);
+    expect(existsSync(index)).toBe(true);
+  }, 30_000);
+
+  it('posttool: syncs a vault write spelled with a parent step after a symlink', async () => {
+    const project = join(base, 'proj');
+    await mkdir(project, { recursive: true });
+    const init = await runKmd(['init', '--local', '-y'], '', kmdHome, {}, project);
+    expect(init.code).toBe(0);
+    await symlink(join('vault', 'notes'), join(project, 'door'));
+    const index = join(project, '.kmd', 'db', 'index.db');
+    expect(existsSync(index)).toBe(false);
+
+    const result = await runKmd(
+      ['hook', 'posttool', '--harness', 'claude'],
+      JSON.stringify({
+        session_id: 'e2e-post-dotdot',
+        tool_name: 'Write',
+        cwd: project,
+        tool_input: { file_path: 'door/../vault.yaml' }
+      }),
+      kmdHome,
+      {},
+      project
+    );
+
+    expect(result.code).toBe(0);
+    expect(existsSync(index)).toBe(true);
+  }, 30_000);
+
+  it('config reports one vault and one index for two spellings', async () => {
+    const vault = join(base, 'Notes');
+    const init = await runKmd(['init', vault, '-y'], '', kmdHome);
+    expect(init.code).toBe(0);
+    const other = join(base, 'notes');
+    if (existsSync(other)) {
+      // case-insensitive filesystem: one directory, two spellings
+      const asDisk = await runKmd(['config', vault], '', kmdHome);
+      const asTyped = await runKmd(['config', other], '', kmdHome);
+      expect(asTyped.code).toBe(0);
+      expect(asTyped.stdout).toContain(`vault: ${vault}\n`);
+      expect(asTyped.stdout).toBe(asDisk.stdout);
+    }
   }, 30_000);
 
   it('a foreign ancestor vault.yaml does not capture env resolution', async () => {
