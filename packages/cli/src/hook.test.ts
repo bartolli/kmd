@@ -812,6 +812,13 @@ describe('matchPretoolTriggers / renderPretool', () => {
       expect(hits('secrets/**', { file_path: `${cwd}/door/../key.md` })).toBe(true);
     });
 
+    it('a files gate matches dotted and re-entering spellings, and a new file through a symlink', () => {
+      expect(hits('secrets/**', { file_path: './secrets/key.md' })).toBe(true);
+      expect(hits('secrets/**', { file_path: '../proj/secrets/key.md' })).toBe(true);
+      expect(hits('secrets/**', { file_path: 'notes/../secrets/key.md' })).toBe(true);
+      expect(hits('secrets/**', { file_path: 'open/new.md' })).toBe(true);
+    });
+
     it('a files gate keeps a relative path relative: an ancestor directory is no match', () => {
       const inner = join(base, 'dist', 'proj');
       mkdirSync(join(inner, 'src'), { recursive: true });

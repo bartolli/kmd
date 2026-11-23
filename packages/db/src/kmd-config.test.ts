@@ -131,18 +131,23 @@ describe('findProjectTier', () => {
     expect(skipped).toEqual([]);
   });
 
-  it('stays silent on a differently-cased vault directory the walk binds', () => {
-    makeVault(join(project, 'Vault'));
-    mkdirSync(join(project, '.kmd'), { recursive: true });
-    const deep = join(project, 'Vault', 'projects', 'x');
-    mkdirSync(deep, { recursive: true });
-    if (existsSync(join(project, 'vault', 'vault.yaml'))) {
-      // case-insensitive filesystem: the nested convention binds `Vault/` as `vault`
-      const skipped: string[] = [];
-      expect(findProjectTier(deep, process.env, (c) => skipped.push(c))?.tierRoot).toBe(project);
-      expect(skipped).toEqual([]);
+  // win32 keeps the caller's spelling for the vault root, so the bound
+  // directory and the skipped one compare unequal there.
+  it.skipIf(process.platform === 'win32')(
+    'stays silent on a differently-cased vault directory the walk binds',
+    () => {
+      makeVault(join(project, 'Vault'));
+      mkdirSync(join(project, '.kmd'), { recursive: true });
+      const deep = join(project, 'Vault', 'projects', 'x');
+      mkdirSync(deep, { recursive: true });
+      if (existsSync(join(project, 'vault', 'vault.yaml'))) {
+        // case-insensitive filesystem: the nested convention binds `Vault/` as `vault`
+        const skipped: string[] = [];
+        expect(findProjectTier(deep, process.env, (c) => skipped.push(c))?.tierRoot).toBe(project);
+        expect(skipped).toEqual([]);
+      }
     }
-  });
+  );
 
   it('reports a skipped bare vault.yaml when the walk binds a different vault', () => {
     makeVault(join(project, 'vault'));

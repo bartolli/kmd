@@ -74,6 +74,10 @@ describe('openDatabase', () => {
   });
 });
 
+// The vault root keeps the caller's spelling on win32; these rows assert the
+// on-disk rule every other platform has.
+const itOffWin32 = it.skipIf(process.platform === 'win32');
+
 describe('per-vault index layout', () => {
   it('keys the index by resolved vault path under ~/.kmd/db', () => {
     const dir = mkdtempSync(join(tmpdir(), 'kmd-vault-'));
@@ -113,7 +117,7 @@ describe('per-vault index layout', () => {
     }
   });
 
-  it('one directory spelled two ways maps to one index path', () => {
+  itOffWin32('one directory spelled two ways maps to one index path', () => {
     const base = mkdtempSync(join(tmpdir(), 'kmd-vault-case-'));
     try {
       const vault = join(base, 'Notes');
@@ -129,7 +133,7 @@ describe('per-vault index layout', () => {
     }
   });
 
-  it('a missing root canonicalizes through its deepest existing ancestor', () => {
+  itOffWin32('a missing root canonicalizes through its deepest existing ancestor', () => {
     const base = mkdtempSync(join(tmpdir(), 'kmd-vault-missing-'));
     try {
       const real = join(base, 'real');
@@ -146,7 +150,7 @@ describe('per-vault index layout', () => {
     }
   });
 
-  it('a parent step after a symlink resolves through the filesystem', () => {
+  itOffWin32('a parent step after a symlink resolves through the filesystem', () => {
     const base = realpathSync(mkdtempSync(join(tmpdir(), 'kmd-vault-dotdot-')));
     try {
       mkdirSync(join(base, 'a', 'target', 'sub'), { recursive: true });
@@ -163,7 +167,7 @@ describe('per-vault index layout', () => {
     }
   });
 
-  it('the kmd home spelled another way is still the home', () => {
+  itOffWin32('the kmd home spelled another way is still the home', () => {
     const base = realpathSync(mkdtempSync(join(tmpdir(), 'kmd-home-case-')));
     const saved = process.env.KMD_HOME;
     try {
